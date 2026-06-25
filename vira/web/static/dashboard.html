@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VIRA Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="dashboard">
+    <header>
+      <h1>VIRA Kernel</h1>
+      <span id="status" class="status running">Running</span>
+    </header>
+
+    <div class="grid">
+      <!-- Modules Panel -->
+      <section class="panel modules-panel">
+        <h2>Modules</h2>
+        <ul id="module-list" class="module-list">
+          <li>Loading...</li>
+        </ul>
+        <div class="actions">
+          <input type="text" id="module-path" placeholder="Module path (e.g. my_module.py)">
+          <button id="load-module-btn">Load Module</button>
+        </div>
+      </section>
+
+      <!-- Events Panel -->
+      <section class="panel events-panel">
+        <h2>Live Events</h2>
+        <div id="event-log" class="event-log"></div>
+        <div class="event-counter">
+          Events received: <span id="event-count">0</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- Publish Event Form -->
+    <section class="panel publish-panel">
+      <h2>Publish Test Event</h2>
+      <form id="publish-form">
+        <div class="form-row">
+          <label>Event Type</label>
+          <input type="text" id="event-type" value="test.event" required>
+        </div>
+        <div class="form-row">
+          <label>Data (JSON)</label>
+          <input type="text" id="event-data" value='{"message": "Hello VIRA"}' required>
+        </div>
+        <button type="submit">Publish</button>
+      </form>
+      <div id="publish-result"></div>
+    </section>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

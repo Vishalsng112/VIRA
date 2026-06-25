@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VIRA Setup</title>
+  <link rel="stylesheet" href="/static/auth.css">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-card">
+      <h1>🧠 VIRA</h1>
+      <h2>First‑time Setup</h2>
+      <p>Create an admin account.</p>
+      <form id="setup-form">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="username" required>
+        </div>
+        <div class="form-group">
+          <label>Password (min 6 chars)</label>
+          <input type="password" id="password" required minlength="6">
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="confirm-password" required>
+        </div>
+        <div id="setup-error" class="error"></div>
+        <div id="setup-success" class="success" style="display:none;"></div>
+        <button type="submit">Create Admin</button>
+      </form>
+    </div>
+  </div>
+  <script>
+    document.getElementById('setup-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const confirm = document.getElementById('confirm-password').value;
+      const errorEl = document.getElementById('setup-error');
+      const successEl = document.getElementById('setup-success');
+      errorEl.textContent = '';
+      successEl.style.display = 'none';
+      try {
+        const resp = await fetch('/api/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, confirm_password: confirm })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          successEl.style.display = 'block';
+          successEl.innerHTML = `✅ Admin created!<br>Recovery code: <strong>${data.recovery_code}</strong><br>Please save this code. You will be redirected to login.`;
+          setTimeout(() => { window.location.href = '/login'; }, 5000);
+        } else {
+          errorEl.textContent = data.detail || 'Setup failed';
+        }
+      } catch (err) {
+        errorEl.textContent = 'Network error';
+      }
+    });
+  </script>
+</body>
+</html>

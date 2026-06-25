@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VIRA - Reset Password</title>
+  <link rel="stylesheet" href="/static/auth.css">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-card">
+      <h1>🧠 VIRA</h1>
+      <h2>Reset Password</h2>
+      <p>Enter your username, recovery code, and new password.</p>
+      <form id="forgot-form">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="username" required>
+        </div>
+        <div class="form-group">
+          <label>Recovery Code</label>
+          <input type="text" id="recovery-code" required>
+        </div>
+        <div class="form-group">
+          <label>New Password (min 6 chars)</label>
+          <input type="password" id="new-password" required minlength="6">
+        </div>
+        <div class="form-group">
+          <label>Confirm Password</label>
+          <input type="password" id="confirm-password" required>
+        </div>
+        <div id="forgot-error" class="error"></div>
+        <div id="forgot-success" class="success" style="display:none;"></div>
+        <button type="submit">Reset Password</button>
+      </form>
+      <div class="auth-links">
+        <a href="/login">Back to Login</a>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('forgot-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const recovery_code = document.getElementById('recovery-code').value;
+      const new_password = document.getElementById('new-password').value;
+      const confirm = document.getElementById('confirm-password').value;
+      const errorEl = document.getElementById('forgot-error');
+      const successEl = document.getElementById('forgot-success');
+      errorEl.textContent = '';
+      successEl.style.display = 'none';
+      try {
+        const resp = await fetch('/api/forgot', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, recovery_code, new_password, confirm_password: confirm })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          successEl.style.display = 'block';
+          successEl.textContent = 'Password reset successful! Redirecting to login...';
+          setTimeout(() => { window.location.href = '/login'; }, 3000);
+        } else {
+          errorEl.textContent = data.detail || 'Reset failed';
+        }
+      } catch (err) {
+        errorEl.textContent = 'Network error';
+      }
+    });
+  </script>
+</body>
+</html>

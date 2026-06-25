@@ -1,0 +1,9 @@
+#  ignore all pycache files
+__pycache__/
+
+# ignore all .ipynb_checkpoints
+.ipynb_checkpoints/
+
+data/
+
+*.ck

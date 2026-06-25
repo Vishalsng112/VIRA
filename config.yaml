@@ -1,0 +1,164 @@
+kernel:
+  name: VIRA
+  checkpoint_dir: ./data/checkpoints
+  logs_dir: ./data/logs
+  plugins_dir: ./vira/plugins
+  modules_dir: ./vira/modules/core
+  sensors_dir: ./vira/sensors
+
+
+auth:
+  secret_key: "change-this-to-a-random-secret-key-in-production"   # <-- generate a random string
+  session_cookie_name: "vira_session"
+  session_max_age: 86400  # 24 hours
+  database_url: "sqlite:///data/vira.db"
+
+event_bus:
+  max_queue_size: 10000
+
+scheduler:
+  tick_interval: 1.0
+
+security:
+  default_permissions:
+    - "event.publish.*"
+    - "context.read"
+    - "context.write"
+    - "memory.store.*"
+    - "memory.get.*"
+    - "llm.call.*"
+
+metrics:
+  enabled: true
+  retention_minutes: 60
+
+sensors:
+  - name: system_sensor
+    enabled: true
+    interval: 1.0
+
+  - name: hardware_sensor
+    enabled: true
+    interval: 10.0
+
+  # - name: network_sensor
+  #   enabled: true
+  #   interval: 5.0
+
+  # - name: process_sensor
+  #   enabled: true
+  #   interval: 10.0
+
+  # - name: workspace_sensor
+  #   enabled: true
+  #   interval: 2.0
+
+  # - name: activity_sensor
+  #   enabled: true
+  #   interval: 2.0
+
+  # - name: project_sensor
+  #   enabled: true
+  #   interval: 60.0
+
+  # - name: user_activity_sensor
+  #   enabled: true
+  #   interval: 5.0
+
+  # - name: context_sensor
+  #   enabled: true
+  #   interval: 5.0
+
+# sensors:
+#   - name: filesystem_sensor
+#     enabled: true
+#     watch_path: "/home/master/Documents/GitHub/vira_framework"
+#     recursive: true
+#     event_types:
+#       - created
+#       - modified
+#       - deleted
+#       - moved
+#     include_patterns:           # <-- only these will trigger events
+#       - "*.py"
+#       - "*.yaml"
+#       - "*.yml"
+#       - "*.json"
+#       - "*.md"
+#       - "*.txt"
+#     ignore_patterns:
+#       - "*/data/*.db*"
+#     debounce_seconds: 0.5          # to control false events when files are rapidly changed (like during git operations)
+
+
+llm:
+  default_model: "llama3.2:latest"
+  models:
+    # - name: "gpt-4"
+    #   provider: "openai"
+    #   api_key: "${OPENAI_API_KEY}"   # will be resolved from env
+    #   model: "gpt-4"
+    #   max_tokens: 4096
+    #   temperature: 0.7
+    # - name: "claude-3"
+    #   provider: "anthropic"
+    #   api_key: "${ANTHROPIC_API_KEY}"
+    #   model: "claude-3-opus-20240229"
+    #   max_tokens: 4096
+    - name: "local-llama"
+      provider: "ollama"
+      model: "llama3.2:latest"
+      base_url: "http://localhost:11434"
+      temperature: 0.8
+
+# agents:
+#   - name: "AGENT_1"
+#     module: "vira.agent.examples.AGENT_MONITOR"
+#     class: "LoadMonitorAgent"
+#     enabled: true
+#     config:
+#       cpu_threshold: 75.0
+#       memory_threshold: 80.0
+#     subscribed_events:
+#       - "sensor.hardware.state"
+
+
+
+
+agents:
+  # - name: Chatbot
+  #   module: vira.agent.Agents.chat_agent
+  #   class: ChatAgent
+  #   enabled: true
+  #   config:
+  #     system_prompt: "You are a friendly, helpful assistant."
+  #     # model: "llama3.2:latest"             # optional, uses default if omitted
+  #     temperature: 0.7
+  #     max_tokens: 1024
+  #     memory_ttl: 7200           # 2 hours
+
+  # - name: "AGENT_1"
+  #   module: "vira.agent.examples.AGENT_MONITOR"
+  #   class: "LoadMonitorAgent"
+  #   enabled: true
+  #   config:
+  #     cpu_threshold: 75.0
+  #     memory_threshold: 80.0
+  #   subscribed_events:
+  #     - "sensor.hardware.state"
+
+# agents:
+#   - name: Chatbot
+#     module: my_agents.chatbot
+#     class: ChatAgent
+#     enabled: true
+#     config:
+#       # ... any custom config
+#       subscribed_events: ["user.message"]
+
+
+mcp_server:
+  command: ["python", "vira/tools/mcp_server.py"]   # path to your MCP server script
+  permissions: ["read", "write", "execute"]
+
+

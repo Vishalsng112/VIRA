@@ -1,0 +1,13 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pyyaml==6.0.2
+pydantic==2.10.4
+python-multipart==0.0.20
+bcrypt==4.2.0
+itsdangerous==2.2.0
+watchdog==4.0.1 
+pyperclip==1.11.0
+prometheus-client==0.25.0
+mss==10.2.0
+pillow==12.2.0
+pynput==1.17.0
