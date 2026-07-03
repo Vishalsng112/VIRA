@@ -222,7 +222,7 @@ Once the kernel and trust layer are solid, this is where VIRA becomes useful for
 
 Whether you want to build a new agent, add a sensor, fix a bug, improve documentation, or suggest a feature — there's a place for you here. VIRA's modular architecture means you can contribute to one layer without needing to understand the whole system.
 
-> 🤝 **[Read CONTRIBUTING.md →](./docs/CONTRIBUTING.md)**
+> 🤝 **[Read CONTRIBUTING.md →](./CONTRIBUTING.md)**
 
 The contribution guide covers:
 - Local dev setup (5-minute quickstart)
