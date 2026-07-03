@@ -8,6 +8,7 @@
 [![Status](https://img.shields.io/badge/status-kernel%20in%20development-brightgreen)](#development-status)
 [![Platform](https://img.shields.io/badge/platform-Linux-blue)](#platform-support)
 [![Privacy](https://img.shields.io/badge/cloud-none-success)](#privacy-first)
+[![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen)](#contributing)
 
 *No cloud. No telemetry. Nothing leaves your machine.*
 
@@ -21,6 +22,7 @@
 - [Why it exists](#why-it-exists)
 - [Core Principles](#core-principles)
 - [How it works](#how-it-works)
+- [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
 - [Development Status](#development-status)
@@ -89,19 +91,46 @@ The architecture is intentionally modular and follows microservice principles �
 
 ---
 
-## Quick Start
+## Architecture
 
-VIRA currently ships as a Docker image — the fastest way to run the kernel today, and the easiest way to verify that nothing leaves your machine.
+For a full technical breakdown of the framework — subsystems, event schemas, agent spec, sensor spec, memory schema, workflow schema, and config reference — see the framework documentation:
+
+> 📖 **[VIRA Framework Documentation →](./docs/VIRA_DOCS.md)**
+
+The documentation covers:
+- Full architecture diagram (all layers: Kernel, Event Bus, Agent Orchestration, LLM, Memory, Tools)
+- Canonical event format and naming convention
+- How to write an agent (`BaseAgent` interface + full example)
+- How to write a sensor (`BaseSensor` interface + full example)
+- Memory types and schemas
+- Workflow DAG schema and example
+- Complete `config.yaml` reference
+- LLM provider configuration (Ollama, OpenAI, Anthropic)
+
+---
+
+## Quick Start
 
 ```bash
 git clone https://github.com/Vishalsng112/VIRA
 cd VIRA
+pip install -r requirements.txt
+
+# Pull a local model (skip if using OpenAI/Anthropic)
+ollama pull llama3.2
+
+python run.py
+```
+
+The dashboard is available at `http://localhost:8000`. On first run, admin credentials are printed to the terminal.
+
+**Using Docker instead:**
+
+```bash
 docker compose up
 ```
 
-This starts the kernel and its sensors as a background service. No data leaves the container's network namespace.
-
-> **For open-source contributors:** Detailed instructions on how to set up the development Docker container for local contribution will be provided soon. Watch this space.
+No data leaves the container's network namespace.
 
 ---
 
@@ -109,99 +138,25 @@ This starts the kernel and its sensors as a background service. No data leaves t
 
 ```
 ├── config.yaml
-├── cookies.ck
-├── data
-│   ├── checkpoints
-│   │   └── latest.json
-│   ├── user_activity
-│   └── vira.db
-├── Dockerfile
-├── get_cookies.sh
-├── helpers
-│   └── Testing.ipynb
-├── README.md
+├── docs/
+│   ├── VIRA_DOCS.md          ← Framework documentation & schemas
+│   └── VIRA_architecture.svg ← Architecture diagram
+├── CONTRIBUTING.md           ← Contribution guide
 ├── requirements.txt
 ├── run.py
-└── vira
-    ├── actions
-    │   ├── base_action.py
-    │   └── __init__.py
-    ├── agent
-    │   ├── base.py
-    │   ├── examples
-    │   │   ├── AGENT_MONITOR.py
-    │   │   └── simple_agent.py
-    │   ├── __init__.py
-    │   └── messaging.py
-    ├── agent_orchestration
-    │   ├── base.py
-    │   ├── capability_registry.py
-    │   ├── events.py
-    │   ├── __init__.py
-    │   ├── message_bus.py
-    │   ├── messages.py
-    │   ├── metrics.py
-    │   ├── planner.py
-    │   ├── registry.py
-    │   ├── router.py
-    │   ├── scheduler.py
-    │   └── workflow.py
-    ├── agent_runtime
-    │   ├── context.py
-    │   ├── __init__.py
-    │   └── runtime.py
-    ├── api
-    │   ├── app.py
-    │   └── __init__.py
-    ├── auth
-    │   ├── auth.py
-    │   ├── database.py
-    │   └── models.py
-    ├── cognition
-    │   ├── base_cognition.py
-    │   └── __init__.py
-    ├── content
-    │   ├── base.py
-    │   ├── __init__.py
-    │   └── manager.py
-    ├── __init__.py
-    ├── kernel
-    │   ├── config_manager.py
-    │   ├── context_manager.py
-    │   ├── event_bus.py
-    │   ├── event_dispatcher.py
-    │   ├── event_pipeline.py
-    │   └── __init__.py
-    ├── sensors
-    │   ├── activity_sensor.py
-    │   ├── base_sensor.py
-    │   ├── hardware_sensor.py
-    │   ├── __init__.py
-    │   ├── network_sensor.py
-    │   ├── process_sensor.py
-    │   ├── project_sensor.py
-    │   ├── system_sensor.py
-    │   ├── user_activity_sensor.py
-    │   └── workspace_sensor.py
-    ├── tests
-    │   └── test_load_monitor.py
-    ├── tools
-    │   ├── base.py
-    │   ├── connection.py
-    │   ├── executor.py
-    │   ├── __init__.py
-    │   ├── mcp_server.py
-    │   ├── mcp_tool.py
-    │   └── registry.py
-    └── web
-        └── static
-            ├── app.js
-            ├── auth.css
-            ├── dashboard.html
-            ├── forgot.html
-            ├── login.html
-            ├── setup.html
-            └── style.css
+└── vira/
+    ├── kernel/               ← EventBus, Dispatcher, Kernel, StateManager …
+    ├── sensors/              ← System, hardware, filesystem, user-activity sensors
+    ├── agent/                ← BaseAgent, AgentMailbox, examples/
+    ├── agent_orchestration/  ← AgentManager, Registry, Router, WorkflowEngine
+    ├── agent_runtime/        ← AgentRuntime (bridges agent ↔ LLM/memory/tools)
+    ├── llm/                  ← LLMManager + Ollama/OpenAI/Anthropic adapters
+    ├── memory/               ← MemoryManager + MemoryEntry schema
+    ├── tools/                ← ToolExecutor, ToolRegistry, MCP server
+    ├── modules/core/         ← Built-in kernel modules
+    ├── plugins/              ← Drop-in plugin directory
+    ├── api/                  ← FastAPI app
+    └── auth/                 ← Session auth
 ```
 
 ---
@@ -263,9 +218,20 @@ Once the kernel and trust layer are solid, this is where VIRA becomes useful for
 
 ## Contributing
 
-VIRA is currently built and maintained by a single developer, and the core architecture is still moving fast — so direct code contributions are limited for now.
+**Contributions are now open and welcome.** 🎉
 
-That said, issues, discussions, design feedback, and ideas are welcome. Once the kernel matures, contributions around agents, integrations, tooling, and ecosystem features will be actively encouraged. Open-source contributor setup docs (Docker dev environment, contribution workflow) are coming soon.
+Whether you want to build a new agent, add a sensor, fix a bug, improve documentation, or suggest a feature — there's a place for you here. VIRA's modular architecture means you can contribute to one layer without needing to understand the whole system.
+
+> 🤝 **[Read CONTRIBUTING.md →](./docs/CONTRIBUTING.md)**
+
+The contribution guide covers:
+- Local dev setup (5-minute quickstart)
+- How to write and register a new agent
+- How to write and register a new sensor
+- Event naming conventions every contributor must follow
+- PR checklist
+
+**Good first issues are labelled [`good first issue`](https://github.com/Vishalsng112/VIRA/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) on GitHub.** If you're unsure where to start, open an issue with the `question` label and describe what you'd like to work on — happy to point you in the right direction.
 
 ---
 
