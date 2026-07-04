@@ -10,6 +10,14 @@ pyperclip==1.11.0
 watchdog==6.0.0
 aiohttp==3.14.1
 openai==2.44.0
+anthropic==0.116.0
+
+
+
+
+
+
+#--OUTDATED, now running with more updated packages, but keeping this for reference in case of issues with the new versions.
 # fastapi==0.115.6
 # uvicorn[standard]==0.34.0
 # pyyaml==6.0.2
