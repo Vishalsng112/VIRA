@@ -19,11 +19,11 @@
 ## Table of Contents
 
 - [What is VIRA?](#what-is-vira)
+- [Quick Start](#quick-start)
 - [Why it exists](#why-it-exists)
 - [Core Principles](#core-principles)
 - [How it works](#how-it-works)
 - [Architecture](#architecture)
-- [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
 - [Development Status](#development-status)
 - [Roadmap](#roadmap)
@@ -48,7 +48,130 @@ VIRA is built for everyone: general-purpose users who want tools that just work,
 <!-- add image -->
 ![VIRA Interface](./docs/VIRA_UI.png)
 ---
+# Quick Start
 
+VIRA can be run either **natively** (recommended for development) or using **Docker** (recommended for isolated environments).
+
+---
+
+## Prerequisites
+
+Before getting started, ensure the following software is installed:
+
+- Python **3.11**
+- Git
+- Pip
+- UV or Conda
+- Docker *(only for Docker installation)*
+- Ollama *(required for local LLM inference)*
+
+---
+
+# Option 1: Native Installation (Recommended)
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Vishalsng112/VIRA.git
+cd VIRA
+```
+
+### 2. Create a Python Environment
+
+Choose **one** of the following options.
+
+**Using Conda**
+
+```bash
+conda create -n vira python=3.11 -y
+conda activate vira
+```
+
+**Using UV**
+
+```bash
+uv venv --python 3.11
+
+# Linux/macOS
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+```
+
+### 3. Install Dependencies
+
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 4. Start Ollama
+
+Ensure the Ollama service is running before launching VIRA.
+
+### 5. Launch VIRA
+
+```bash
+python run.py
+```
+
+Once the server starts, open:
+
+```
+http://localhost:8000
+```
+
+---
+
+# Option 2: Docker Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/Vishalsng112/VIRA.git
+cd VIRA
+```
+
+### 2. Build the Docker Image
+
+```bash
+bash docker_build.sh
+```
+
+### 3. Start the Container
+
+```bash
+bash docker_run.sh
+```
+
+### 4. Launch VIRA
+
+Inside the running container:
+
+```bash
+python run.py
+```
+
+The dashboard will be available at:
+
+```
+http://localhost:8000
+```
+
+---
+
+## Verify the Installation
+
+After launching VIRA, open your browser and navigate to:
+
+```
+http://localhost:8000
+```
+
+If the dashboard loads successfully, the installation has completed successfully.
+
+---
 ## Why it exists
 
 Every AI tool you use today starts blind. It doesn't know what you're working on, what's running on your system, how you work, or what you need. You re-explain your own computer to it every single time — and it forgets everything the moment the session ends.
@@ -85,10 +208,6 @@ VIRA is built around focused **sensors**, each watching one part of your system.
 | Activity | User behaviour patterns and workflow rhythms |
 | Context | Aggregates everything into higher-level context |
 
-```
-Sensors  →  Event Bus  →  Context Engine  →  AI-ready context (machine + behaviour)
-```
-
 The architecture is intentionally modular and follows microservice principles — individual components can be optimized, rewritten, or extended without touching the rest of the system.
 
 ---
@@ -108,32 +227,6 @@ The documentation covers:
 - Workflow DAG schema and example
 - Complete `config.yaml` reference
 - LLM provider configuration (Ollama, OpenAI, Anthropic)
-
----
-
-## Quick Start
-
-```bash
-git clone https://github.com/Vishalsng112/VIRA
-cd VIRA
-pip install -r requirements.txt
-
-# Pull a local model (skip if using OpenAI/Anthropic)
-ollama pull llama3.2
-
-python run.py
-```
-
-The dashboard is available at `http://localhost:8000`. On first run, admin credentials are printed to the terminal.
-
-**Using Docker instead:**
-
-```bash
-docker compose up
-```
-
-No data leaves the container's network namespace.
-
 ---
 
 ## Project Structure
@@ -237,31 +330,8 @@ The contribution guide covers:
 
 ---
 
-## How VIRA differs from Claude Code, Codex & Copilot
-
-The question comes up a lot. Claude Code, Codex, and Copilot are coding assistants. VIRA is not a coding assistant — it's the awareness layer that sits underneath one.
-
-| | Claude Code / Codex / Copilot | VIRA |
-|---|---|---|
-| What it is | An AI agent that writes and reasons about code | A background kernel that senses your machine and models your behaviour |
-| Scope | Focused on a codebase or repo | System-wide: apps, processes, workspaces, hardware, activity patterns |
-| Lifespan | Session-based | Always-on — continuously running and updating |
-| Where intelligence runs | Cloud-hosted LLM | Local-first — sensing and context-building happen entirely on-device |
-| Relationship to AI models | Is the AI agent | Vendor-neutral infrastructure that feeds context to any AI agent |
-| Future direction | Better code generation | On-demand tool generation with correctness verification |
-
-Claude Code and Copilot are good at acting once told what to do. VIRA's job is to make sure any AI actually knows what's going on and who it's working with before it acts — and eventually, to generate and verify the tools that get the job done without requiring the person asking to be a developer.
-
----
-
 ## License
 
 Released under the **MIT License**. See [LICENSE](./LICENSE) for details.
 
 ---
-
-<div align="center">
-
-*Built for a future where AI understands your machine, knows how you work, and builds what you need — verifiably, locally, and for everyone.*
-
-</div>

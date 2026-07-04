@@ -44,13 +44,10 @@ WORKDIR /app
 
 COPY requirements.txt .
 RUN uv venv --python 3.11
-ENV VIRTUAL_ENV=/app/.venv
+ENV VIRTUAL_ENV=/home/${USERNAME}/.venv
+RUN uv venv $VIRTUAL_ENV --python 3.11
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 RUN uv pip install -r requirements.txt
-
-ENV PATH="/app/.venv/bin:${PATH}"
-
-RUN echo "source /app/.venv/bin/activate" >> /home/${USERNAME}/.bashrc
 
 CMD ["/bin/bash"]
 
