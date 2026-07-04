@@ -45,6 +45,8 @@ Everything runs **100% locally**. Nothing is sent to the cloud.
 
 VIRA is built for everyone: general-purpose users who want tools that just work, developers who want a context-rich foundation to build on, and open-source contributors who want to extend and improve the framework.
 
+<!-- add image -->
+![VIRA Interface](./docs/VIRA_UI.png)
 ---
 
 ## Why it exists
