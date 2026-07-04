@@ -1,4 +1,6 @@
 """Example core module: Health monitoring"""
+import time
+
 from loguru import logger
 from vira.kernel import ViraModule, Event, EventPriority
 
@@ -45,7 +47,7 @@ class HealthModule(ViraModule):
         if self._event_bus:
             await self._event_bus.publish(Event(
                 type="kernel.heartbeat",
-                data={"timestamp": "now"},
+                data={"timestamp": int(time.time())},
                 source=self.name,
                 priority=EventPriority.LOW
             ))

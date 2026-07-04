@@ -21,7 +21,7 @@ from .event_dispatcher import EventDispatcher
 
 # logger = logging.getLogger(__name__)
 
-
+# current states of kernel: INIT, LOADING_CONFIG, STARTING_EVENT_BUS, SERVICE_REGISTRY, STARTING_STATE_MANAGER, STARTING_SCHEDULER, LOADING_CORE_MODULES, LOADING_PLUGINS, STARTING_SENSORS, RUNNING, SHUTDOWN
 class Kernel:
     """Core kernel that integrates all subsystems"""
 
@@ -258,19 +258,10 @@ class Kernel:
         # Grab the agent orchestrator module for later health checks
         self.agent_orchestrator = None
         for module in self.module_manager.get_modules():
-            if module.name == "agent_orchestrator":
+            if module.name == "AgentOrchestratorModule":
                 self.agent_orchestrator = module
                 logger.info(f"✅ Agent orchestrator assigned: {module.name}")
-                break
-            
-            
-        # # intialize AgentManager module if present
-        # self.agent_manager = AgentManager()
-        # self.agent_manager.set_event_bus(self.event_bus)
-        # self.agent_manager.set_dispatcher(self.dispatcher)
-        # self.agent_manager.set_scheduler(self.scheduler)
-        # await self.agent_manager.start()
-        
+                break        
 
     async def _start_sensor(self, sensor_config: Dict[str, Any]) -> None:
         """Start a sensor using the registry."""
@@ -376,7 +367,7 @@ class Kernel:
             "context_manager": {
                 "size": len(self.context_manager._context) if hasattr(self.context_manager, '_context') else 0,
             },
-            "agents": None,  # will be filled if orchestrator is present
+            "AgentOrchestratorModule": None,  # will be filled if orchestrator is present
         }
 
         # Module details
@@ -390,6 +381,6 @@ class Kernel:
 
         # Agent orchestrator status
         if self.agent_orchestrator and hasattr(self.agent_orchestrator, 'get_status'):
-            base["agents"] = await self.agent_orchestrator.get_status()
+            base["AgentOrchestratorModule"] = await self.agent_orchestrator.get_status()
 
         return base

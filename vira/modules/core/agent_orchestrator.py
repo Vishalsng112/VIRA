@@ -251,8 +251,8 @@ class AgentOrchestratorModule(ViraModule):
                 "pending_tasks": 0,
             },
             "runtime": {
-                "memory_manager": "initialized" if self.runtime and self.runtime.memory_manager else "not_available",
-                "llm_manager": "initialized" if self.runtime and self.runtime.llm_manager else "not_available",
+                "memory_manager": "initialized" if self.runtime and self.runtime._memory else "not_available",
+                "llm_manager": "initialized" if self.runtime and self.runtime._llm else "not_available",
             },
             "tools": {
                 "total": 0,
@@ -271,7 +271,7 @@ class AgentOrchestratorModule(ViraModule):
                 })
 
         if self.runtime_scheduler:
-            status["scheduler"]["max_concurrent"] = self.runtime_scheduler.max_concurrent
+            status["scheduler"]["max_concurrent"] = self.runtime_scheduler._max_concurrent
             status["scheduler"]["running_tasks"] = len(getattr(self.runtime_scheduler, '_running', []))
             status["scheduler"]["pending_tasks"] = len(getattr(self.runtime_scheduler, '_pending', []))
 
