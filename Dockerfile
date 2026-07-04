@@ -1,16 +1,56 @@
-# Dockerfile for VIRA Framework: I will create it later, currently, Since I am working as single person, I am setting up enviroment natively to test many things like its sensors implementation.
+FROM ubuntu:22.04
 
-# sudo apt install npm
-# sudo apt-get update && sudo apt-get install -y \
-#   libopenblas-dev \
-#   ffmpeg \
-#   libasound2-dev \
-#   libavformat-dev \
-#   libavfilter-dev \
-#   libavdevice-dev
+ENV DEBIAN_FRONTEND=noninteractive
 
-# npx screenpipe record
-# sudo apt-get install wl-clipboard: for wayland clipboard support
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    sudo bash build-essential git curl wget pkg-config \
+    ca-certificates software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
 
-# sudo apt-get install xclip, sudo apt-get install xselect for x11 clipboard support
-# sudo apt install grim
+# Accept host UID/GID as build args so files are owned by the host user
+ARG USERNAME=developer
+ARG UID=1000
+ARG GID=1000
+
+# Create group and user once, set up passwordless sudo
+RUN groupadd --gid ${GID} ${USERNAME} && \
+    useradd \
+      --uid ${UID} \
+      --gid ${GID} \
+      --create-home \
+      --shell /bin/bash \
+      ${USERNAME} && \
+    usermod -aG sudo ${USERNAME} && \
+    mkdir -p /etc/sudoers.d && \
+    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
+    chmod 0440 /etc/sudoers.d/${USERNAME}
+
+# Switch to the user BEFORE installing uv and Python
+# so everything lands in the correct home directory
+USER ${USERNAME}
+
+# Install uv into the user's home
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
+
+# Install Python 3.11 and pin it as the uv default
+RUN uv python install 3.11
+ENV UV_PYTHON=3.11
+
+WORKDIR /app
+
+
+COPY requirements.txt .
+RUN uv venv --python 3.11
+ENV VIRTUAL_ENV=/app/.venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+RUN uv pip install -r requirements.txt
+
+ENV PATH="/app/.venv/bin:${PATH}"
+
+RUN echo "source /app/.venv/bin/activate" >> /home/${USERNAME}/.bashrc
+
+CMD ["/bin/bash"]
+
