@@ -268,7 +268,7 @@ The core kernel — event bus, sensors, context engine, agent orchestration, and
 - Agent orchestration and runtime — functional
 - First event-driven agent — implemented as an end-to-end validation harness
 - Most sensors currently use periodic polling (event-driven sensing comes next)
-- Linux (Wayland) is the only supported platform for now
+- Linux (X11) is the only supported platform for now
 
 Once the kernel is solid, work will begin on the infrastructure for building agents, the DSL, and integration of a verification-based language (Dafny) so users can generate any app, tool, or agent they need from natural language — backed by strong reasoning models.
 
@@ -293,7 +293,7 @@ Build a complete, stable kernel that can sense, aggregate, and manage context.
 - Security and transparency layer — permission model, local dashboard
 - Runtime optimization — lower memory/CPU footprint, better concurrency
 
-**Cross-platform support** is a key goal here. VIRA is currently developed on Linux (Wayland). The plan is to support Linux (X11), Windows, and macOS as well.
+**Cross-platform support** is a key goal here. VIRA is currently developed on Linux (X11). The plan is to support Linux (wayland), Windows, and macOS as well.
 
 The chosen approach: VIRA will run as a container with the necessary privileges granted. This works cleanly across platforms because Windows has WSL2 and macOS now ships its own lightweight container tooling. Rather than maintaining separate native ports, a well-configured container gives users on all three platforms the same experience with minimal friction. Platform-specific container setup instructions will be provided for each target OS.
 
