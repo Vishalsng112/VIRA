@@ -7,18 +7,59 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
+  <script>
+    (() => {
+      const savedTheme = localStorage.getItem("vira-theme");
+      const systemTheme = window.matchMedia("(prefers-color-scheme: light)").matches
+        ? "light"
+        : "dark";
+      document.documentElement.dataset.theme = savedTheme || systemTheme;
+    })();
+  </script>
 </head>
 <body>
-  <main class="dashboard">
-    <header class="topbar">
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Dashboard navigation">
+      <div class="brand">
+        <span class="brand-mark">V</span>
+        <div>
+          <strong>VIRA</strong>
+          <span>Control Center</span>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <p class="nav-label">Workspace</p>
+        <a class="nav-item active" href="#overview"><span class="nav-icon">⌂</span>Overview</a>
+        <a class="nav-item" href="#orchestration"><span class="nav-icon">◈</span>Agents</a>
+        <a class="nav-item" href="#security"><span class="nav-icon">◉</span>Security</a>
+        <a class="nav-item" href="#api-console"><span class="nav-icon">⌘</span>API console</a>
+        <p class="nav-label nav-label-spaced">Operations</p>
+        <a class="nav-item" href="#runtime"><span class="nav-icon">▣</span>Runtime data</a>
+        <a class="nav-item" href="#events"><span class="nav-icon">≋</span>Event stream</a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="workspace-user">
+          <span class="avatar">A</span>
+          <div><strong>Admin workspace</strong><span>Local runtime</span></div>
+        </div>
+        <span class="connection-dot"><i></i> Connected</span>
+        <button id="logout-btn" class="logout-btn" type="button">Log out</button>
+      </div>
+    </aside>
+    <main class="dashboard">
+    <header class="topbar" id="overview">
       <div>
-        <p class="eyebrow">VIRA Runtime</p>
-        <h1>System Operations Dashboard</h1>
-        <p class="subtext">Live system visibility and API testing console.</p>
+        <p class="eyebrow">Workspace overview</p>
+        <h1>Good morning, Admin</h1>
+        <p class="subtext">Monitor your VIRA runtime and test connected services.</p>
       </div>
       <div class="topbar-actions">
         <span id="status" class="status">Running</span>
-        <button id="refresh-all-btn" class="btn btn-secondary" type="button">Refresh now</button>
+        <button id="refresh-all-btn" class="btn btn-secondary" type="button">Refresh</button>
+        <button id="theme-toggle" class="btn btn-secondary theme-toggle" type="button" aria-label="Switch to light theme">
+          <span id="theme-icon" aria-hidden="true">☀</span>
+          <span id="theme-label">Light mode</span>
+        </button>
       </div>
     </header>
 
@@ -43,7 +84,7 @@
 
     <section class="workspace-grid">
       <div class="column">
-        <section class="panel">
+        <section class="panel" id="runtime">
           <div class="panel-header">
             <h2>Runtime Snapshot</h2>
             <span class="panel-note">Auto-refresh every 30s</span>
@@ -68,7 +109,7 @@
           </div>
         </section>
 
-        <section class="panel orchestration-panel">
+        <section class="panel orchestration-panel" id="orchestration">
           <div class="panel-header">
             <div>
               <h2>Agent Orchestration</h2>
@@ -114,7 +155,7 @@
           </div>
         </section>
 
-        <section class="panel security-panel">
+        <section class="panel security-panel" id="security">
           <div class="panel-header">
             <div>
               <h2>Security &amp; Trust Center</h2>
@@ -155,7 +196,7 @@
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel" id="events">
           <div class="panel-header">
             <h2>Module Manager</h2>
           </div>
@@ -170,7 +211,7 @@
         </section>
       </div>
       <div class="column">
-        <section class="panel">
+        <section class="panel" id="api-console">
           <div class="panel-header">
             <h2>Live Event Stream</h2>
             <span class="panel-note" id="events-last-updated">Waiting for events...</span>
@@ -248,7 +289,8 @@
         </section>
       </div>
     </section>
-  </main>
+    </main>
+  </div>
 
   <script src="/static/app.js"></script>
 </body>

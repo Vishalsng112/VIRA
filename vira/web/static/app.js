@@ -10,6 +10,50 @@ const eventLogEl = document.getElementById("event-log");
 const eventCountEl = document.getElementById("event-count");
 const eventsLastUpdatedEl = document.getElementById("events-last-updated");
 
+function applyTheme(theme) {
+  const isLight = theme === "light";
+  document.documentElement.dataset.theme = isLight ? "light" : "dark";
+  localStorage.setItem("vira-theme", isLight ? "light" : "dark");
+  document.getElementById("theme-icon").textContent = isLight ? "☾" : "☀";
+  document.getElementById("theme-label").textContent = isLight ? "Dark mode" : "Light mode";
+  document.getElementById("theme-toggle").setAttribute(
+    "aria-label",
+    isLight ? "Switch to dark theme" : "Switch to light theme"
+  );
+}
+
+document.getElementById("theme-toggle").addEventListener("click", () => {
+  const currentTheme = document.documentElement.dataset.theme || "dark";
+  applyTheme(currentTheme === "light" ? "dark" : "light");
+});
+
+applyTheme(document.documentElement.dataset.theme || "dark");
+
+document.getElementById("logout-btn").addEventListener("click", async () => {
+  const logoutButton = document.getElementById("logout-btn");
+  logoutButton.disabled = true;
+  logoutButton.textContent = "Logging out...";
+
+  try {
+    const response = await fetch("/api/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!response.ok) {
+      throw new Error(`Logout failed (${response.status})`);
+    }
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+    window.location.href = "/login";
+  } catch (error) {
+    logoutButton.disabled = false;
+    logoutButton.textContent = "Log out";
+    logoutButton.title = error.message;
+  }
+});
+
 function setInlineMessage(element, message, isError = false) {
   element.textContent = message;
   element.classList.toggle("error", isError);
