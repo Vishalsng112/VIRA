@@ -135,6 +135,23 @@ async function loadHealth() {
   }
 }
 
+async function loadCurrentPrincipal() {
+  const result = await fetchJson("/api/v1/auth/me");
+  if (!result.ok || !result.data) {
+    return;
+  }
+
+  const username = String(result.data.username || "Admin");
+  const workspaceUserName = document.getElementById("workspace-user-name");
+  const heading = document.querySelector(".topbar h1");
+  if (workspaceUserName) {
+    workspaceUserName.textContent = `${username} workspace`;
+  }
+  if (heading) {
+    heading.textContent = `Good morning, ${username}`;
+  }
+}
+
 async function loadMetrics() {
   const metricsJsonEl = document.getElementById("metrics-json");
   try {
@@ -405,6 +422,7 @@ function connectEventStream() {
 
 async function refreshAll() {
   await Promise.all([
+    loadCurrentPrincipal(),
     loadHealth(),
     loadMetrics(),
     loadContext(),
