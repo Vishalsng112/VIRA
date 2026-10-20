@@ -1,138 +1,519 @@
-// ─── Modules ────────────────────────────────────────────
-async function loadModules() {
+const REFRESH_INTERVAL_MS = 30000;
+const MAX_EVENT_ENTRIES = 200;
+
+let eventCount = 0;
+let eventSource = null;
+
+const statusEl = document.getElementById("status");
+const streamStatusEl = document.getElementById("stream-status");
+const eventLogEl = document.getElementById("event-log");
+const eventCountEl = document.getElementById("event-count");
+const eventsLastUpdatedEl = document.getElementById("events-last-updated");
+
+function setInlineMessage(element, message, isError = false) {
+  element.textContent = message;
+  element.classList.toggle("error", isError);
+  element.classList.toggle("success", !isError && Boolean(message));
+}
+
+function formatJson(value) {
+  return JSON.stringify(value, null, 2);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatTimestamp(value) {
+  if (typeof value === "number") {
+    return new Date(value * 1000).toLocaleTimeString();
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleTimeString();
+  }
+
+  return "unknown";
+}
+
+async function fetchWithAuth(url, options = {}) {
+  const response = await fetch(url, { credentials: "include", ...options });
+  if (response.status === 401) {
+    window.location.href = "/login";
+    return null;
+  }
+  return response;
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetchWithAuth(url, options);
+  if (!response) {
+    return { ok: false, data: null, status: 401 };
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
+  return { ok: response.ok, data, status: response.status };
+}
+
+async function loadHealth() {
+  const healthStatusEl = document.getElementById("health-status");
+  const healthJsonEl = document.getElementById("health-json");
+
   try {
-    const resp = await fetch('/modules');
-    const modules = await resp.json();
-    const list = document.getElementById('module-list');
-    if (!modules.length) {
-      list.innerHTML = '<li>No modules loaded</li>';
+    const result = await fetchJson("/health");
+    if (!result.ok) {
+      healthStatusEl.textContent = "Unavailable";
+      healthJsonEl.textContent = `Request failed (${result.status})`;
+      statusEl.textContent = "Degraded";
+      statusEl.classList.add("degraded");
       return;
     }
-    list.innerHTML = modules.map(m => `
-      <li>
-        <span class="name">${m.name}</span>
-        <span class="status-badge ${m.running ? '' : 'stopped'}">${m.running ? '● Running' : '● Stopped'}</span>
-      </li>
-    `).join('');
-  } catch (e) {
-    document.getElementById('module-list').innerHTML = '<li>Error loading modules</li>';
-    console.error(e);
+
+    const status = String(result.data.status || "unknown");
+    const normalized = status.toLowerCase();
+    healthStatusEl.textContent = status;
+    healthJsonEl.textContent = formatJson(result.data);
+
+    statusEl.textContent = normalized === "healthy" ? "Running" : "Degraded";
+    statusEl.classList.toggle("degraded", normalized !== "healthy");
+  } catch (error) {
+    healthStatusEl.textContent = "Error";
+    healthJsonEl.textContent = `Error loading health: ${error.message}`;
   }
 }
 
+async function loadMetrics() {
+  const metricsJsonEl = document.getElementById("metrics-json");
+  try {
+    const result = await fetchJson("/metrics");
+    metricsJsonEl.textContent = result.ok
+      ? formatJson(result.data)
+      : `Request failed (${result.status})`;
+  } catch (error) {
+    metricsJsonEl.textContent = `Error loading metrics: ${error.message}`;
+  }
+}
 
-// Redirect to login if we get 401
-async function fetchWithAuth(url, opts = {}) {
-  const resp = await fetch(url, opts);
-  if (resp.status === 401) {
-    window.location.href = '/login';
+async function loadContext() {
+  const contextJsonEl = document.getElementById("context-json");
+  try {
+    const result = await fetchJson("/context");
+    contextJsonEl.textContent = result.ok
+      ? formatJson(result.data)
+      : `Request failed (${result.status})`;
+  } catch (error) {
+    contextJsonEl.textContent = `Error loading context: ${error.message}`;
+  }
+}
+
+async function loadConfig() {
+  const configJsonEl = document.getElementById("config-json");
+  try {
+    const result = await fetchJson("/config");
+    configJsonEl.textContent = result.ok
+      ? formatJson(result.data)
+      : `Request failed (${result.status})`;
+  } catch (error) {
+    configJsonEl.textContent = `Error loading config: ${error.message}`;
+  }
+}
+
+function renderOrchestrationAgents(agents) {
+  const agentsEl = document.getElementById("orchestration-agents");
+  if (!agents.length) {
+    agentsEl.innerHTML = '<p class="empty-state">No agents are registered.</p>';
     return;
   }
-  return resp;
+
+  agentsEl.innerHTML = agents.map((agent) => {
+    const capabilities = (agent.capabilities || [])
+      .map((capability) => capability.name || capability)
+      .join(", ");
+    const events = (agent.subscribed_events || []).join(", ");
+    return `
+      <article class="agent-card">
+        <div class="agent-card-header">
+          <strong>${escapeHtml(agent.name || agent.id)}</strong>
+          <span class="agent-state ${escapeHtml(agent.state || "unknown")}">${escapeHtml(agent.state || "unknown")}</span>
+        </div>
+        <p>${escapeHtml(agent.description || "No description provided.")}</p>
+        <dl>
+          <dt>ID</dt><dd>${escapeHtml(agent.id)}</dd>
+          <dt>Capabilities</dt><dd>${escapeHtml(capabilities || "None registered")}</dd>
+          <dt>Subscribed events</dt><dd>${escapeHtml(events || "None")}</dd>
+          <dt>Interval</dt><dd>${escapeHtml(agent.interval_seconds == null ? "Event-driven" : `${agent.interval_seconds}s`)}</dd>
+        </dl>
+      </article>
+    `;
+  }).join("");
 }
 
-// ─── Live Events (SSE) ──────────────────────────────────
-let eventCount = 0;
-const eventLog = document.getElementById('event-log');
+function renderOrchestrationTools(toolNames) {
+  const toolsEl = document.getElementById("orchestration-tools");
+  if (!toolNames.length) {
+    toolsEl.innerHTML = '<span class="empty-state">No tools are registered.</span>';
+    return;
+  }
+
+  toolsEl.innerHTML = toolNames
+    .map((toolName) => `<span class="tool-chip">${escapeHtml(toolName)}</span>`)
+    .join("");
+}
+
+function renderSecurityPosture(posture) {
+  const postureEl = document.getElementById("security-posture");
+  postureEl.innerHTML = Object.entries(posture || {})
+    .map(([key, value]) => `
+      <article class="posture-item">
+        <span>${escapeHtml(key.replaceAll("_", " "))}</span>
+        <strong>${escapeHtml(value)}</strong>
+      </article>
+    `)
+    .join("");
+}
+
+function renderSecurityTools(tools) {
+  const toolsEl = document.getElementById("security-tools-list");
+  if (!tools.length) {
+    toolsEl.innerHTML = '<p class="empty-state">No registered tools.</p>';
+    return;
+  }
+
+  toolsEl.innerHTML = tools.map((tool) => `
+    <article class="security-tool">
+      <strong>${escapeHtml(tool.name)}</strong>
+      <span>${escapeHtml((tool.actions || []).join(" · ") || "No actions declared")}</span>
+    </article>
+  `).join("");
+}
+
+function renderSecurityLimits(limits) {
+  const limitsEl = document.getElementById("security-limits-list");
+  limitsEl.innerHTML = (limits || []).map((limit) => `<li>${escapeHtml(limit)}</li>`).join("");
+}
+
+async function loadSecurity() {
+  const result = await fetchJson("/security");
+  const statusEl = document.getElementById("security-status");
+
+  if (!result.ok || !result.data) {
+    statusEl.textContent = "Unavailable";
+    statusEl.className = "panel-state error";
+    return;
+  }
+
+  const data = result.data;
+  statusEl.textContent = data.authentication?.admin_configured
+    ? "Protected"
+    : "Setup required";
+  statusEl.className = `panel-state ${data.authentication?.admin_configured ? "healthy" : "warning"}`;
+
+  renderSecurityPosture(data.posture);
+  document.getElementById("security-authentication").textContent = formatJson(data.authentication);
+  document.getElementById("security-authorization").textContent = formatJson(data.authorization);
+  document.getElementById("security-events").textContent = formatJson(data.event_dispatch);
+  document.getElementById("security-runtime").textContent = formatJson(data.agent_runtime);
+  renderSecurityTools(data.tools?.registered || []);
+  renderSecurityLimits(data.visibility_limits);
+}
+
+async function loadOrchestration() {
+  const result = await fetchJson("/orchestration");
+  const statusEl = document.getElementById("orchestration-status");
+  const controlEl = document.getElementById("orchestration-control");
+
+  if (!result.ok || !result.data) {
+    statusEl.textContent = "Unavailable";
+    statusEl.className = "panel-state error";
+    controlEl.textContent = `Request failed (${result.status})`;
+    return;
+  }
+
+  const data = result.data;
+  const agents = Array.isArray(data.agents) ? data.agents : [];
+  const scheduler = data.scheduler || {};
+  const tools = data.tools || {};
+  const runningAgents = agents.filter((agent) => ["running", "waiting"].includes(agent.state)).length;
+
+  statusEl.textContent = data.available
+    ? (data.running ? "Running" : "Stopped")
+    : "Not loaded";
+  statusEl.className = `panel-state ${data.running ? "healthy" : "warning"}`;
+  document.getElementById("orchestration-agent-count").textContent = String(agents.length);
+  document.getElementById("orchestration-running-count").textContent = String(runningAgents);
+  document.getElementById("orchestration-task-count").textContent =
+    `${scheduler.running_tasks || 0}/${scheduler.max_concurrent || 0}`;
+  document.getElementById("orchestration-tool-count").textContent = String(tools.total || 0);
+
+  renderOrchestrationAgents(agents);
+  renderOrchestrationTools(Array.isArray(tools.names) ? tools.names : []);
+  controlEl.textContent = formatJson({
+    router: data.router,
+    scheduler,
+    runtime: data.runtime,
+    tools: {
+      mcp_connections: tools.mcp_connections || 0,
+      total: tools.total || 0
+    }
+  });
+}
+
+async function loadModules() {
+  const moduleListEl = document.getElementById("module-list");
+  const runningModulesEl = document.getElementById("running-modules");
+  const totalModulesEl = document.getElementById("total-modules");
+
+  try {
+    const result = await fetchJson("/modules");
+    if (!result.ok || !Array.isArray(result.data)) {
+      moduleListEl.innerHTML = "<li>Failed to load modules</li>";
+      return;
+    }
+
+    const modules = result.data;
+    const runningCount = modules.filter((module) => Boolean(module.running)).length;
+
+    runningModulesEl.textContent = String(runningCount);
+    totalModulesEl.textContent = String(modules.length);
+
+    if (!modules.length) {
+      moduleListEl.innerHTML = "<li>No modules loaded</li>";
+      return;
+    }
+
+    moduleListEl.innerHTML = modules
+      .map((module) => {
+        const stateLabel = module.running ? "Running" : "Stopped";
+        const statusClass = module.running ? "running" : "stopped";
+        return `
+          <li>
+            <span class="name">${module.name}</span>
+            <span class="status-badge ${statusClass}">${stateLabel}</span>
+          </li>
+        `;
+      })
+      .join("");
+  } catch (error) {
+    moduleListEl.innerHTML = `<li>Error loading modules: ${error.message}</li>`;
+  }
+}
+
+function addEventToLog(event) {
+  eventCount += 1;
+  eventCountEl.textContent = String(eventCount);
+  eventsLastUpdatedEl.textContent = `Last event at ${new Date().toLocaleTimeString()}`;
+
+  const priority = String(event.priority || "NORMAL").toUpperCase();
+  const entry = document.createElement("div");
+  entry.className = `event-entry ${priority}`;
+  entry.innerHTML = `
+    <span class="time">${formatTimestamp(event.timestamp)}</span>
+    <span class="type">${event.type || "unknown.event"}</span>
+    <span class="data">${JSON.stringify(event.data ?? {})}</span>
+    <span class="priority ${priority}">${priority}</span>
+  `;
+
+  eventLogEl.prepend(entry);
+
+  while (eventLogEl.children.length > MAX_EVENT_ENTRIES) {
+    eventLogEl.removeChild(eventLogEl.lastChild);
+  }
+}
 
 function connectEventStream() {
-  const eventSource = new EventSource('/events/stream', { withCredentials: true });
-  eventSource.onmessage = (event) => {
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  streamStatusEl.textContent = "Connecting...";
+  eventSource = new EventSource("/events/stream", { withCredentials: true });
+
+  eventSource.onopen = () => {
+    streamStatusEl.textContent = "Connected";
+    streamStatusEl.classList.remove("disconnected");
+  };
+
+  eventSource.onmessage = (messageEvent) => {
     try {
-      const data = JSON.parse(event.data);
-      addEventToLog(data);
-    } catch (e) {
-      // ignore
+      const event = JSON.parse(messageEvent.data);
+      addEventToLog(event);
+    } catch {
+      // Ignore malformed stream packets.
     }
   };
+
   eventSource.onerror = () => {
-    // Auto-reconnect on error (including 401)
+    streamStatusEl.textContent = "Disconnected (retrying)";
+    streamStatusEl.classList.add("disconnected");
     eventSource.close();
     setTimeout(connectEventStream, 3000);
   };
 }
 
-function addEventToLog(event) {
-  eventCount++;
-  document.getElementById('event-count').textContent = eventCount;
-
-  const entry = document.createElement('div');
-  entry.className = 'event-entry';
-  const time = new Date(event.timestamp * 1000).toLocaleTimeString();
-  const priority = event.priority || 'NORMAL';
-  entry.innerHTML = `
-    <span class="time">${time}</span>
-    <span class="type">${event.type}</span>
-    <span class="data">${JSON.stringify(event.data)}</span>
-    <span class="priority ${priority}">${priority}</span>
-  `;
-  eventLog.prepend(entry);
-  // limit visible entries
-  while (eventLog.children.length > 200) {
-    eventLog.removeChild(eventLog.lastChild);
-  }
+async function refreshAll() {
+  await Promise.all([
+    loadHealth(),
+    loadMetrics(),
+    loadContext(),
+    loadConfig(),
+    loadOrchestration(),
+    loadSecurity(),
+    loadModules()
+  ]);
 }
 
-// ─── Load Module ────────────────────────────────────────
-document.getElementById('load-module-btn').addEventListener('click', async () => {
-  const path = document.getElementById('module-path').value.trim();
-  if (!path) return;
-  try {
-    const resp = await fetch('/modules/load', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ module_path: path })
-    });
-    if (resp.ok) {
-      alert('Module loaded successfully');
-      loadModules();
-    } else {
-      const err = await resp.json();
-      alert('Failed: ' + (err.detail || 'unknown error'));
-    }
-  } catch (e) {
-    alert('Error: ' + e.message);
-  }
-});
+document.getElementById("load-module-btn").addEventListener("click", async () => {
+  const modulePathEl = document.getElementById("module-path");
+  const moduleActionResultEl = document.getElementById("module-action-result");
+  const modulePath = modulePathEl.value.trim();
 
-// ─── Publish Event ──────────────────────────────────────
-document.getElementById('publish-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const type = document.getElementById('event-type').value.trim();
-  const dataStr = document.getElementById('event-data').value.trim();
-  let data;
-  try {
-    data = JSON.parse(dataStr);
-  } catch {
-    alert('Invalid JSON in Data field');
+  if (!modulePath) {
+    setInlineMessage(moduleActionResultEl, "Enter a module path first.", true);
     return;
   }
-  const resultDiv = document.getElementById('publish-result');
+
+  setInlineMessage(moduleActionResultEl, "Loading module...");
   try {
-    const resp = await fetch('/events/publish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', 
-      body: JSON.stringify({ type, data, source: 'webui' })
+    const result = await fetchJson("/modules/load", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ module_path: modulePath })
     });
-    const json = await resp.json();
-    if (resp.ok) {
-      resultDiv.innerHTML = `✅ Published (correlation: ${json.correlation_id})`;
-      resultDiv.style.color = '#2e7d32';
-    } else {
-      resultDiv.innerHTML = `❌ Error: ${json.detail || 'unknown'}`;
-      resultDiv.style.color = '#c62828';
+
+    if (result.ok) {
+      setInlineMessage(moduleActionResultEl, `Loaded: ${modulePath}`);
+      modulePathEl.value = "";
+      await loadModules();
+      return;
     }
-  } catch (err) {
-    resultDiv.innerHTML = `❌ Error: ${err.message}`;
-    resultDiv.style.color = '#c62828';
+
+    const detail = typeof result.data === "object" ? result.data?.detail : "";
+    setInlineMessage(
+      moduleActionResultEl,
+      `Failed to load module (${result.status})${detail ? `: ${detail}` : ""}`,
+      true
+    );
+  } catch (error) {
+    setInlineMessage(moduleActionResultEl, `Error: ${error.message}`, true);
   }
 });
 
-// ─── Init ───────────────────────────────────────────────
-loadModules();
-connectEventStream();
+document.getElementById("publish-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
 
-// Refresh modules every 30s
-setInterval(loadModules, 30000);
+  const publishResultEl = document.getElementById("publish-result");
+  const type = document.getElementById("event-type").value.trim();
+  const dataRaw = document.getElementById("event-data").value.trim();
+
+  let payload;
+  try {
+    payload = JSON.parse(dataRaw);
+  } catch {
+    setInlineMessage(publishResultEl, "Event data must be valid JSON.", true);
+    return;
+  }
+
+  try {
+    const result = await fetchJson("/events/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, data: payload, source: "webui", priority: "NORMAL" })
+    });
+
+    if (result.ok) {
+      const correlation = result.data?.correlation_id || "n/a";
+      const subscribers = result.data?.subscribers ?? "n/a";
+      setInlineMessage(
+        publishResultEl,
+        `Published successfully. correlation_id=${correlation}, subscribers=${subscribers}`
+      );
+      return;
+    }
+
+    const detail = typeof result.data === "object" ? result.data?.detail : "";
+    setInlineMessage(
+      publishResultEl,
+      `Publish failed (${result.status})${detail ? `: ${detail}` : ""}`,
+      true
+    );
+  } catch (error) {
+    setInlineMessage(publishResultEl, `Publish error: ${error.message}`, true);
+  }
+});
+
+document.getElementById("api-test-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const method = document.getElementById("api-method").value.trim().toUpperCase();
+  const endpoint = document.getElementById("api-endpoint").value.trim();
+  const bodyRaw = document.getElementById("api-body").value.trim();
+  const responseEl = document.getElementById("api-response");
+  const metaEl = document.getElementById("api-response-meta");
+
+  let parsedBody;
+  if (method !== "GET" && bodyRaw) {
+    try {
+      parsedBody = JSON.parse(bodyRaw);
+    } catch {
+      setInlineMessage(metaEl, "Body must be valid JSON for non-GET requests.", true);
+      return;
+    }
+  }
+
+  setInlineMessage(metaEl, "Sending request...");
+  responseEl.textContent = "Loading...";
+
+  try {
+    const options = { method };
+    if (parsedBody !== undefined) {
+      options.headers = { "Content-Type": "application/json" };
+      options.body = JSON.stringify(parsedBody);
+    }
+
+    const response = await fetchWithAuth(endpoint, options);
+    if (!response) {
+      return;
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    const body = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+
+    responseEl.textContent = typeof body === "string" ? body : formatJson(body);
+    setInlineMessage(metaEl, `Status ${response.status} ${response.ok ? "OK" : "ERROR"}`, !response.ok);
+  } catch (error) {
+    responseEl.textContent = `Request failed: ${error.message}`;
+    setInlineMessage(metaEl, "Request failed.", true);
+  }
+});
+
+document.querySelectorAll(".chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const endpoint = chip.getAttribute("data-endpoint") || "/health";
+    const method = chip.getAttribute("data-method") || "GET";
+    document.getElementById("api-endpoint").value = endpoint;
+    document.getElementById("api-method").value = method;
+
+    if (method === "GET") {
+      document.getElementById("api-body").value = "";
+    }
+  });
+});
+
+document.getElementById("refresh-all-btn").addEventListener("click", () => {
+  refreshAll();
+});
+
+refreshAll();
+connectEventStream();
+setInterval(refreshAll, REFRESH_INTERVAL_MS);

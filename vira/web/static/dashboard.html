@@ -3,58 +3,252 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VIRA Dashboard</title>
+  <title>VIRA Control Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <div class="dashboard">
-    <header>
-      <h1>VIRA Kernel</h1>
-      <span id="status" class="status running">Running</span>
+  <main class="dashboard">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">VIRA Runtime</p>
+        <h1>System Operations Dashboard</h1>
+        <p class="subtext">Live system visibility and API testing console.</p>
+      </div>
+      <div class="topbar-actions">
+        <span id="status" class="status">Running</span>
+        <button id="refresh-all-btn" class="btn btn-secondary" type="button">Refresh now</button>
+      </div>
     </header>
 
-    <div class="grid">
-      <!-- Modules Panel -->
-      <section class="panel modules-panel">
-        <h2>Modules</h2>
-        <ul id="module-list" class="module-list">
-          <li>Loading...</li>
-        </ul>
-        <div class="actions">
-          <input type="text" id="module-path" placeholder="Module path (e.g. my_module.py)">
-          <button id="load-module-btn">Load Module</button>
-        </div>
-      </section>
-
-      <!-- Events Panel -->
-      <section class="panel events-panel">
-        <h2>Live Events</h2>
-        <div id="event-log" class="event-log"></div>
-        <div class="event-counter">
-          Events received: <span id="event-count">0</span>
-        </div>
-      </section>
-    </div>
-
-    <!-- Publish Event Form -->
-    <section class="panel publish-panel">
-      <h2>Publish Test Event</h2>
-      <form id="publish-form">
-        <div class="form-row">
-          <label>Event Type</label>
-          <input type="text" id="event-type" value="test.event" required>
-        </div>
-        <div class="form-row">
-          <label>Data (JSON)</label>
-          <input type="text" id="event-data" value='{"message": "Hello VIRA"}' required>
-        </div>
-        <button type="submit">Publish</button>
-      </form>
-      <div id="publish-result"></div>
+    <section class="summary-grid">
+      <article class="metric-card">
+        <p class="metric-label">Kernel Health</p>
+        <p id="health-status" class="metric-value">Loading...</p>
+      </article>
+      <article class="metric-card">
+        <p class="metric-label">Modules Running</p>
+        <p class="metric-value"><span id="running-modules">0</span>/<span id="total-modules">0</span></p>
+      </article>
+      <article class="metric-card">
+        <p class="metric-label">Events Received</p>
+        <p id="event-count" class="metric-value">0</p>
+      </article>
+      <article class="metric-card">
+        <p class="metric-label">Event Stream</p>
+        <p id="stream-status" class="metric-value">Connecting...</p>
+      </article>
     </section>
-  </div>
+
+    <section class="workspace-grid">
+      <div class="column">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Runtime Snapshot</h2>
+            <span class="panel-note">Auto-refresh every 30s</span>
+          </div>
+          <div class="snapshot-grid">
+            <article>
+              <h3>Health</h3>
+              <pre id="health-json" class="json-box">Loading...</pre>
+            </article>
+            <article>
+              <h3>Metrics</h3>
+              <pre id="metrics-json" class="json-box">Loading...</pre>
+            </article>
+            <article>
+              <h3>Context</h3>
+              <pre id="context-json" class="json-box">Loading...</pre>
+            </article>
+            <article>
+              <h3>Config</h3>
+              <pre id="config-json" class="json-box">Loading...</pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel orchestration-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Agent Orchestration</h2>
+              <p class="panel-subtitle">Lifecycle, routing, scheduling, runtime, and tool visibility.</p>
+            </div>
+            <span id="orchestration-status" class="panel-state">Loading...</span>
+          </div>
+          <div class="orchestration-summary">
+            <article class="orchestration-stat">
+              <span>Agents</span>
+              <strong id="orchestration-agent-count">0</strong>
+            </article>
+            <article class="orchestration-stat">
+              <span>Running agents</span>
+              <strong id="orchestration-running-count">0</strong>
+            </article>
+            <article class="orchestration-stat">
+              <span>Scheduler tasks</span>
+              <strong id="orchestration-task-count">0/0</strong>
+            </article>
+            <article class="orchestration-stat">
+              <span>Registered tools</span>
+              <strong id="orchestration-tool-count">0</strong>
+            </article>
+          </div>
+          <div class="orchestration-grid">
+            <div>
+              <h3>Agents</h3>
+              <div id="orchestration-agents" class="agent-list">
+                <p class="empty-state">Loading agents...</p>
+              </div>
+            </div>
+            <div>
+              <h3>Control Plane</h3>
+              <pre id="orchestration-control" class="json-box">Loading...</pre>
+            </div>
+          </div>
+          <div class="orchestration-tools">
+            <h3>Registered Tools</h3>
+            <div id="orchestration-tools" class="chip-group">
+              <span class="empty-state">Loading tools...</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel security-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Security &amp; Trust Center</h2>
+              <p class="panel-subtitle">A live, read-only view of how VIRA authenticates, authorizes, and handles events.</p>
+            </div>
+            <span id="security-status" class="panel-state">Loading...</span>
+          </div>
+          <div class="security-posture" id="security-posture"></div>
+          <div class="security-grid">
+            <div>
+              <h3>Authentication</h3>
+              <pre id="security-authentication" class="json-box">Loading...</pre>
+            </div>
+            <div>
+              <h3>Authorization</h3>
+              <pre id="security-authorization" class="json-box">Loading...</pre>
+            </div>
+            <div>
+              <h3>Event Dispatch Controls</h3>
+              <pre id="security-events" class="json-box">Loading...</pre>
+            </div>
+            <div>
+              <h3>Agent Runtime Controls</h3>
+              <pre id="security-runtime" class="json-box">Loading...</pre>
+            </div>
+          </div>
+          <div class="security-tools">
+            <h3>Tool Permission Policies</h3>
+            <div id="security-tools-list" class="security-tool-list">
+              <p class="empty-state">Loading tool policies...</p>
+            </div>
+          </div>
+          <div class="security-limits">
+            <h3>Current Visibility Limits</h3>
+            <ul id="security-limits-list">
+              <li>Loading...</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Module Manager</h2>
+          </div>
+          <ul id="module-list" class="module-list">
+            <li>Loading modules...</li>
+          </ul>
+          <div class="row-actions">
+            <input type="text" id="module-path" placeholder="Module path (e.g. vira/modules/core/health_module.py)">
+            <button id="load-module-btn" class="btn" type="button">Load Module</button>
+          </div>
+          <p id="module-action-result" class="inline-result"></p>
+        </section>
+      </div>
+      <div class="column">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Live Event Stream</h2>
+            <span class="panel-note" id="events-last-updated">Waiting for events...</span>
+          </div>
+          <div id="event-log" class="event-log"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>API Test Console</h2>
+            <span class="panel-note">Use available endpoints only</span>
+          </div>
+          <form id="api-test-form" class="stack-form">
+            <div class="form-row">
+              <label for="api-method">Method</label>
+              <select id="api-method">
+                <option>GET</option>
+                <option>POST</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="api-endpoint">Endpoint</label>
+              <input id="api-endpoint" type="text" value="/health" required>
+            </div>
+            <div class="form-row">
+              <label for="api-body">Body (JSON)</label>
+              <textarea id="api-body" rows="4" placeholder='{"key":"value"}'></textarea>
+            </div>
+            <div class="row-actions">
+              <button class="btn" type="submit">Send Request</button>
+              <span id="api-response-meta" class="inline-result"></span>
+            </div>
+          </form>
+          <pre id="api-response" class="json-box response-box">Response will appear here.</pre>
+          <div class="chip-group">
+            <button class="chip" type="button" data-endpoint="/health" data-method="GET">GET /health</button>
+            <button class="chip" type="button" data-endpoint="/metrics" data-method="GET">GET /metrics</button>
+            <button class="chip" type="button" data-endpoint="/modules" data-method="GET">GET /modules</button>
+            <button class="chip" type="button" data-endpoint="/context" data-method="GET">GET /context</button>
+            <button class="chip" type="button" data-endpoint="/config" data-method="GET">GET /config</button>
+            <button class="chip" type="button" data-endpoint="/events/publish" data-method="POST">POST /events/publish</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Publish Test Event</h2>
+          </div>
+          <form id="publish-form" class="stack-form">
+            <div class="form-row">
+              <label for="event-type">Event Type</label>
+              <input type="text" id="event-type" value="test.event" required>
+            </div>
+            <div class="form-row">
+              <label for="event-data">Data (JSON)</label>
+              <textarea id="event-data" rows="3" required>{"message":"Hello VIRA"}</textarea>
+            </div>
+            <div class="row-actions">
+              <button class="btn" type="submit">Publish Event</button>
+            </div>
+          </form>
+          <p id="publish-result" class="inline-result"></p>
+        </section>
+
+        <section class="panel muted-panel">
+          <h2>Planned Features</h2>
+          <p>The following surfaces are intentionally deferred until APIs are added:</p>
+          <ul>
+            <li>Agent orchestration timeline explorer</li>
+            <li>Sensor-specific drill-down and controls</li>
+            <li>Historical analytics and trend comparisons</li>
+            <li>Policy and permission management console</li>
+          </ul>
+          <p class="panel-note">This dashboard is finalized for all currently available backend APIs.</p>
+        </section>
+      </div>
+    </section>
+  </main>
 
   <script src="/static/app.js"></script>
 </body>

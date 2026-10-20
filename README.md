@@ -159,6 +159,9 @@ The dashboard will be available at:
 http://localhost:8000
 ```
 
+`0.0.0.0` is the server bind address, not the address to use in a browser. Use
+`http://localhost:8000` (or `http://127.0.0.1:8000`) on the host running VIRA.
+
 ---
 
 ## Verify the Installation
@@ -170,6 +173,14 @@ http://localhost:8000
 ```
 
 If the dashboard loads successfully, the installation has completed successfully.
+
+The dashboard currently provides:
+- Live runtime snapshot (`/health`, `/metrics`, `/context`, `/config`)
+- Module visibility and module loading controls
+- Live event stream monitoring
+- Built-in API test console for authenticated framework endpoints
+
+Features without backend APIs yet are intentionally marked as planned and will be added when those APIs are available.
 
 ---
 ## Why it exists

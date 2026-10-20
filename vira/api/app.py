@@ -325,6 +325,145 @@ def create_app(kernel: Kernel) -> FastAPI:
             **health_status
         }
 
+    @app.get("/orchestration")
+    async def orchestration_status(user: str = Depends(get_current_user)):
+        """Return the current agent orchestration runtime state."""
+        orchestrator = getattr(kernel, "agent_orchestrator", None)
+        if orchestrator is None:
+            return {
+                "available": False,
+                "running": False,
+                "agents": [],
+                "router": {"running": False, "subscribed": False},
+                "scheduler": {
+                    "max_concurrent": 0,
+                    "running_tasks": 0,
+                    "pending_tasks": 0,
+                },
+                "runtime": {
+                    "memory_manager": "not_available",
+                    "llm_manager": "not_available",
+                },
+                "tools": {"total": 0, "names": [], "mcp_connections": 0},
+            }
+
+        registry = getattr(orchestrator, "registry", None)
+        agents = []
+        if registry is not None:
+            for metadata in await registry.list_agents():
+                capabilities = [
+                    capability.dict() if hasattr(capability, "dict") else capability
+                    for capability in (metadata.capabilities or [])
+                ]
+                agents.append({
+                    "id": metadata.agent_id,
+                    "name": metadata.name,
+                    "description": metadata.description,
+                    "state": metadata.state.value,
+                    "capabilities": capabilities,
+                    "subscribed_events": metadata.subscribed_events,
+                    "interval_seconds": metadata.interval_seconds,
+                    "created_at": metadata.created_at,
+                    "updated_at": metadata.updated_at,
+                })
+
+        scheduler = getattr(orchestrator, "runtime_scheduler", None)
+        running_tasks = getattr(scheduler, "_running_tasks", {}) if scheduler else {}
+        router_instance = getattr(orchestrator, "router", None)
+        tool_registry = getattr(orchestrator, "tool_registry", None)
+        tool_names = tool_registry.list() if tool_registry else []
+        runtime = getattr(orchestrator, "runtime", None)
+
+        return {
+            "available": True,
+            "running": bool(getattr(orchestrator, "_running", False)),
+            "agents": agents,
+            "router": {
+                "running": bool(getattr(router_instance, "_running", False)),
+                "subscribed": bool(getattr(router_instance, "_subscription_id", None)),
+            },
+            "scheduler": {
+                "max_concurrent": getattr(scheduler, "_max_concurrent", 0) if scheduler else 0,
+                "running_tasks": len(running_tasks),
+                "pending_tasks": 0,
+            },
+            "runtime": {
+                "memory_manager": "initialized" if runtime and getattr(runtime, "_memory", None) else "not_available",
+                "llm_manager": "initialized" if runtime and getattr(runtime, "_llm", None) else "not_available",
+            },
+            "tools": {
+                "total": len(tool_names),
+                "names": tool_names,
+                "mcp_connections": len(getattr(orchestrator, "_mcp_connections", [])),
+            },
+        }
+
+    @app.get("/security")
+    async def security_status(user: str = Depends(get_current_user)):
+        """Return safe, read-only security and trust information for the dashboard."""
+        security_manager = getattr(kernel, "security_manager", None)
+        dispatcher = getattr(kernel, "dispatcher", None)
+        config_manager = getattr(kernel, "config_manager", None)
+        orchestrator = getattr(kernel, "agent_orchestrator", None)
+        tool_registry = getattr(orchestrator, "tool_registry", None) if orchestrator else None
+
+        config = config_manager.get_all() if config_manager else {}
+        auth_config = config.get("auth", {}) if isinstance(config, dict) else {}
+        security_config = config.get("security", {}) if isinstance(config, dict) else {}
+        session_max_age = auth_config.get("session_max_age", 86400)
+
+        tool_policies = []
+        if tool_registry:
+            for name, tool in getattr(tool_registry, "_tools", {}).items():
+                permissions = getattr(tool, "permissions", None)
+                tool_policies.append({
+                    "name": name,
+                    "actions": list(getattr(permissions, "actions", []) or []),
+                })
+
+        return {
+            "posture": {
+                "authentication": "bcrypt password verification",
+                "session": "signed cookie session",
+                "authorization": "central permission manager",
+                "event_policy": "events are marked verified/unverified and still published",
+                "dashboard_access": "authenticated users only",
+            },
+            "authentication": {
+                "admin_configured": bool(auth.admin_exists()),
+                "password_hashing": "bcrypt",
+                "recovery_codes": "bcrypt-hashed and never displayed",
+                "session_cookie": "vira_session",
+                "session_max_age_seconds": session_max_age,
+                "https_only": False,
+                "same_site": "lax",
+            },
+            "authorization": {
+                "granted_permissions": sorted(security_manager.list_permissions()) if security_manager else [],
+                "default_permissions": security_config.get("default_permissions", []),
+                "deny_rules_configured": len(getattr(security_manager, "_deny_rules", set())) if security_manager else 0,
+            },
+            "event_dispatch": {
+                "security_enabled": bool(dispatcher and getattr(dispatcher, "_security", None)),
+                "pipeline_enabled": bool(dispatcher and getattr(dispatcher, "_pipeline", None)),
+                "unauthorized_event_behavior": "mark verified=false, record security_denied metric, then publish",
+            },
+            "agent_runtime": {
+                "llm_calls_require_permission": True,
+                "tool_calls_require_permission": True,
+                "memory_operations_require_permission": True,
+            },
+            "tools": {
+                "registered": tool_policies,
+                "mcp_connections": len(getattr(orchestrator, "_mcp_connections", [])) if orchestrator else 0,
+            },
+            "visibility_limits": [
+                "No persistent security audit trail is currently exposed by the backend.",
+                "Session revocation and permission editing APIs are not currently available.",
+                "HTTPS is disabled in the current local-development configuration.",
+            ],
+        }
+
     @app.post("/chat")
     async def chat_endpoint(request: ChatRequest, user: str = Depends(get_current_user)):
         kernel = get_kernel()
