@@ -35,7 +35,7 @@
       const password = document.getElementById('password').value;
       const errorEl = document.getElementById('login-error');
       try {
-        const resp = await fetch('/api/login', {
+        const resp = await fetch('/api/v1/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })

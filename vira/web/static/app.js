@@ -35,7 +35,7 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   logoutButton.textContent = "Logging out...";
 
   try {
-    const response = await fetch("/api/logout", {
+    const response = await fetch("/api/v1/auth/logout", {
       method: "POST",
       credentials: "include",
     });

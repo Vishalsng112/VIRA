@@ -11,7 +11,7 @@ auth:
   secret_key: "change-this-to-a-random-secret-key-in-production"   # <-- generate a random string
   session_cookie_name: "vira_session"
   session_max_age: 86400  # 24 hours
-  database_url: "sqlite:///data/vira.db"
+  database_url: "sqlite:///data/vira.sqlite3"
 
 event_bus:
   max_queue_size: 10000
@@ -33,13 +33,13 @@ metrics:
   retention_minutes: 60
 
 sensors:
-  - name: system_sensor
-    enabled: true
-    interval: 1.0
+  # - name: system_sensor
+  #   enabled: true
+  #   interval: 5.0
 
   - name: hardware_sensor
     enabled: true
-    interval: 10.0
+    interval: 3.0
 
   # - name: network_sensor
   #   enabled: true
@@ -92,7 +92,7 @@ sensors:
 
 
 llm:
-  default_model: "llama3.2:latest"
+  default_model: "ornith:9b"
   models:
     # - name: "gpt-4"
     #   provider: "openai"
@@ -107,7 +107,7 @@ llm:
     #   max_tokens: 4096
     - name: "local-llama"
       provider: "ollama"
-      model: "llama3.2:latest"
+      model: "ornith:9b"
       base_url: "http://localhost:11434"
       temperature: 0.8
 
@@ -142,8 +142,19 @@ agents:
   #   class: "LoadMonitorAgent"
   #   enabled: true
   #   config:
-  #     cpu_threshold: 75.0
-  #     memory_threshold: 80.0
+  #     cpu_threshold: 90
+  #     memory_threshold: 90
+  #   subscribed_events:
+  #     - "sensor.hardware.state"
+
+
+  # - name: "AGENT_2"
+  #   module: "vira.agent.examples.AGENT_MONITOR"
+  #   class: "LoadMonitorAgent"
+  #   enabled: true
+  #   config:
+  #     cpu_threshold: 90
+  #     memory_threshold: 90
   #   subscribed_events:
   #     - "sensor.hardware.state"
 
@@ -160,5 +171,4 @@ agents:
 mcp_server:
   command: ["python", "vira/tools/mcp_server.py"]   # path to your MCP server script
   permissions: ["read", "write", "execute"]
-
 

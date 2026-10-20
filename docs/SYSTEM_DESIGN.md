@@ -17,7 +17,8 @@ VIRA is an asynchronous Python application composed of:
 - Authentication and SQLite access in [`vira/auth/`](../vira/auth/)
 - A currently stubbed memory subsystem in [`vira/memory/manager.py`](../vira/memory/manager.py)
 
-The current system persists only users and a partially unused sessions table.
+The current system persists users, hashed sessions, roles, and authentication
+audit events.
 Conversation history is process-local in `ChatAgent`, agent registry state is
 in memory, and the memory manager does not yet persist data.
 
@@ -821,4 +822,3 @@ The design is complete when:
 - SQLite works for local single-writer mode.
 - PostgreSQL supports separate API and worker processes.
 - Event consumers safely handle duplicate delivery.
-

@@ -405,7 +405,7 @@ auth:
   secret_key: "CHANGE_ME"              # random secret for session tokens
   session_cookie_name: "vira_session"
   session_max_age: 86400               # seconds (24h)
-  database_url: "sqlite:///data/vira.db"
+  database_url: "sqlite:///data/vira.sqlite3"
 
 event_bus:
   max_queue_size: 10000                # async queue capacity

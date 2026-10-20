@@ -137,13 +137,33 @@ def create_app(kernel: Kernel) -> FastAPI:
     logger.info("✅ API event forwarder registered")
 
     # --- Helper for authentication ---
-    def get_current_user(request: Request) -> str:
-        logger.debug(f"Session contents: {request.session}")
-        user = request.session.get("user")
-        if not user:
-            logger.warning("User not found in session")
+    session_max_age = kernel.config_manager.get("auth.session_max_age", 86400)
+
+    def get_current_user(request: Request) -> auth.Principal:
+        authorization = request.headers.get("Authorization", "")
+        bearer_token = authorization[7:].strip() if authorization.startswith("Bearer ") else None
+        session_id = bearer_token or request.session.get("session_id")
+        principal = auth.resolve_principal(session_id)
+        if not principal:
+            database.record_auth_audit(
+                "authentication",
+                "request.authenticate",
+                False,
+                session_id=session_id,
+                resource=request.url.path,
+                correlation_id=request.headers.get("X-Correlation-ID"),
+            )
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-        return user
+        database.record_auth_audit(
+            "authentication",
+            "request.authenticate",
+            True,
+            user_id=principal.user_id,
+            session_id=principal.session_id,
+            resource=request.url.path,
+            correlation_id=request.headers.get("X-Correlation-ID"),
+        )
+        return principal
 
 
 
@@ -153,7 +173,7 @@ def create_app(kernel: Kernel) -> FastAPI:
     @app.get("/")
     async def root(request: Request):
         # Redirect to login or dashboard
-        if request.session.get("user"):
+        if auth.resolve_principal(request.session.get("session_id")):
             return RedirectResponse(url="/dashboard", status_code=302)
         if auth.admin_exists():
             return RedirectResponse(url="/login", status_code=302)
@@ -162,7 +182,7 @@ def create_app(kernel: Kernel) -> FastAPI:
 
     @app.get("/login")
     async def login_page(request: Request):
-        if request.session.get("user"):
+        if auth.resolve_principal(request.session.get("session_id")):
             return RedirectResponse(url="/dashboard", status_code=302)
         if not auth.admin_exists():
             return RedirectResponse(url="/setup", status_code=302)
@@ -172,12 +192,11 @@ def create_app(kernel: Kernel) -> FastAPI:
     async def setup_page(request: Request):
         if auth.admin_exists():
             return RedirectResponse(url="/login", status_code=302)
-        return FileResponse(str(static_dir / "setup.html"))
+        return FileResponse(str(static_dir / "style.html"))
 
     @app.get("/dashboard")
     async def dashboard_page(request: Request):
-        user = request.session.get("user")
-        if not user:
+        if not auth.resolve_principal(request.session.get("session_id")):
             return RedirectResponse(url="/login", status_code=302)
         return FileResponse(str(static_dir / "dashboard.html"))
 
@@ -187,7 +206,7 @@ def create_app(kernel: Kernel) -> FastAPI:
 
     # --- Auth API endpoints ---
 
-    @app.post("/api/setup")
+    @app.post("/api/v1/auth/setup")
     async def setup_admin(data: models.SetupRequest):
         if auth.admin_exists():
             raise HTTPException(status_code=400, detail="Admin already exists")
@@ -195,23 +214,44 @@ def create_app(kernel: Kernel) -> FastAPI:
             raise HTTPException(status_code=400, detail="Passwords do not match")
         if len(data.password) < 6:
             raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-        recovery_code = auth.create_admin(data.username, data.password)
+        try:
+            recovery_code = auth.create_admin(data.username, data.password)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        database.record_auth_audit("setup", "user.create_admin", True)
         # Return recovery code to be shown to user (they should save it)
         return {"status": "success", "message": "Admin created", "recovery_code": recovery_code}
 
-    @app.post("/api/login")
+    @app.post("/api/v1/auth/login")
     async def login(request: Request, data: models.LoginRequest):
-        if not auth.authenticate_user(data.username, data.password):
+        user = auth.authenticate_user_record(data.username, data.password)
+        if not user:
+            database.record_auth_audit("login", "session.create", False, resource=data.username)
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        request.session["user"] = data.username
-        return {"status": "success"}
+        session_id = auth.create_authenticated_session(user, session_max_age)
+        request.session.clear()
+        request.session["session_id"] = session_id
+        database.record_auth_audit("login", "session.create", True, user_id=int(user["id"]), session_id=session_id)
+        return {
+            "status": "success",
+            "principal": {
+                "user_id": int(user["id"]),
+                "username": user["username"],
+                "roles": [user["role"]],
+                "session_id": session_id,
+            },
+        }
 
-    @app.post("/api/logout")
+    @app.post("/api/v1/auth/logout")
     async def logout(request: Request):
-        request.session.pop("user", None)
+        session_id = request.session.get("session_id")
+        principal = auth.resolve_principal(session_id)
+        if session_id:
+            auth.revoke_session(session_id, principal.user_id if principal else None)
+        request.session.clear()
         return {"status": "success"}
 
-    @app.post("/api/forgot")
+    @app.post("/api/v1/auth/password/reset")
     async def forgot_password(data: models.ForgotRequest):
         if data.new_password != data.confirm_password:
             raise HTTPException(status_code=400, detail="Passwords do not match")
@@ -221,6 +261,21 @@ def create_app(kernel: Kernel) -> FastAPI:
         if not success:
             raise HTTPException(status_code=400, detail="Invalid username or recovery code")
         return {"status": "success", "message": "Password reset successfully"}
+
+    @app.get("/api/v1/auth/me")
+    async def current_principal(principal: auth.Principal = Depends(get_current_user)):
+        return {
+            "user_id": principal.user_id,
+            "username": principal.username,
+            "roles": list(principal.roles),
+            "session_id": principal.session_id,
+        }
+
+    # Compatibility aliases for the current local UI.
+    app.add_api_route("/api/setup", setup_admin, methods=["POST"])
+    app.add_api_route("/api/login", login, methods=["POST"])
+    app.add_api_route("/api/logout", logout, methods=["POST"])
+    app.add_api_route("/api/forgot", forgot_password, methods=["POST"])
 
     # --- Protected API endpoints (require authentication) ---
 
@@ -458,8 +513,8 @@ def create_app(kernel: Kernel) -> FastAPI:
                 "mcp_connections": len(getattr(orchestrator, "_mcp_connections", [])) if orchestrator else 0,
             },
             "visibility_limits": [
-                "No persistent security audit trail is currently exposed by the backend.",
-                "Session revocation and permission editing APIs are not currently available.",
+                "Persistent authentication decisions are recorded in the auth_audit table.",
+                "Session revocation is currently performed by logout and password reset.",
                 "HTTPS is disabled in the current local-development configuration.",
             ],
         }

@@ -50,7 +50,7 @@
       errorEl.textContent = '';
       successEl.style.display = 'none';
       try {
-        const resp = await fetch('/api/forgot', {
+        const resp = await fetch('/api/v1/auth/password/reset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, recovery_code, new_password, confirm_password: confirm })

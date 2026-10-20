@@ -36,16 +36,6 @@ async def main():
     kernel = Kernel(config_path="config.yaml")
     await kernel.boot()
 
-    # Generate new recovery code for admin on each startup (so it appears in logs)
-    if auth.admin_exists():
-        admin_username = auth.get_admin_username()
-        if admin_username:
-            new_code = auth.generate_recovery_code()
-            new_hash = auth.hash_recovery_code(new_code)
-            auth.update_recovery_code(admin_username, new_hash)
-            logger.info(f"🔐 Recovery code for '{admin_username}': {new_code}")
-            logger.info("   (Use this code on the 'Forgot password' page to reset your password)")
-
     app = create_app(kernel)
 
     config = uvicorn.Config(app=app, host="0.0.0.0", port=8000, log_level="info")

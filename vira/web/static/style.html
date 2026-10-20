@@ -27,6 +27,8 @@
         </div>
         <div id="setup-error" class="error"></div>
         <div id="setup-success" class="success" style="display:none;"></div>
+        <button id="copy-recovery-code" type="button" style="display:none;">Copy recovery code</button>
+        <button id="continue-to-login" type="button" style="display:none;">Continue to login</button>
         <button type="submit">Create Admin</button>
       </form>
     </div>
@@ -39,25 +41,45 @@
       const confirm = document.getElementById('confirm-password').value;
       const errorEl = document.getElementById('setup-error');
       const successEl = document.getElementById('setup-success');
+      const copyButton = document.getElementById('copy-recovery-code');
+      const loginButton = document.getElementById('continue-to-login');
+      let recoveryCode = '';
       errorEl.textContent = '';
       successEl.style.display = 'none';
+      copyButton.style.display = 'none';
+      loginButton.style.display = 'none';
       try {
-        const resp = await fetch('/api/setup', {
+        const resp = await fetch('/api/v1/auth/setup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password, confirm_password: confirm })
         });
         const data = await resp.json();
         if (resp.ok) {
+          recoveryCode = data.recovery_code;
           successEl.style.display = 'block';
-          successEl.innerHTML = `✅ Admin created!<br>Recovery code: <strong>${data.recovery_code}</strong><br>Please save this code. You will be redirected to login.`;
-          setTimeout(() => { window.location.href = '/login'; }, 5000);
+          successEl.innerHTML = `✅ Admin created!<br>Recovery code: <strong>${recoveryCode}</strong><br>Please save this code before continuing.`;
+          copyButton.style.display = 'block';
+          loginButton.style.display = 'block';
         } else {
           errorEl.textContent = data.detail || 'Setup failed';
         }
       } catch (err) {
         errorEl.textContent = 'Network error';
       }
+    });
+
+    document.getElementById('copy-recovery-code').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(recoveryCode);
+        document.getElementById('copy-recovery-code').textContent = 'Recovery code copied';
+      } catch (err) {
+        document.getElementById('setup-error').textContent = 'Unable to copy automatically. Please copy the code manually.';
+      }
+    });
+
+    document.getElementById('continue-to-login').addEventListener('click', () => {
+      window.location.href = '/login';
     });
   </script>
 </body>
