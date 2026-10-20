@@ -60,7 +60,7 @@ class AgentRuntime:
         """Execute a tool with permission checks."""
         if not self._security.authorize(f"tool.use.{tool_name}.{agent_id}"):
             raise PermissionError(f"Agent {agent_id} not allowed to use tool {tool_name}")
-        return await self._tools.execute(tool_name, **kwargs)
+        return await self._tools.execute(tool_name, agent_id=agent_id, **kwargs)
 
     async def memory_operation(self, agent_id: str, operation: str, **kwargs) -> Any:
         """Access memory with permission checks."""

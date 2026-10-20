@@ -19,10 +19,12 @@ class BaseAgent(ABC):
                  name: str,
                  description: str = "",
                  runtime: Optional[AgentRuntime] = None,
-                 agent_id: Optional[str] = None):
+                 agent_id: Optional[str] = None,
+                 version: str = "1.0.0"):
         self.agent_id = agent_id or str(uuid.uuid4())
         self.name = name
         self.description = description
+        self.version = version
         self.runtime = runtime
         self.state = AgentState.INITIALIZED
         self._capabilities: List[AgentCapability] = []
@@ -41,6 +43,14 @@ class BaseAgent(ABC):
     @property
     def interval_seconds(self) -> Optional[float]:
         return self._interval_seconds
+
+    @property
+    def input_schema(self) -> Dict[str, Any]:
+        return {"type": "object", "properties": {}}
+
+    @property
+    def output_schema(self) -> Dict[str, Any]:
+        return {"type": "object"}
 
     async def initialize(self):
         """Called once after registration. Set up resources."""

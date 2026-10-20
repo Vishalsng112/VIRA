@@ -101,6 +101,8 @@ class EventRouter:
 
         # 5. Schedule each matching agent
         for meta in candidates:
+            if not meta.enabled:
+                continue
             agent = await self._registry.get_instance(meta.agent_id)
             if not agent:
                 continue

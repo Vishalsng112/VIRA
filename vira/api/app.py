@@ -14,6 +14,8 @@ from asyncio import Future, TimeoutError as AsyncTimeoutError
 
 from vira.agent_orchestration import router
 from vira.kernel import Kernel, Event, EventPriority
+from vira.kernel import EventKind
+from vira.auth import database as auth_database
 
 from fastapi import FastAPI, HTTPException, Depends, Request, Response, status
 from fastapi.staticfiles import StaticFiles
@@ -50,6 +52,8 @@ class EventPublishRequest(BaseModel):
     data: Any = None
     source: str = "api"
     priority: str = "NORMAL"
+    kind: EventKind = EventKind.DOMAIN
+    durable: bool = False
 
 
 class ModuleLoadRequest(BaseModel):
@@ -69,6 +73,31 @@ class ConfigUpdateRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
+    agent_id: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+
+
+class ConversationCreateRequest(BaseModel):
+    title: str = "New conversation"
+
+
+class ConversationUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    archived: Optional[bool] = None
+
+
+class MemoryCreateRequest(BaseModel):
+    content: str
+    agent_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    memory_type: str = "long_term"
+    metadata: Dict[str, Any] = {}
+    importance: float = 0.0
+    expires_at: Optional[str] = None
+
+
+class AgentStateRequest(BaseModel):
+    enabled: bool
 
 
 # SSE stream management
@@ -91,8 +120,11 @@ class EventStreamManager:
             "type": event.type,
             "data": event.data,
             "source": event.source,
+            "kind": event.kind.value,
             "priority": event.priority.name,
+            "event_id": event.event_id,
             "correlation_id": event.correlation_id,
+            "causation_id": event.causation_id,
             "timestamp": event.timestamp,
             "verified": event.verified
         })
@@ -316,6 +348,8 @@ def create_app(kernel: Kernel) -> FastAPI:
             data=request.data,
             source=request.source,
             priority=priority,
+            kind=request.kind,
+            durable=request.durable,
         )
 
         # Let the dispatcher handle security, pipeline, and metrics
@@ -380,6 +414,30 @@ def create_app(kernel: Kernel) -> FastAPI:
             **health_status
         }
 
+    @app.get("/ops/sensors")
+    async def sensor_status(user: str = Depends(get_current_user)):
+        return {"sensors": [sensor.health() for sensor in kernel._sensors]}
+
+    @app.get("/ops/events/lag")
+    async def event_lag(user: str = Depends(get_current_user)):
+        pending = kernel.event_bus.pending_events()
+        capacity = kernel.event_bus._max_queue_size
+        return {
+            "pending_events": pending,
+            "capacity": capacity,
+            "utilization": pending / capacity if capacity else 0.0,
+            "outbox": auth_database.outbox_counts(),
+        }
+
+    @app.get("/ops/events/failed")
+    async def failed_events(user: str = Depends(get_current_user)):
+        counts = auth_database.outbox_counts()
+        return {
+            "dead_letter": counts.get("dead_letter", 0),
+            "processing": counts.get("processing", 0),
+            "pending": counts.get("pending", 0),
+        }
+
     @app.get("/orchestration")
     async def orchestration_status(user: str = Depends(get_current_user)):
         """Return the current agent orchestration runtime state."""
@@ -413,8 +471,10 @@ def create_app(kernel: Kernel) -> FastAPI:
                 agents.append({
                     "id": metadata.agent_id,
                     "name": metadata.name,
+                    "version": metadata.version,
                     "description": metadata.description,
                     "state": metadata.state.value,
+                    "enabled": metadata.enabled,
                     "capabilities": capabilities,
                     "subscribed_events": metadata.subscribed_events,
                     "interval_seconds": metadata.interval_seconds,
@@ -452,6 +512,143 @@ def create_app(kernel: Kernel) -> FastAPI:
                 "mcp_connections": len(getattr(orchestrator, "_mcp_connections", [])),
             },
         }
+
+    @app.get("/agents")
+    async def list_agents(user: str = Depends(get_current_user)):
+        orchestrator = getattr(kernel, "agent_orchestrator", None)
+        loaded = []
+        registry = getattr(orchestrator, "registry", None) if orchestrator else None
+        if registry:
+            loaded = [
+                metadata.dict() if hasattr(metadata, "dict") else metadata
+                for metadata in await registry.list_agents()
+            ]
+        persisted = auth_database.list_agent_definitions()
+        return {"agents": persisted, "loaded": loaded}
+
+    @app.patch("/agents/{agent_id}")
+    async def set_agent_state(
+        agent_id: str,
+        request: AgentStateRequest,
+        user: str = Depends(get_current_user),
+    ):
+        orchestrator = getattr(kernel, "agent_orchestrator", None)
+        registry = getattr(orchestrator, "registry", None) if orchestrator else None
+        if not registry or not await registry.set_enabled(agent_id, request.enabled):
+            raise HTTPException(status_code=404, detail="Agent not found")
+        if not auth_database.set_agent_definition_enabled(agent_id, request.enabled):
+            raise HTTPException(status_code=404, detail="Agent definition not found")
+        return {"agent_id": agent_id, "enabled": request.enabled}
+
+    @app.delete("/agents/{agent_id}")
+    async def unregister_agent(agent_id: str, user: str = Depends(get_current_user)):
+        orchestrator = getattr(kernel, "agent_orchestrator", None)
+        registry = getattr(orchestrator, "registry", None) if orchestrator else None
+        if not registry or not await registry.unregister(agent_id):
+            raise HTTPException(status_code=404, detail="Agent not found")
+        auth_database.delete_agent_definition(agent_id)
+        return {"status": "unregistered", "agent_id": agent_id}
+
+    @app.get("/tools/calls")
+    async def list_tool_calls(user: str = Depends(get_current_user)):
+        return {"tool_calls": auth_database.list_tool_calls()}
+
+    @app.post("/conversations")
+    async def create_conversation(
+        request: ConversationCreateRequest,
+        user: auth.Principal = Depends(get_current_user),
+    ):
+        conversation_id = auth_database.create_conversation(user.user_id, request.title)
+        return auth_database.get_conversation(conversation_id, user.user_id)
+
+    @app.get("/conversations")
+    async def list_conversations(
+        limit: int = 50,
+        offset: int = 0,
+        user: auth.Principal = Depends(get_current_user),
+    ):
+        return {"conversations": auth_database.list_conversations(user.user_id, limit, offset)}
+
+    @app.get("/conversations/{conversation_id}")
+    async def get_conversation(conversation_id: str, user: auth.Principal = Depends(get_current_user)):
+        conversation = auth_database.get_conversation(conversation_id, user.user_id)
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return conversation
+
+    @app.patch("/conversations/{conversation_id}")
+    async def update_conversation(
+        conversation_id: str,
+        request: ConversationUpdateRequest,
+        user: auth.Principal = Depends(get_current_user),
+    ):
+        if not auth_database.update_conversation(
+            conversation_id, user.user_id, request.title, request.archived
+        ):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return auth_database.get_conversation(conversation_id, user.user_id)
+
+    @app.delete("/conversations/{conversation_id}")
+    async def delete_conversation(conversation_id: str, user: auth.Principal = Depends(get_current_user)):
+        if not auth_database.delete_conversation(conversation_id, user.user_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return {"status": "deleted", "conversation_id": conversation_id}
+
+    @app.get("/conversations/{conversation_id}/messages")
+    async def list_messages(
+        conversation_id: str,
+        limit: int = 50,
+        offset: int = 0,
+        user: auth.Principal = Depends(get_current_user),
+    ):
+        if not auth_database.get_conversation(conversation_id, user.user_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return {"messages": auth_database.list_messages(conversation_id, user.user_id, limit, offset)}
+
+    @app.get("/runs/{run_id}")
+    async def get_run(run_id: str, user: auth.Principal = Depends(get_current_user)):
+        run = auth_database.get_run(run_id, user.user_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+        return run
+
+    @app.post("/memories")
+    async def create_memory(
+        request: MemoryCreateRequest,
+        user: auth.Principal = Depends(get_current_user),
+    ):
+        memory_id = auth_database.store_memory(
+            user_id=user.user_id,
+            content=request.content,
+            agent_id=request.agent_id,
+            conversation_id=request.conversation_id,
+            memory_type=request.memory_type,
+            metadata=request.metadata,
+            importance=request.importance,
+            expires_at=request.expires_at,
+        )
+        return {"id": memory_id, "status": "stored"}
+
+    @app.get("/memories")
+    async def search_memories(
+        query: str = "",
+        limit: int = 10,
+        agent_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        memory_type: Optional[str] = None,
+        user: auth.Principal = Depends(get_current_user),
+    ):
+        return {
+            "memories": auth_database.search_memories(
+                user.user_id, query, limit, agent_id, conversation_id, memory_type
+            )
+        }
+
+    @app.delete("/memories/{memory_id}")
+    async def delete_memory(memory_id: str, user: auth.Principal = Depends(get_current_user)):
+        if not auth_database.delete_memory(memory_id, user.user_id):
+            raise HTTPException(status_code=404, detail="Memory not found")
+        return {"status": "deleted", "memory_id": memory_id}
 
     @app.get("/security")
     async def security_status(user: str = Depends(get_current_user)):
@@ -520,9 +717,41 @@ def create_app(kernel: Kernel) -> FastAPI:
         }
 
     @app.post("/chat")
-    async def chat_endpoint(request: ChatRequest, user: str = Depends(get_current_user)):
+    async def chat_endpoint(request: ChatRequest, http_request: Request, user: auth.Principal = Depends(get_current_user)):
         kernel = get_kernel()
-        conversation_id = request.conversation_id or str(uuid.uuid4())
+        correlation_id = http_request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
+        idempotency_key = http_request.headers.get("Idempotency-Key")
+        if not idempotency_key:
+            raise HTTPException(status_code=400, detail="Idempotency-Key header is required")
+        conversation_id = request.conversation_id
+        if conversation_id is None:
+            conversation_id = auth_database.create_conversation(user.user_id)
+        elif not auth_database.get_conversation(conversation_id, user.user_id):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        existing = auth_database.get_message_by_idempotency(user.user_id, idempotency_key)
+        if existing:
+            return {
+                "conversation_id": existing["conversation_id"],
+                "message_id": existing["id"],
+                "run_id": existing["run_id"],
+                "status": "queued",
+                "correlation_id": existing["correlation_id"],
+            }
+        user_message = auth_database.append_message(
+            conversation_id,
+            user.user_id,
+            "user",
+            request.message,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            metadata=request.metadata,
+        )
+        history_rows = auth_database.list_messages(conversation_id, user.user_id, limit=20)
+        history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
+        run_id = auth_database.create_run(
+            conversation_id, user.user_id, user_message["id"], request.agent_id, correlation_id
+        )
 
         response_future = Future()
 
@@ -537,18 +766,42 @@ def create_app(kernel: Kernel) -> FastAPI:
         try:
             event = Event(
                 type="user.message",
-                data={"message": request.message, "conversation_id": conversation_id},
+                data={
+                    "message": request.message,
+                    "conversation_id": conversation_id,
+                    "history": history,
+                    "run_id": run_id,
+                    "user_id": user.user_id,
+                },
                 source="api",
+                correlation_id=correlation_id,
             )
             await kernel.dispatcher.publish(event)
 
             result = await asyncio.wait_for(response_future, timeout=200)
+            assistant_message = auth_database.append_message(
+                conversation_id,
+                user.user_id,
+                "assistant",
+                result.get("response", ""),
+                correlation_id=correlation_id,
+                run_id=run_id,
+            )
+            auth_database.update_run(run_id, "succeeded", result_message_id=assistant_message["id"])
             return {
                 "conversation_id": conversation_id,
-                "response": result.get("response")
+                "message_id": user_message["id"],
+                "run_id": run_id,
+                "response": result.get("response"),
+                "status": "succeeded",
+                "correlation_id": correlation_id,
             }
         except AsyncTimeoutError:
+            auth_database.update_run(run_id, "failed", error="Agent did not respond")
             raise HTTPException(status_code=504, detail="Agent did not respond")
+        except Exception as exc:
+            auth_database.update_run(run_id, "failed", error=str(exc))
+            raise
         finally:
             kernel.event_bus.unsubscribe_all(on_response)
     return app

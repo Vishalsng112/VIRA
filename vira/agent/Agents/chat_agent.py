@@ -92,7 +92,9 @@ class ChatAgent(BaseAgent):
         conversation_id = event.data.get("conversation_id", str(uuid.uuid4()))
 
         # Retrieve history
-        history = self._conversation_histories.get(conversation_id, [])
+        history = event.data.get("history")
+        if history is None:
+            history = self._conversation_histories.get(conversation_id, [])
         logger.debug(f"[{self.name}] Retrieved {len(history)} messages for {conversation_id}")
 
         # Store for later

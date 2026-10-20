@@ -59,6 +59,10 @@ class SecurityManager:
         """Check if event publishing is allowed"""
         return self.authorize(f"event.publish.{event_type}")
 
+    def can_execute_command(self, command_type: str, source: str = "unknown") -> bool:
+        """Check whether a command may cause an operation."""
+        return self.authorize(f"command.execute.{command_type}")
+
     def can_subscribe_event(self, event_type: str) -> bool:
         """Check if subscription is allowed"""
         return self.authorize(f"event.subscribe.{event_type}")

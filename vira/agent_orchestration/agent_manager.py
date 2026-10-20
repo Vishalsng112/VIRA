@@ -19,7 +19,13 @@ from vira.kernel.event_dispatcher import EventDispatcher
 class AgentManager:
     """Central manager for agent lifecycle, routing, and scheduling."""
 
-    def __init__(self, event_bus: EventBus, dispatcher: EventDispatcher, registry: AgentRegistry):
+    def __init__(
+        self,
+        event_bus: EventBus,
+        dispatcher: EventDispatcher,
+        registry: AgentRegistry,
+        allowed_agent_paths: Optional[List[str]] = None,
+    ):
         self.event_bus = event_bus
         self.dispatcher = dispatcher
         self.registry = registry
@@ -33,6 +39,7 @@ class AgentManager:
         )
         self.planner = Planner(registry, self.capability_registry)
         self._agent_instances: Dict[str, BaseAgent] = {}
+        self._allowed_agent_paths = [Path(path).resolve() for path in (allowed_agent_paths or [])]
 
     async def start(self):
         await self.router.start()
@@ -126,6 +133,12 @@ class AgentManager:
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"Agent file not found: {file_path}")
+        resolved_path = file_path.resolve()
+        if self._allowed_agent_paths and not any(
+            path == resolved_path or path in resolved_path.parents
+            for path in self._allowed_agent_paths
+        ):
+            raise PermissionError(f"Agent file is outside the allow-listed paths: {file_path}")
 
         spec = importlib.util.spec_from_file_location(file_path.stem, file_path)
         module = importlib.util.module_from_spec(spec)

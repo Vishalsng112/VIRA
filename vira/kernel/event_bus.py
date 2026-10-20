@@ -3,7 +3,7 @@ import asyncio
 import time
 import uuid
 from enum import Enum
-from typing import Dict, List, Set, Any, Callable, Awaitable, Optional
+from typing import Dict, List, Any, Callable, Awaitable, Optional
 from dataclasses import dataclass, field
 from collections import defaultdict
 from loguru import logger
@@ -18,26 +18,44 @@ class EventPriority(Enum):
     CRITICAL = 3
 
 
+class EventKind(str, Enum):
+    """Distinguish facts from requests for an operation."""
+
+    DOMAIN = "domain"
+    COMMAND = "command"
+    SYSTEM = "system"
+
+
 @dataclass
 class Event:
     """Base event structure"""
     type: str
     data: Any = None
     source: str = "kernel"
+    kind: EventKind = EventKind.DOMAIN
     priority: EventPriority = EventPriority.NORMAL
+    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    causation_id: Optional[str] = None
     timestamp: float = field(default_factory=time.time)
+    schema_version: int = 1
     verified: bool = False
+    durable: bool = False
 
     def dict(self) -> dict:
         return {
             "type": self.type,
             "data": self.data,
             "source": self.source,
+            "kind": self.kind.value,
             "priority": self.priority.name,
+            "event_id": self.event_id,
             "correlation_id": self.correlation_id,
+            "causation_id": self.causation_id,
             "timestamp": self.timestamp,
-            "verified": self.verified
+            "schema_version": self.schema_version,
+            "verified": self.verified,
+            "durable": self.durable,
         }
 
 
@@ -79,9 +97,6 @@ class EventBus:
             return 0
 
         await self._event_queue.put(event)
-        # # Record metric (if metrics manager is attached)
-        # if self.metrics_manager:
-        #     self.metrics_manager.record_event_published(event.type, event.source)
         return 1
 
     async def _process_events(self):
@@ -159,6 +174,4 @@ class EventBus:
 
     def pending_events(self) -> int:
         """Return number of events waiting in the internal queue."""
-        if hasattr(self, '_queue') and hasattr(self._queue, 'qsize'):
-            return self._queue.qsize()
-        return 0
+        return self._event_queue.qsize() if self._event_queue is not None else 0

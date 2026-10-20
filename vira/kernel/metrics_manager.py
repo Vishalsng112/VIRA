@@ -113,6 +113,15 @@ class MetricsManager:
     def record_error(self, error_type: str, source: str = "unknown") -> None:
         self.increment_counter("errors_total", labels={"type": error_type, "source": source})
 
+    def record_event_queue_depth(self, depth: int) -> None:
+        self.set_gauge("event_queue_depth", depth)
+
+    def record_sensor_read(self, sensor: str, success: bool = True) -> None:
+        self.increment_counter(
+            "sensor_reads_total",
+            labels={"sensor": sensor, "status": "success" if success else "failure"},
+        )
+
     # --- System metrics background loop ---
     async def _collect_system_metrics(self):
         while self._running:

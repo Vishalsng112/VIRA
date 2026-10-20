@@ -67,3 +67,25 @@ class ContextManager:
         if "_session" not in self._current_context:
             self._current_context["_session"] = {}
         self._current_context["_session"][key] = value
+
+    async def assemble_context(
+        self,
+        messages: Optional[List[Dict[str, Any]]] = None,
+        memories: Optional[List[Dict[str, Any]]] = None,
+        max_messages: int = 20,
+        max_memories: int = 10,
+        max_chars: int = 12000,
+    ) -> Dict[str, Any]:
+        """Build a bounded context snapshot for an agent or LLM prompt."""
+        context = await self.get_current_context()
+        selected_messages = list(messages or [])[-max_messages:]
+        selected_memories = list(memories or [])[:max_memories]
+        result = {
+            "kernel": context,
+            "messages": selected_messages,
+            "memories": selected_memories,
+        }
+        while len(str(result)) > max_chars and selected_messages:
+            selected_messages.pop(0)
+            result["messages"] = selected_messages
+        return result

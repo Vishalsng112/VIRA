@@ -17,6 +17,8 @@ from .metrics_manager import MetricsManager
 from .context_manager import ContextManager
 from .event_pipeline import EventPipeline
 from .event_dispatcher import EventDispatcher
+from .outbox import OutboxPublisher
+from vira.auth import database
 # from .agent_manager import AgentManager
 
 # logger = logging.getLogger(__name__)
@@ -48,6 +50,7 @@ class Kernel:
         self.metrics_manager = MetricsManager()
         self.context_manager = ContextManager()
         self.event_pipeline = EventPipeline()
+        self.outbox_publisher = OutboxPublisher(self.event_bus)
 
         self._running = False
         self._state = "INIT"
@@ -128,6 +131,7 @@ class Kernel:
         # 1. Load Configuration
         self._state = "LOADING_CONFIG"
         await self.config_manager.initialize()
+        database.init_db()
         logger.info("✓ Configuration loaded")
 
         # Setup state manager with checkpoint dir
@@ -241,6 +245,7 @@ class Kernel:
             if sensor_cfg.get("enabled", False):
                 await self._start_sensor(sensor_cfg)
         logger.info("✓ Sensors started")
+        await self.outbox_publisher.start()
 
         # 10. Enter RUNNING State
         self._state = "RUNNING"
@@ -327,6 +332,7 @@ class Kernel:
         await self.metrics_manager.stop()
 
         # Stop event bus last
+        await self.outbox_publisher.stop()
         await self.event_bus.stop()
 
         logger.info("=== VIRA Kernel Shutdown Complete ===")
@@ -360,13 +366,16 @@ class Kernel:
             "event_bus": {
                 "subscribers": len(self.event_bus._subscribers) if hasattr(self.event_bus, '_subscribers') else 0,
                 "pending_events": self.event_bus.pending_events() if hasattr(self.event_bus, 'pending_events') else 0,
+                "capacity": self.event_bus._max_queue_size,
             },
             "dispatcher": {
                 "pipeline_stages": len(self.event_pipeline._enrichers) + len(self.event_pipeline._prioritizers) if self.event_pipeline else 0,
             },
             "context_manager": {
-                "size": len(self.context_manager._context) if hasattr(self.context_manager, '_context') else 0,
+                "size": len(self.context_manager._current_context),
             },
+            "sensors": [sensor.health() for sensor in self._sensors],
+            "outbox": database.outbox_counts(),
             "AgentOrchestratorModule": None,  # will be filled if orchestrator is present
         }
 

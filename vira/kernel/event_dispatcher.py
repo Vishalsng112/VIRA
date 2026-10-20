@@ -4,9 +4,10 @@ from loguru import logger
 import time
 from typing import Optional
 
-from .event_bus import EventBus, Event
+from .event_bus import EventBus, Event, EventKind
 from .event_pipeline import EventPipeline
 from .security_manager import SecurityManager
+from vira.auth import database
 
 # logger = logging.getLogger(__name__)
 
@@ -37,16 +38,23 @@ class EventDispatcher:
         else False.
         """
         # 1. Security check (does NOT reject; just marks)
-        if self._security.can_publish_event(event.type, source=event.source):
+        authorized = (
+            self._security.can_execute_command(event.type, source=event.source)
+            if event.kind == EventKind.COMMAND
+            else self._security.can_publish_event(event.type, source=event.source)
+        )
+        if authorized:
             event.verified = True
         else:
             event.verified = False
             logger.warning(
                 f"Event {event.type} from {event.source} is UNAUTHORISED – "
-                "marked unverified but still published."
+                "marked unverified."
             )
             if self._metrics:
                 self._metrics.record_error("security_denied", "event_dispatcher")
+            if event.kind == EventKind.COMMAND:
+                raise PermissionError(f"Command publication denied: {event.type}")
 
         # 2. Pipeline processing (enrichment, classification, prioritisation)
         start = time.time()
@@ -65,8 +73,14 @@ class EventDispatcher:
                 "event_pipeline_duration_seconds", duration, labels={"type": event.type}
             )
 
+        durable_enqueued = enriched_event.durable
+        if durable_enqueued:
+            database.enqueue_outbox_event(enriched_event.dict())
+
         # 3. Publish to the bus
         count = await self._event_bus.publish(enriched_event)
+        if durable_enqueued and count:
+            database.mark_outbox_published(enriched_event.event_id)
 
         # 4. Record metrics (optional)
         if self._metrics:

@@ -60,9 +60,13 @@ class Event:
     type: str                          # dot-namespaced string, e.g. "sensor.hardware.state"
     data: Any                          # dict payload — structure depends on event type
     source: str = "kernel"             # component that created the event
+    kind: EventKind = DOMAIN           # DOMAIN | COMMAND | SYSTEM
     priority: EventPriority = NORMAL   # LOW | NORMAL | HIGH | CRITICAL
+    event_id: str = uuid4()            # stable identity for retries/idempotency
     correlation_id: str = uuid4()      # links related events across the system
+    causation_id: Optional[str]        # event that caused this event
     timestamp: float = time.time()     # Unix timestamp (seconds)
+    durable: bool = False              # persist through the SQLite outbox
     verified: bool = False             # set True by EventDispatcher on security pass
 ```
 
@@ -104,6 +108,48 @@ await dispatcher.publish(Event(
 # Convenience dict form
 await dispatcher.publish_dict("sensor.cpu.spike", {"cpu_pct": 92.4}, source="system_sensor")
 ```
+
+Durable state changes set `durable=True`. The dispatcher records those events
+in the SQLite outbox before delivery. The kernel retries pending outbox rows
+after restart. High-frequency sensor telemetry remains non-durable by default.
+Commands use `kind=EventKind.COMMAND` and are checked against command
+permissions before they are accepted.
+
+Consumers that update durable state should use
+`vira.kernel.handle_idempotently` so a retried event is applied once per
+consumer. Operational status is available from `/health`, `/metrics`,
+`/ops/sensors`, and `/ops/events/lag`.
+
+## Agents and tools
+
+Agents are registered with versioned metadata independent of their in-memory
+instances. Capabilities carry input and output schemas, and subscribed event
+types determine routing. Agent definitions are stored in SQLite and can be
+enabled, disabled, or unregistered through the authenticated `/agents` API.
+
+Agent modules must match `agent_policy.allowed_modules` in `config.yaml`.
+This allow-list is enforced before importing a configured agent module.
+
+Tool execution goes through `ToolExecutor`, which checks both the tool's
+declared actions and the central security manager before execution. Every
+attempt is recorded in SQLite with the request, result, status, permission
+decision, duration, agent ID, and correlation ID. Recent records are
+available from `/tools/calls`.
+
+## Conversations, runs, memory, and context
+
+Conversations, messages, and agent runs are persisted in SQLite and scoped to
+the authenticated user. Message creation accepts an `Idempotency-Key`, keeps
+sequence ordering, correlation IDs, and run IDs, and exposes paginated history
+through `/conversations/{conversation_id}/messages`. The `/chat` endpoint
+creates a queued run, uses bounded persisted history, and records the assistant
+message and final run status.
+
+Memory is stored with user, agent, conversation, type, metadata, importance,
+and expiry scope. Use `/memories` for explicit storage, filtered search, and
+deletion. `MemoryManager` provides the same scoped operations to agents.
+`ContextManager.assemble_context` bounds messages and memories before they are
+sent to an LLM.
 
 ### Subscribing to events
 

@@ -1,5 +1,6 @@
 # vira/sensors/event_sensor.py
 import asyncio
+import time
 from loguru import logger
 from typing import Optional, Any
 
@@ -33,6 +34,11 @@ class EventSensor(BaseSensor):
 
         self._task = None
         self._running = False
+        self._last_read_at = None
+        self._last_event_at = None
+        self._last_error = None
+        self._read_count = 0
+        self._error_count = 0
 
     async def start(self) -> None:
         self._running = True
@@ -53,6 +59,8 @@ class EventSensor(BaseSensor):
         while self._running:
             try:
                 data = await self.read()
+                self._last_read_at = time.time()
+                self._read_count += 1
                 if self._publisher:
                     await self._publisher.publish(
                         Event(
@@ -62,12 +70,27 @@ class EventSensor(BaseSensor):
                             priority=self.PRIORITY,
                         )
                     )
+                    self._last_event_at = time.time()
                 await asyncio.sleep(self.interval)
             except asyncio.CancelledError:
                 break
             except Exception:
+                self._last_error = "sensor read or publication failed"
+                self._error_count += 1
                 logger.exception("Sensor %s failed", self.name)
                 await asyncio.sleep(self.interval)
+
+    def health(self) -> dict:
+        return {
+            "name": self.name,
+            "event_type": self.EVENT_TYPE,
+            "running": self._running,
+            "last_read_at": self._last_read_at,
+            "last_event_at": self._last_event_at,
+            "last_error": self._last_error,
+            "read_count": self._read_count,
+            "error_count": self._error_count,
+        }
 
     async def read(self):
         """Override in subclass to return sensor data."""

@@ -22,11 +22,14 @@ scheduler:
 security:
   default_permissions:
     - "event.publish.*"
+    - "command.execute.command.agent.run"
     - "context.read"
     - "context.write"
     - "memory.store.*"
     - "memory.get.*"
     - "llm.call.*"
+    - "tool.execute.*"
+    - "tool.use.*"
 
 metrics:
   enabled: true
@@ -137,25 +140,25 @@ agents:
   #     max_tokens: 1024
   #     memory_ttl: 7200           # 2 hours
 
-  # - name: "AGENT_1"
-  #   module: "vira.agent.examples.AGENT_MONITOR"
-  #   class: "LoadMonitorAgent"
-  #   enabled: true
-  #   config:
-  #     cpu_threshold: 90
-  #     memory_threshold: 90
-  #   subscribed_events:
-  #     - "sensor.hardware.state"
+  - name: "AGENT_1"
+    module: "vira.agent.examples.AGENT_MONITOR"
+    class: "LoadMonitorAgent"
+    enabled: true
+    config:
+      cpu_threshold: 90
+      memory_threshold: 90
+    subscribed_events:
+      - "sensor.hardware.state"
 
 
-  # - name: "AGENT_2"
-  #   module: "vira.agent.examples.AGENT_MONITOR"
-  #   class: "LoadMonitorAgent"
-  #   enabled: true
-  #   config:
-  #     cpu_threshold: 90
-  #     memory_threshold: 90
-  #   subscribed_events:
+  - name: "AGENT_2"
+    module: "vira.agent.examples.AGENT_MONITOR"
+    class: "LoadMonitorAgent"
+    enabled: true
+    config:
+      cpu_threshold: 90
+      memory_threshold: 90
+    subscribed_events:
   #     - "sensor.hardware.state"
 
 # agents:
@@ -172,3 +175,7 @@ mcp_server:
   command: ["python", "vira/tools/mcp_server.py"]   # path to your MCP server script
   permissions: ["read", "write", "execute"]
 
+agent_policy:
+  allowed_modules:
+    - "vira.agent"
+    - "vira.modules"

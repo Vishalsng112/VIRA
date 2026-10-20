@@ -1,69 +1,58 @@
-# tests/test_load_monitor.py
-import asyncio
-from loguru import logger
-from vira.kernel.kernel import Kernel
+import unittest
+
 from vira.agent.examples.AGENT_MONITOR import LoadMonitorAgent
-from vira.agent_orchestration.registry import AgentState
-from vira.kernel.event_bus import Event
+from vira.agent_orchestration.registry import AgentRegistry, AgentState
+from vira.kernel import Event
+from vira.kernel.context_manager import ContextManager
+from vira.agent_runtime.runtime import AgentContext
 
-# logging.basicConfig(level=logging.INFO)
 
-async def test_load_monitor():
-    # 1. Boot the kernel (loads config, sensors, etc.)
-    kernel = Kernel(config_path="config.yaml")
-    await kernel.boot()
+class _Memory:
+    def __init__(self):
+        self.entries = []
 
-    # 2. Get the AgentManager from the kernel (assuming it's available via module manager)
-    # In your kernel.py, you instantiated agent_manager as self.agent_manager
-    # We'll need to access it.
-    agent_manager = kernel.agent_manager  # This is the AgentManager instance
+    async def store(self, **kwargs):
+        self.entries.append(kwargs)
+        return kwargs
 
-    # 3. Create the agent with its runtime dependencies
-    # The runtime is created inside the agent_manager? Actually, AgentManager doesn't own runtime.
-    # We need to create a runtime that uses kernel services.
-    # For integration, we can get services from kernel's service_registry.
-    runtime = AgentRuntime(
-        memory_manager=kernel.memory_manager,  # if you have one
-        llm_manager=kernel.llm_manager,
-        tool_executor=kernel.tool_executor,
-        security_manager=kernel.security_manager,
-        context_manager=kernel.context_manager
-    )
 
-    # 4. Instantiate and register the agent
-    agent = LoadMonitorAgent(runtime, cpu_threshold=70.0, memory_threshold=70.0)
-    await agent.initialize()
-    await agent.start()
-    await agent_manager.register(agent)  # assumes AgentManager has register method
+class _Runtime:
+    def __init__(self):
+        self._memory = _Memory()
+        self.tool_executor = None
+        self.context_manager = ContextManager()
 
-    # 5. Simulate a hardware sensor event by publishing directly
-    # The hardware sensor would normally publish this; we'll do it manually.
-    event_data = {
-        "cpu_percent": 85.0,
-        "memory_percent": 65.0,
-        "timestamp": 1234567890
-    }
-    event = Event(
-        type="sensor.hardware.state",
-        data=event_data,
-        source="test"
-    )
-    await kernel.dispatcher.publish(event)
+    async def get_context(self, agent_id):
+        return AgentContext({}, {}, agent_id)
 
-    # 6. Wait a moment for the agent to process asynchronously
-    await asyncio.sleep(2)
+    async def memory_operation(self, agent_id, operation, **kwargs):
+        return await getattr(self._memory, operation)(**kwargs)
 
-    # 7. Check that the agent did something – for example, we can query memory
-    # or check logs.
-    # In a real test, you would verify the agent's memory or state.
-    # Here we just print to confirm.
-    state = await agent_manager.get_metadata(agent.agent_id)
-    print(f"Agent state: {state.state}")  # Should be READY after processing
-    # You could also check if a memory item was stored (if you have memory).
-    # ...
+    async def call_llm(self, agent_id, prompt, **kwargs):
+        return type("Response", (), {"text": "test summary"})()
 
-    # 8. Shutdown
-    await kernel.shutdown()
 
-if __name__ == "__main__":
-    asyncio.run(test_load_monitor())
+class LoadMonitorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_load_monitor_uses_agent_contract_and_registry(self):
+        runtime = _Runtime()
+        agent = LoadMonitorAgent(runtime, cpu_threshold=70.0, memory_threshold=70.0)
+        registry = AgentRegistry()
+
+        await registry.register(agent)
+        await agent.initialize()
+        await agent.start()
+        await agent.handle(Event(
+            type="sensor.hardware.state",
+            data={"cpu_percent": 85.0, "memory_percent": 65.0},
+            source="test",
+        ))
+
+        metadata = await registry.get_metadata(agent.agent_id)
+        self.assertEqual(metadata.state, AgentState.INITIALIZED)
+        self.assertEqual(agent.state, AgentState.READY)
+        self.assertGreaterEqual(len(runtime._memory.entries), 2)
+        entry_types = {entry["metadata"]["type"] for entry in runtime._memory.entries}
+        self.assertIn("load_alert", entry_types)
+        self.assertIn("llm_suggestion", entry_types)
+
+        await agent.stop()

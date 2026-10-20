@@ -30,6 +30,7 @@ class AgentMetadata(BaseModel):
     subscribed_events: List[str] = []  # event types this agent handles
     interval_seconds: Optional[float] = None  # for periodic agents
     state: AgentState = AgentState.INITIALIZED
+    enabled: bool = True
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
 
@@ -53,6 +54,7 @@ class AgentRegistry:
                 capabilities=agent.capabilities,
                 subscribed_events=agent.subscribed_events,
                 interval_seconds=agent.interval_seconds,
+                version=getattr(agent, "version", "1.0.0"),
                 state=AgentState.INITIALIZED
             )
             self._agents[agent.agent_id] = meta
@@ -88,6 +90,15 @@ class AgentRegistry:
                 return False
             self._agents[agent_id].state = state
             self._agents[agent_id].updated_at = time.time()
+            return True
+
+    async def set_enabled(self, agent_id: str, enabled: bool) -> bool:
+        async with self._lock:
+            metadata = self._agents.get(agent_id)
+            if not metadata:
+                return False
+            metadata.enabled = enabled
+            metadata.updated_at = time.time()
             return True
 
     async def find_by_capability(self, capability_name: str) -> List[AgentMetadata]:

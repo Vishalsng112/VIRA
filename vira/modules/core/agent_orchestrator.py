@@ -14,6 +14,7 @@ from vira.tools.executor import ToolExecutor
 from vira.tools.registry import ToolRegistry
 from vira.tools.connection import MCPServerConnection
 from vira.tools.base import ToolPermission
+from vira.auth import database
 
 try:
     from mcp import ClientSession
@@ -187,6 +188,26 @@ class AgentOrchestratorModule(ViraModule):
 
             # Load agents from config (now tools are already registered)
             agents_cfg = self._config_manager.get("agents", []) or []
+            persisted_cfg = database.list_agent_definitions()
+            configured_ids = {cfg.get("agent_id") for cfg in agents_cfg}
+            agents_cfg = agents_cfg + [
+                {
+                    "name": item["name"],
+                    "module": item["module"],
+                    "class": item["class_name"],
+                    "enabled": item["enabled"],
+                    "agent_id": item["agent_id"],
+                    "version": item["version"],
+                    "description": item["description"],
+                    "config": item["config"],
+                }
+                for item in persisted_cfg
+                if item["agent_id"] not in configured_ids
+            ]
+            allowed_modules = self._config_manager.get(
+                "agent_policy.allowed_modules",
+                ["vira.agent", "vira.modules"],
+            )
             logger.info(f"Loaded agents config: {agents_cfg}")  # See what's really there
             for cfg in agents_cfg:
                 logger.debug(f"Loading agent: {cfg.get('name')} with module {cfg.get('module')} and class {cfg.get('class')}")
@@ -196,14 +217,37 @@ class AgentOrchestratorModule(ViraModule):
                 
                 try:
                     module_name = cfg["module"]
+                    if not any(
+                        module_name == prefix or module_name.startswith(prefix + ".")
+                        for prefix in allowed_modules
+                    ):
+                        raise PermissionError(
+                            f"Agent module '{module_name}' is not allow-listed"
+                        )
                     class_name = cfg["class"]
                     module = importlib.import_module(module_name)
                     agent_class = getattr(module, class_name)
                     agent_config = cfg.get("config", {})
                     agent = agent_class(self.runtime, **agent_config)
+                    if cfg.get("agent_id"):
+                        agent.agent_id = cfg["agent_id"]
+                    if cfg.get("version"):
+                        agent.version = cfg["version"]
                     await agent.initialize()
                     await agent.start()
                     await self.registry.register(agent)
+                    database.upsert_agent_definition({
+                        "agent_id": agent.agent_id,
+                        "name": agent.name,
+                        "version": getattr(agent, "version", "1.0.0"),
+                        "module": module_name,
+                        "class_name": class_name,
+                        "description": agent.description,
+                        "capabilities": [cap.dict() for cap in agent.capabilities],
+                        "subscribed_events": agent.subscribed_events,
+                        "config": agent_config,
+                        "enabled": True,
+                    })
                     logger.info(f"Agent loaded: {cfg['name']} (ID: {agent.agent_id})")
                 except Exception as e:
                     logger.error(f"Failed to load agent {cfg.get('name')}: {e}")
@@ -266,7 +310,9 @@ class AgentOrchestratorModule(ViraModule):
                 status["agents"].append({
                     "id": meta.agent_id,
                     "name": meta.name,
-                    "status": getattr(meta, 'status', 'unknown'),
+                    "version": meta.version,
+                    "status": meta.state.value,
+                    "enabled": meta.enabled,
                     "capabilities": getattr(meta, 'capabilities', []),
                 })
 
