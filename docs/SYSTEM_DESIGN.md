@@ -15,12 +15,14 @@ VIRA is an asynchronous Python application composed of:
 - Agent routing and scheduling in [`vira/agent_orchestration/`](../vira/agent_orchestration/)
 - LLM and tool access through [`vira/agent_runtime/`](../vira/agent_runtime/)
 - Authentication and SQLite access in [`vira/auth/`](../vira/auth/)
-- A currently stubbed memory subsystem in [`vira/memory/manager.py`](../vira/memory/manager.py)
+- SQLite-backed conversations, messages, agent runs, scoped memories, agent
+  definitions, tool-call audits, and outbox events
 
-The current system persists users, hashed sessions, roles, and authentication
-audit events.
-Conversation history is process-local in `ChatAgent`, agent registry state is
-in memory, and the memory manager does not yet persist data.
+The current system persists users, hashed sessions, roles, authentication audit
+events, conversations, ordered messages, run status, scoped memories, agent
+definitions, and tool-call records. Chat execution still uses the in-process
+event bus and configured agent runtime, while durable records provide restart
+survival and ownership enforcement.
 
 ---
 

@@ -2,15 +2,15 @@
 
 # VIRA
 
-### An AI-OS / Agentic OS layer for your machine
+### Your personal AI system — and the framework to build it
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
-[![Status](https://img.shields.io/badge/status-kernel%20in%20development-brightgreen)](#development-status)
-[![Platform](https://img.shields.io/badge/platform-Linux-blue)](#platform-support)
-[![Privacy](https://img.shields.io/badge/cloud-none-success)](#privacy-first)
+[![Status](https://img.shields.io/badge/status-active%20framework-brightgreen)](#development-status)
+[![Platform](https://img.shields.io/badge/platform-Linux-blue)](#development-status)
+[![Privacy](https://img.shields.io/badge/cloud-optional-success)](#core-principles)
 [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen)](#contributing)
 
-*No cloud. No telemetry. Nothing leaves your machine.*
+*Private by design. Local-first. Extensible by default.*
 
 </div>
 
@@ -19,8 +19,9 @@
 ## Table of Contents
 
 - [What is VIRA?](#what-is-vira)
+- [Why VIRA?](#why-vira)
+- [What VIRA can do today](#what-vira-can-do-today)
 - [Quick Start](#quick-start)
-- [Why it exists](#why-it-exists)
 - [Core Principles](#core-principles)
 - [How it works](#how-it-works)
 - [Architecture](#architecture)
@@ -28,22 +29,43 @@
 - [Development Status](#development-status)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
-- [How VIRA differs from Claude Code, Codex & Copilot](#how-vira-differs-from-claude-code-codex--copilot)
 - [License](#license)
 
 ---
 
 ## What is VIRA?
 
-VIRA is an open-source **AI-OS layer** — also described as an Agentic OS layer — that provides the necessary architecture to:
+VIRA is an open-source **personal AI system and extensible agent framework**. It is designed to become the intelligence layer around your digital life: aware of your workspace and system, able to remember context, able to use tools, and able to coordinate specialized agents.
 
-- Build and maintain **live Context** that models both your system state and your behaviour over time
-- **Automatically synthesize** new system apps, tools, and agents from natural language using a verification-based programming language and a provided Domain Specific Language (DSL)
-- **Verify correctness** of generated tools before they ever run — not "here's some code, good luck", but something you can actually trust
+VIRA is not a single-purpose end product. It is a programmable foundation for building personal AI capabilities:
 
-Everything runs **100% locally**. Nothing is sent to the cloud.
+- **Personal AI runtime** — a local kernel that observes system and workspace state.
+- **Context engine** — durable conversations, scoped memory, and bounded context for reasoning.
+- **Agent platform** — agents implement `think → plan → act → reflect` and react to events.
+- **Tool platform** — local and MCP tools with permissions, auditing, and artifacts.
+- **Operations layer** — health, metrics, event streams, agent visibility, and runtime controls.
+- **Future creation engine** — describe a need in natural language and VIRA can eventually generate an agent, tool, workflow, or small application, then verify it before use.
 
-VIRA is built for everyone: general-purpose users who want tools that just work, developers who want a context-rich foundation to build on, and open-source contributors who want to extend and improve the framework.
+The current implementation is local-first and privacy-oriented. It uses local persistence and supports local LLM providers such as Ollama; external providers are optional and explicitly configured.
+
+### A framework, not just an assistant
+
+An assistant answers requests. A personal AI system can understand its environment,
+retain useful context, coordinate capabilities, and safely gain new skills.
+VIRA is being built as the runtime for that system:
+
+| Layer | Role |
+|---|---|
+| Kernel | Lifecycle, state, events, scheduling, security, and operations |
+| Sensors | Structured observations from the machine, workspace, and activity |
+| Context and memory | Durable conversations, scoped memory, and relevant prompt context |
+| Agents | Specialized reasoning and action loops |
+| Tools | Permissioned local, MCP, and future generated capabilities |
+| Creation engine | Future natural-language generation and verification of agents and code |
+
+That means VIRA can be used as a personal assistant today, an agent-development
+framework tomorrow, and eventually a local capability factory for the tasks you
+choose to automate.
 
 <!-- add image -->
 ![VIRA Interface](./docs/VIRA_UI.png)
@@ -178,16 +200,67 @@ The dashboard currently provides:
 - Live runtime snapshot (`/health`, `/metrics`, `/context`, `/config`)
 - Module visibility and module loading controls
 - Live event stream monitoring
+- Agent orchestration, tool, and security visibility
+- Authenticated API access for conversations, runs, memories, and operations
 - Built-in API test console for authenticated framework endpoints
 
-Features without backend APIs yet are intentionally marked as planned and will be added when those APIs are available.
+The dashboard is the operator surface for the local runtime; the API and framework packages are the extension surface for developers.
 
 ---
-## Why it exists
+## Why VIRA?
 
-Every AI tool you use today starts blind. It doesn't know what you're working on, what's running on your system, how you work, or what you need. You re-explain your own computer to it every single time — and it forgets everything the moment the session ends.
+Most AI assistants begin with a blank prompt. They do not continuously understand your environment, retain structured personal context, or provide a safe runtime for extending their capabilities.
 
-VIRA exists to fix that at the root. It runs as a continuously-updating kernel, senses your environment and your behaviour, and turns that into structured, AI-ready context. The longer-term goal is a system where you describe what you want in plain language and VIRA generates and verifies the right tool to get it done — for everyone, not just developers.
+VIRA takes a different approach:
+
+```text
+Your intent
+    ↓
+Persistent conversation + memory
+    ↓
+Context-aware agent reasoning
+    ↓
+Permissioned tools and operations
+    ↓
+Auditable result
+```
+
+The long-term vision is a personal AI system that can understand what you need, assemble the right capabilities, and improve its usefulness without becoming an opaque process running outside your control.
+
+## What VIRA can do today
+
+### Understand and remember
+
+- Persist conversations and ordered messages across restarts.
+- Create, rename, archive, and delete conversations.
+- Use idempotent message submission with correlation and run tracking.
+- Store scoped memories by user, agent, conversation, and memory type.
+- Search, expire, delete, and compact memory.
+- Assemble bounded context before sending information to an LLM.
+
+### Sense and react
+
+- Collect system, hardware, process, network, workspace, project, and activity signals.
+- Route typed events through a central dispatcher and event bus.
+- Distinguish commands from domain events.
+- Run event-driven agents with explicit lifecycle states.
+
+### Extend safely
+
+- Build agents with the `think → plan → act → reflect` contract.
+- Register capabilities, schemas, versions, and subscribed events.
+- Enable, disable, register, and unregister agents.
+- Connect local and MCP tools.
+- Enforce tool permissions before execution.
+- Audit every tool call with request, result, status, permission decision, and duration.
+- Store large results as artifacts outside transactional message rows.
+
+### Operate transparently
+
+- Inspect kernel health, sensors, context, metrics, agents, tools, event lag, and outbox status.
+- Persist durable state changes through an SQLite outbox.
+- Retry failed durable event publication.
+- Use an authenticated local dashboard and API.
 
 ---
 
@@ -195,17 +268,17 @@ VIRA exists to fix that at the root. It runs as a continuously-updating kernel, 
 
 | Principle | What it means |
 |---|---|
-| Privacy-first | No telemetry, no cloud calls. Everything stays on your device. |
+| Local-first privacy | No hidden telemetry or cloud dependency. External providers are opt-in and configured by you. |
 | Open source | MIT licensed — free to study, fork, and build on. |
 | Context as infrastructure | Context isn't bolted onto an AI model as an afterthought — it's the core data structure the kernel is built around. |
 | User-aware, not just machine-aware | VIRA models how *you* use your system — your workflow, rhythms, and intent — not just what's running on the hardware. |
-| Trust through verification | Generated tools will have their correctness checked before you run them. You shouldn't have to hope the AI got it right. |
+| Trust through verification | Future generated agents and tools should be checked before they run. |
 
 ---
 
 ## How it works
 
-VIRA is built around focused **sensors**, each watching one part of your system. Observations flow through a shared **event bus** into a context engine that builds a unified, constantly-updating model of your machine and behaviour.
+VIRA is built around focused **sensors**, each watching one part of your system. Observations flow through a shared **event bus** into a context engine that builds a unified, constantly-updating model of your machine, workspace, conversations, memories, and behaviour.
 
 | Sensor | What it watches |
 |---|---|
@@ -217,9 +290,11 @@ VIRA is built around focused **sensors**, each watching one part of your system.
 | Workspace | File system and workspace changes |
 | Project | Project structure and metadata |
 | Activity | User behaviour patterns and workflow rhythms |
-| Context | Aggregates everything into higher-level context |
+| Context | Aggregates everything into bounded, AI-ready context |
 
-The architecture is intentionally modular and follows microservice principles — individual components can be optimized, rewritten, or extended without touching the rest of the system.
+Agents consume events and context, plan work, use permissioned tools, and publish results. Durable conversations, runs, memories, and outbox events are stored locally, while high-volume telemetry remains in bounded runtime metrics.
+
+The architecture is intentionally modular: individual sensors, agents, tools, storage adapters, LLM providers, and transports can be extended without rewriting the personal AI runtime.
 
 ---
 
@@ -271,19 +346,21 @@ The documentation covers:
 
 ## Development Status
 
-**Current phase: maturing the kernel.**
+**Current phase: building the personal AI foundation.**
 
-The core kernel — event bus, sensors, context engine, agent orchestration, and kernel APIs — is implemented and working end-to-end. The focus right now is stabilizing and hardening this foundation before moving to the next layer.
+The core runtime is functional end-to-end. VIRA now has the major primitives required for a personal AI system:
 
-- Event bus architecture — functional
-- Sensor framework — functional, all sensors implemented
-- Context aggregation — functional
-- Agent orchestration and runtime — functional
-- First event-driven agent — implemented as an end-to-end validation harness
-- Most sensors currently use periodic polling (event-driven sensing comes next)
-- Linux (X11) is the only supported platform for now
+- Kernel lifecycle, typed events, dispatcher, outbox, and retry path — functional
+- System, hardware, process, network, workspace, project, and activity sensors — functional
+- Durable conversations, messages, runs, correlation IDs, and idempotency — functional
+- Scoped memory, expiry, search, deletion, and bounded context assembly — functional
+- Agent lifecycle, capabilities, event subscriptions, versioned definitions, and allow-listing — functional
+- Local and MCP tool registry with permission checks and durable tool-call auditing — functional
+- Authenticated dashboard and operations APIs — functional
+- High-frequency sensor collection — primarily polling today; OS-native event adapters remain a goal
+- Linux is the primary supported development platform today
 
-Once the kernel is solid, work will begin on the infrastructure for building agents, the DSL, and integration of a verification-based language (Dafny) so users can generate any app, tool, or agent they need from natural language — backed by strong reasoning models.
+The framework is intentionally ahead of the end-user feature set: it provides the runtime surface on which many personal AI applications can be built.
 
 **On the implementation language:** the project is currently written entirely in Python. Core parts will later be rewritten in Rust — system-level components in Rust, exposed to the rest of the framework as Python modules. This keeps the contribution surface accessible while allowing the kernel and runtime to be progressively optimized without disrupting the broader codebase.
 
@@ -291,32 +368,38 @@ Once the kernel is solid, work will begin on the infrastructure for building age
 
 ## Roadmap
 
-### Iteration 1 — Functional Kernel *(mostly complete)*
+### Iteration 1 — Personal AI Runtime *(implemented foundation)*
 
 Build a complete, stable kernel that can sense, aggregate, and manage context.
 
-- Sensor framework, event bus, context engine, state management, local AI integration, kernel APIs
-- First event-driven agent built on top as a validation harness
+- Sensor framework, event bus, typed dispatcher, state management, local AI integration, kernel APIs
+- Durable conversations, memory, context assembly, agent orchestration, and permissioned tools
+- Dashboard and operational visibility for the local runtime
 
-### Iteration 2 — Behaviour Awareness and Production Readiness
+### Iteration 2 — Personalization and Production Readiness
 
-- Behaviour modelling — move from machine state to user patterns
+- Behaviour modelling — move from machine state to user patterns and routines
+- Better memory retrieval — metadata ranking and optional semantic search
+- Run execution — durable steps, cancellation, recovery, and workflow history
 - MCP-native exposure — expose context as an MCP server so any compatible host or agent can connect
 - Event-driven sensing — replace polling with OS-level events
-- Security and transparency layer — permission model, local dashboard
+- Stronger security and transparency — sandboxed agents, secrets management, and policy review
 - Runtime optimization — lower memory/CPU footprint, better concurrency
 
 **Cross-platform support** is a key goal here. VIRA is currently developed on Linux (X11). The plan is to support Linux (wayland), Windows, and macOS as well.
 
 The chosen approach: VIRA will run as a container with the necessary privileges granted. This works cleanly across platforms because Windows has WSL2 and macOS now ships its own lightweight container tooling. Rather than maintaining separate native ports, a well-configured container gives users on all three platforms the same experience with minimal friction. Platform-specific container setup instructions will be provided for each target OS.
 
-### Iteration 3 — On-Demand Tool Generation
+### Iteration 3 — On-Demand Agent and Tool Creation
 
-Once the kernel and trust layer are solid, this is where VIRA becomes useful for everyone.
+This is the defining long-term capability of VIRA: turn intent into a verified capability.
 
 - Intent understanding — parse natural language into structured goals
-- Agent and tool synthesis — generate the right agent, script, or mini-app using the kernel's knowledge of your machine and habits, via the DSL and Dafny-based verification
-- Verification layer — formal checks that generated tools do what they claim, and nothing else
+- Agent synthesis — generate a specialized agent from a requirement, with capabilities, schemas, event subscriptions, and permissions
+- Tool and code synthesis — generate scripts, integrations, workflows, and mini-apps using the DSL and VIRA context
+- Verification layer — test and formally check generated code before it runs
+- Human approval gates — show proposed permissions, files, network access, and side effects before activation
+- Self-improving capability catalog — version, evaluate, and retire generated capabilities safely
 - Sensor SDK — versioned interface for third-party sensors (browser, Docker, IDE, cloud CLI)
 - Native packaging — `.deb` / `AppImage` for Linux, then others
 
