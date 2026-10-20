@@ -79,6 +79,7 @@ class ChatRequest(BaseModel):
 
 class ConversationCreateRequest(BaseModel):
     title: str = "New conversation"
+    incognito: bool = False
 
 
 class ConversationUpdateRequest(BaseModel):
@@ -231,6 +232,12 @@ def create_app(kernel: Kernel) -> FastAPI:
         if not auth.resolve_principal(request.session.get("session_id")):
             return RedirectResponse(url="/login", status_code=302)
         return FileResponse(str(static_dir / "dashboard.html"))
+
+    @app.get("/chat")
+    async def chat_page(request: Request):
+        if not auth.resolve_principal(request.session.get("session_id")):
+            return RedirectResponse(url="/login", status_code=302)
+        return FileResponse(str(static_dir / "chat.html"))
 
     @app.get("/forgot")
     async def forgot_page():
@@ -558,7 +565,9 @@ def create_app(kernel: Kernel) -> FastAPI:
         request: ConversationCreateRequest,
         user: auth.Principal = Depends(get_current_user),
     ):
-        conversation_id = auth_database.create_conversation(user.user_id, request.title)
+        conversation_id = auth_database.create_conversation(
+            user.user_id, request.title, incognito=request.incognito
+        )
         return auth_database.get_conversation(conversation_id, user.user_id)
 
     @app.get("/conversations")
@@ -617,6 +626,10 @@ def create_app(kernel: Kernel) -> FastAPI:
         request: MemoryCreateRequest,
         user: auth.Principal = Depends(get_current_user),
     ):
+        if request.conversation_id:
+            conversation = auth_database.get_conversation(request.conversation_id, user.user_id)
+            if conversation and conversation.get("incognito"):
+                raise HTTPException(status_code=400, detail="Memories cannot be stored for incognito chats")
         memory_id = auth_database.store_memory(
             user_id=user.user_id,
             content=request.content,
@@ -719,6 +732,13 @@ def create_app(kernel: Kernel) -> FastAPI:
     @app.post("/chat")
     async def chat_endpoint(request: ChatRequest, http_request: Request, user: auth.Principal = Depends(get_current_user)):
         kernel = get_kernel()
+        orchestrator = getattr(kernel, "agent_orchestrator", None)
+        registry = getattr(orchestrator, "registry", None) if orchestrator else None
+        if not registry or not await registry.find_by_event("user.message"):
+            raise HTTPException(
+                status_code=503,
+                detail="No chat agent is available. Enable the Chatbot agent and restart VIRA.",
+            )
         correlation_id = http_request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
         idempotency_key = http_request.headers.get("Idempotency-Key")
         if not idempotency_key:
@@ -726,7 +746,8 @@ def create_app(kernel: Kernel) -> FastAPI:
         conversation_id = request.conversation_id
         if conversation_id is None:
             conversation_id = auth_database.create_conversation(user.user_id)
-        elif not auth_database.get_conversation(conversation_id, user.user_id):
+        conversation = auth_database.get_conversation(conversation_id, user.user_id)
+        if not conversation:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         existing = auth_database.get_message_by_idempotency(user.user_id, idempotency_key)

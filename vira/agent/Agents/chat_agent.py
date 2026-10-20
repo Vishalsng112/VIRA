@@ -50,15 +50,9 @@ class ChatAgent(BaseAgent):
         self.max_tokens = max_tokens
 
         # Load tools (same as before)
-        self.available_tools = (
-            self.runtime.tool_executor.list_tools() 
-            if self.runtime.tool_executor 
-            else []
-        )
-        tool_names = [t.get('name') for t in self.available_tools]
+        self.available_tools = self._load_tools()
+        tool_names = [t.get("name", "unknown") for t in self.available_tools]
         logger.info(f"[{self.name}] Loaded tools: {tool_names}")
-        print(f"[{self.name}] Available tools: {tool_names}")
-        print(self.runtime.tool_executor.list_tools())
 
         self._subscribed_events = ["user.message"]
         self._capabilities = [
@@ -73,7 +67,19 @@ class ChatAgent(BaseAgent):
     def _load_tools(self) -> List[Dict]:
         """Fetch tool metadata from the ToolExecutor."""
         try:
-            tools = self.runtime.tool_executor.list_tools()
+            executor = self.runtime.tool_executor
+            if not executor:
+                return []
+            names = executor.list_tools()
+            registry = getattr(executor, "_registry", None)
+            tools = []
+            for name in names:
+                tool = registry.get(name) if registry else None
+                tools.append({
+                    "name": name,
+                    "description": getattr(tool, "description", "No description"),
+                    "parameters": tool.get_schema() if tool and hasattr(tool, "get_schema") else {},
+                })
             return tools
         except AttributeError:
             logger.warning("ToolExecutor does not support listing tools. No tools loaded.")
@@ -101,6 +107,7 @@ class ChatAgent(BaseAgent):
         self._current_conversation_id = conversation_id
         self._current_user_message = message
         self._current_history = history
+        self._current_user_id = event.data.get("user_id")
 
         return {
             "conversation_id": conversation_id,
@@ -147,7 +154,11 @@ class ChatAgent(BaseAgent):
         tool_call = None
         try:
             data = json.loads(response_text.strip())
-            if isinstance(data, dict) and "tool" in data and "params" in data:
+            if (
+                isinstance(data, dict)
+                and isinstance(data.get("tool"), str)
+                and ("params" in data or "arguments" in data)
+            ):
                 tool_call = data
         except json.JSONDecodeError:
             pass
@@ -156,13 +167,20 @@ class ChatAgent(BaseAgent):
 
         if tool_call:
             tool_name = tool_call["tool"]
-            params = tool_call.get("params", {})
+            params = tool_call.get("params") or tool_call.get("arguments") or {}
+            if not isinstance(params, dict):
+                params = {}
 
             print(f"\n[TOOL SELECTED] {tool_name} with params: {params}")
 
             # Execute the tool
             try:
-                tool_result = await self.runtime.use_tool(self.agent_id, tool_name, **params)
+                tool_result = await self.runtime.use_tool(
+                    self.agent_id,
+                    tool_name,
+                    user_id=self._current_user_id,
+                    **{key: value for key, value in params.items() if key != "user_id"},
+                )
                 print(f"[TOOL RESULT] {tool_result}")
                 logger.info(f"[{self.name}] Tool {tool_name} executed successfully.")
             except Exception as e:
@@ -193,10 +211,32 @@ class ChatAgent(BaseAgent):
                 final_response = final_llm_response['text']
             else:
                 final_response = str(final_llm_response)
+            if self._looks_like_tool_call(final_response):
+                final_response = (
+                    f"The {tool_name} returned: {self._tool_result_text(tool_result)}"
+                )
         else:
             print("\n[NO TOOL CALLED] Responding with plain text.")
 
         return final_response
+
+    @staticmethod
+    def _looks_like_tool_call(value: str) -> bool:
+        try:
+            parsed = json.loads(value.strip())
+        except (TypeError, json.JSONDecodeError):
+            return False
+        return isinstance(parsed, dict) and isinstance(parsed.get("tool"), str)
+
+    @staticmethod
+    def _tool_result_text(result: Any) -> str:
+        content = getattr(result, "content", None)
+        if content:
+            return " ".join(
+                getattr(item, "text", str(item))
+                for item in content
+            )
+        return str(result)
 
     async def reflect(self, result: Any, **kwargs) -> Dict:
         logger.debug(f"[{self.name}] Reflecting...")

@@ -206,6 +206,26 @@ The dashboard currently provides:
 
 The dashboard is the operator surface for the local runtime; the API and framework packages are the extension surface for developers.
 
+Open `/chat` for the personal AI workspace. It provides a conversation-first
+interface with persistent chats, message history, new-chat creation, and chat
+deletion backed by the local database.
+
+The chat agent also has permissioned access to local aggregate tools, such as
+reporting the authenticated user's total chat and message counts, without
+exposing raw database access to the model.
+
+The MCP shell tool can answer approved runtime and system-information questions
+such as the current date/time, working directory, platform, and repository
+status without enabling arbitrary shell execution.
+
+Chats can also be started in **Incognito chat** mode. Incognito conversations
+are stored in dedicated local tables so they can be restored and deleted like
+normal chats, but they are excluded from normal chat statistics and cannot be
+used as memory sources.
+
+The MCP tool surface includes a permissioned web-browsing tool so agents can
+retrieve current public information when a question requires research.
+
 ---
 ## Why VIRA?
 

@@ -20,7 +20,7 @@ class LoadMonitorAgent(BaseAgent):
         self.cpu_threshold = cpu_threshold
         self.memory_threshold = memory_threshold
         self.llm_model = llm_model
-        self._subscribed_events = subscribed_events or ["sensor.hardware.state"]
+        self._subscribed_events = subscribed_events or ["sensor.hardware.state1"]#["sensor.hardware.state"]
         self._capabilities = [
             AgentCapability(
                 name="monitor_load",

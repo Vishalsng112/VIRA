@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="VIRA personal AI chat workspace">
+  <title>VIRA Chat</title>
+  <link rel="stylesheet" href="/static/chat.css">
+</head>
+<body>
+  <div class="chat-app">
+    <aside class="chat-sidebar">
+      <div class="sidebar-top">
+        <a class="chat-brand" href="/dashboard" aria-label="Back to VIRA dashboard">
+          <span class="brand-mark" aria-hidden="true"><span>V</span></span>
+          <span class="brand-copy"><strong>VIRA</strong><small>Personal AI</small></span>
+        </a>
+        <button id="new-chat" class="new-chat-button" type="button">
+          <span aria-hidden="true">＋</span>
+          <span>New chat</span>
+        </button>
+        <label class="incognito-toggle">
+          <input id="incognito-toggle" type="checkbox">
+          <span>Incognito chat</span>
+        </label>
+      </div>
+
+      <div class="conversation-heading">
+        <span>Your chats</span>
+        <button id="refresh-chats" class="icon-button" type="button" title="Refresh chats" aria-label="Refresh chats">↻</button>
+      </div>
+      <nav id="conversation-list" class="conversation-list" aria-label="Conversations"></nav>
+      <p id="conversation-status" class="sidebar-status" role="status"></p>
+
+      <div class="sidebar-bottom">
+        <a href="/dashboard" class="sidebar-link">← Runtime dashboard</a>
+        <button id="logout-button" class="sidebar-link sidebar-button" type="button">Log out</button>
+      </div>
+    </aside>
+
+    <main class="chat-main">
+      <header class="chat-header">
+        <div>
+          <div class="chat-title-row">
+            <span class="header-mark" aria-hidden="true">V</span>
+            <div>
+              <p class="chat-eyebrow">Conversation</p>
+              <h1 id="chat-title">New chat</h1>
+            </div>
+            <span id="chat-mode" class="mode-badge" hidden>Incognito</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span id="connection-status" class="connection-status"><i></i><span>Local runtime</span></span>
+          <button id="theme-toggle" class="icon-button" type="button" title="Toggle theme" aria-label="Toggle theme">☼</button>
+        </div>
+      </header>
+
+      <section id="message-scroller" class="message-scroller" aria-live="polite">
+        <div id="welcome-state" class="welcome-state">
+          <div class="welcome-mark">V</div>
+          <p class="welcome-kicker">VIRA AI WORKSPACE</p>
+          <h2>How can I help you today?</h2>
+          <p>Ask VIRA to reason with your context, use connected tools, or help you build your next capability.</p>
+          <div class="suggestion-grid">
+            <button type="button" data-suggestion="Summarize what is happening in my VIRA runtime">Summarize my runtime</button>
+            <button type="button" data-suggestion="Help me plan a new agent for my workflow">Plan a new agent</button>
+            <button type="button" data-suggestion="What can I automate with VIRA?">Explore automation</button>
+            <button type="button" data-suggestion="Help me understand my current project context">Understand my project</button>
+          </div>
+        </div>
+        <div id="message-list" class="message-list"></div>
+      </section>
+
+      <form id="composer" class="composer">
+        <label class="sr-only" for="message-input">Message VIRA</label>
+        <textarea id="message-input" rows="1" placeholder="Message VIRA..." autocomplete="off"></textarea>
+        <div class="composer-footer">
+          <span>VIRA can make mistakes. Verify important information.</span>
+          <button id="send-button" class="send-button" type="submit" aria-label="Send message">↑</button>
+        </div>
+      </form>
+    </main>
+  </div>
+  <script src="/static/chat.js"></script>
+</body>
+</html>

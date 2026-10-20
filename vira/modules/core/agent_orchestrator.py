@@ -14,6 +14,7 @@ from vira.tools.executor import ToolExecutor
 from vira.tools.registry import ToolRegistry
 from vira.tools.connection import MCPServerConnection
 from vira.tools.base import ToolPermission
+from vira.tools.chat_statistics import ChatStatisticsTool
 from vira.auth import database
 
 try:
@@ -83,6 +84,7 @@ class AgentOrchestratorModule(ViraModule):
             # Create tool registry and executor
             self.tool_registry = ToolRegistry()
             self.tool_executor = ToolExecutor(self.tool_registry, self._security_manager)
+            self.tool_registry.register(ChatStatisticsTool())
 
             # --- MCP Connection with enhanced logging ---
             mcp_config = self._config_manager.get("mcp_server", {}) or {}
@@ -190,6 +192,10 @@ class AgentOrchestratorModule(ViraModule):
             agents_cfg = self._config_manager.get("agents", []) or []
             persisted_cfg = database.list_agent_definitions()
             configured_ids = {cfg.get("agent_id") for cfg in agents_cfg}
+            configured_keys = {
+                (cfg.get("module"), cfg.get("class"))
+                for cfg in agents_cfg
+            }
             agents_cfg = agents_cfg + [
                 {
                     "name": item["name"],
@@ -203,6 +209,7 @@ class AgentOrchestratorModule(ViraModule):
                 }
                 for item in persisted_cfg
                 if item["agent_id"] not in configured_ids
+                and (item["module"], item["class_name"]) not in configured_keys
             ]
             allowed_modules = self._config_manager.get(
                 "agent_policy.allowed_modules",

@@ -182,6 +182,53 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS incognito_conversations (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT NOT NULL DEFAULT 'New conversation',
+                archived INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS incognito_messages (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL REFERENCES incognito_conversations(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                sequence_no INTEGER NOT NULL,
+                correlation_id TEXT,
+                run_id TEXT,
+                idempotency_key TEXT,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                created_at TIMESTAMP NOT NULL,
+                UNIQUE(user_id, idempotency_key)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS incognito_runs (
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT NOT NULL REFERENCES incognito_conversations(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                agent_id TEXT,
+                status TEXT NOT NULL,
+                input_message_id TEXT,
+                result_message_id TEXT,
+                error TEXT,
+                correlation_id TEXT,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
                 conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
@@ -280,6 +327,26 @@ def count_users() -> int:
     with get_connection() as conn:
         row = conn.execute("SELECT COUNT(*) AS cnt FROM users").fetchone()
         return int(row["cnt"]) if row else 0
+
+
+def get_chat_statistics(user_id: int) -> Dict[str, int]:
+    """Return aggregate conversation statistics scoped to one user."""
+    with get_connection() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                COUNT(DISTINCT c.id) AS total_chats,
+                COUNT(m.id) AS total_messages
+            FROM conversations c
+            LEFT JOIN messages m ON m.conversation_id = c.id
+            WHERE c.user_id = ?
+            """,
+            (user_id,),
+        ).fetchone()
+        return {
+            "total_chats": int(row["total_chats"]) if row else 0,
+            "total_messages": int(row["total_messages"]) if row else 0,
+        }
 
 
 def create_session(session_id: str, user_id: int, expires_at: str) -> None:
@@ -588,12 +655,18 @@ def list_tool_calls(limit: int = 100) -> list[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
-def create_conversation(user_id: int, title: str = "New conversation", conversation_id: Optional[str] = None) -> str:
+def create_conversation(
+    user_id: int,
+    title: str = "New conversation",
+    conversation_id: Optional[str] = None,
+    incognito: bool = False,
+) -> str:
     conversation_id = conversation_id or str(uuid.uuid4())
     now = _utc_now()
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO conversations (id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            f"INSERT INTO {'incognito_' if incognito else ''}conversations "
+            "(id, user_id, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
             (conversation_id, user_id, title, now, now),
         )
         conn.commit()
@@ -606,22 +679,36 @@ def get_conversation(conversation_id: str, user_id: int) -> Optional[Dict[str, A
             "SELECT * FROM conversations WHERE id = ? AND user_id = ?",
             (conversation_id, user_id),
         ).fetchone()
+        incognito = False
+        if not row:
+            row = conn.execute(
+                "SELECT * FROM incognito_conversations WHERE id = ? AND user_id = ?",
+                (conversation_id, user_id),
+            ).fetchone()
+            incognito = bool(row)
         if not row:
             return None
         item = dict(row)
         item["archived"] = bool(item["archived"])
+        item["incognito"] = incognito
         return item
 
 
 def list_conversations(user_id: int, limit: int = 50, offset: int = 0) -> list[Dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT * FROM conversations WHERE user_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?",
-            (user_id, min(max(limit, 1), 100), max(offset, 0)),
+            """
+            SELECT *, 0 AS incognito FROM conversations WHERE user_id = ?
+            UNION ALL
+            SELECT *, 1 AS incognito FROM incognito_conversations WHERE user_id = ?
+            ORDER BY updated_at DESC LIMIT ? OFFSET ?
+            """,
+            (user_id, user_id, min(max(limit, 1), 100), max(offset, 0)),
         ).fetchall()
         result = [dict(row) for row in rows]
         for item in result:
             item["archived"] = bool(item["archived"])
+            item["incognito"] = bool(item["incognito"])
         return result
 
 
@@ -642,6 +729,11 @@ def update_conversation(conversation_id: str, user_id: int, title: Optional[str]
             f"UPDATE conversations SET {', '.join(fields)} WHERE id = ? AND user_id = ?",
             values,
         )
+        if cursor.rowcount != 1:
+            cursor = conn.execute(
+                f"UPDATE incognito_conversations SET {', '.join(fields)} WHERE id = ? AND user_id = ?",
+                values,
+            )
         conn.commit()
         return cursor.rowcount == 1
 
@@ -652,6 +744,11 @@ def delete_conversation(conversation_id: str, user_id: int) -> bool:
             "DELETE FROM conversations WHERE id = ? AND user_id = ?",
             (conversation_id, user_id),
         )
+        if cursor.rowcount != 1:
+            cursor = conn.execute(
+                "DELETE FROM incognito_conversations WHERE id = ? AND user_id = ?",
+                (conversation_id, user_id),
+            )
         conn.commit()
         return cursor.rowcount == 1
 
@@ -682,15 +779,22 @@ def append_message(
             "SELECT 1 FROM conversations WHERE id = ? AND user_id = ?",
             (conversation_id, user_id),
         ).fetchone()
+        table_prefix = ""
+        if not owner:
+            owner = conn.execute(
+                "SELECT 1 FROM incognito_conversations WHERE id = ? AND user_id = ?",
+                (conversation_id, user_id),
+            ).fetchone()
+            table_prefix = "incognito_" if owner else ""
         if not owner:
             raise ValueError("Conversation not found")
         sequence = conn.execute(
-            "SELECT COALESCE(MAX(sequence_no), 0) + 1 AS next_sequence FROM messages WHERE conversation_id = ?",
+            f"SELECT COALESCE(MAX(sequence_no), 0) + 1 AS next_sequence FROM {table_prefix}messages WHERE conversation_id = ?",
             (conversation_id,),
         ).fetchone()["next_sequence"]
         conn.execute(
-            """
-            INSERT INTO messages
+            f"""
+            INSERT INTO {table_prefix}messages
                 (id, conversation_id, user_id, role, content, sequence_no,
                  correlation_id, run_id, idempotency_key, metadata, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -698,7 +802,7 @@ def append_message(
             (message_id, conversation_id, user_id, role, serialized, sequence,
              correlation_id, run_id, idempotency_key, json.dumps(metadata or {}, default=str), now),
         )
-        conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conversation_id))
+        conn.execute(f"UPDATE {table_prefix}conversations SET updated_at = ? WHERE id = ?", (now, conversation_id))
         conn.commit()
     return {
         "id": message_id, "conversation_id": conversation_id, "user_id": user_id,
@@ -711,8 +815,13 @@ def append_message(
 def get_message_by_idempotency(user_id: int, idempotency_key: str) -> Optional[Dict[str, Any]]:
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT * FROM messages WHERE user_id = ? AND idempotency_key = ?",
-            (user_id, idempotency_key),
+            """
+            SELECT *, 0 AS incognito FROM messages WHERE user_id = ? AND idempotency_key = ?
+            UNION ALL
+            SELECT *, 1 AS incognito FROM incognito_messages WHERE user_id = ? AND idempotency_key = ?
+            LIMIT 1
+            """,
+            (user_id, idempotency_key, user_id, idempotency_key),
         ).fetchone()
         return dict(row) if row else None
 
@@ -728,6 +837,16 @@ def list_messages(conversation_id: str, user_id: int, limit: int = 50, offset: i
             """,
             (conversation_id, user_id, min(max(limit, 1), 100), max(offset, 0)),
         ).fetchall()
+        if not rows:
+            rows = conn.execute(
+                """
+                SELECT m.* FROM incognito_messages m
+                JOIN incognito_conversations c ON c.id = m.conversation_id
+                WHERE m.conversation_id = ? AND c.user_id = ?
+                ORDER BY m.sequence_no LIMIT ? OFFSET ?
+                """,
+                (conversation_id, user_id, min(max(limit, 1), 100), max(offset, 0)),
+            ).fetchall()
         result = []
         for row in rows:
             item = dict(row)
@@ -743,9 +862,14 @@ def create_run(conversation_id: str, user_id: int, input_message_id: str, agent_
     run_id = str(uuid.uuid4())
     now = _utc_now()
     with get_connection() as conn:
+        table_prefix = "" if conn.execute(
+            "SELECT 1 FROM conversations WHERE id = ? AND user_id = ?",
+            (conversation_id, user_id),
+        ).fetchone() else "incognito_"
+        run_table = "incognito_runs" if table_prefix else "agent_runs"
         conn.execute(
-            """
-            INSERT INTO agent_runs
+            f"""
+            INSERT INTO {run_table}
                 (id, conversation_id, user_id, agent_id, status, input_message_id, correlation_id, created_at, updated_at)
             VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?)
             """,
@@ -764,6 +888,14 @@ def update_run(run_id: str, status: str, result_message_id: Optional[str] = None
             """,
             (status, result_message_id, error, _utc_now(), run_id),
         )
+        if cursor.rowcount != 1:
+            cursor = conn.execute(
+                """
+                UPDATE incognito_runs SET status = ?, result_message_id = COALESCE(?, result_message_id),
+                    error = ?, updated_at = ? WHERE id = ?
+                """,
+                (status, result_message_id, error, _utc_now(), run_id),
+            )
         conn.commit()
         return cursor.rowcount == 1
 
@@ -771,6 +903,11 @@ def update_run(run_id: str, status: str, result_message_id: Optional[str] = None
 def get_run(run_id: str, user_id: int) -> Optional[Dict[str, Any]]:
     with get_connection() as conn:
         row = conn.execute("SELECT * FROM agent_runs WHERE id = ? AND user_id = ?", (run_id, user_id)).fetchone()
+        if not row:
+            row = conn.execute(
+                "SELECT * FROM incognito_runs WHERE id = ? AND user_id = ?",
+                (run_id, user_id),
+            ).fetchone()
         return dict(row) if row else None
 
 
@@ -786,6 +923,11 @@ def store_memory(
 ) -> str:
     memory_id = str(uuid.uuid4())
     with get_connection() as conn:
+        if conversation_id and conn.execute(
+            "SELECT 1 FROM incognito_conversations WHERE id = ? AND user_id = ?",
+            (conversation_id, user_id),
+        ).fetchone():
+            raise ValueError("Memories cannot be stored for an incognito conversation")
         conn.execute(
             """
             INSERT INTO memories
