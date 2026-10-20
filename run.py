@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import contextmanager
 from loguru import logger
 import sys
 import signal
@@ -23,18 +24,16 @@ from vira.auth import auth, database
 database.init_db()
 
 
+class SignalAwareServer(uvicorn.Server):
+    """Use the application's asyncio signal handlers instead of Uvicorn's."""
+
+    @contextmanager
+    def capture_signals(self):
+        yield
+
+
 async def main():
     kernel = Kernel(config_path="config.yaml")
-    loop = asyncio.get_running_loop()
-    stop_event = asyncio.Event()
-
-    def signal_handler():
-        logger.info("Shutdown signal received")
-        stop_event.set()
-
-    loop.add_signal_handler(signal.SIGINT, signal_handler)
-    loop.add_signal_handler(signal.SIGTERM, signal_handler)
-
     await kernel.boot()
 
     # Generate new recovery code for admin on each startup (so it appears in logs)
@@ -50,15 +49,22 @@ async def main():
     app = create_app(kernel)
 
     config = uvicorn.Config(app=app, host="0.0.0.0", port=8000, log_level="info")
-    server = uvicorn.Server(config)
-    api_task = asyncio.create_task(server.serve())
+    server = SignalAwareServer(config)
+    loop = asyncio.get_running_loop()
 
-    await stop_event.wait()
-    logger.info("Initiating shutdown...")
-    server.should_exit = True
-    await api_task
-    await kernel.shutdown()
-    logger.info("VIRA shutdown complete")
+    def handle_signal(signum: int) -> None:
+        logger.info("Shutdown signal received")
+        server.handle_exit(signum, None)
+
+    loop.add_signal_handler(signal.SIGINT, handle_signal, signal.SIGINT)
+    loop.add_signal_handler(signal.SIGTERM, handle_signal, signal.SIGTERM)
+
+    try:
+        await server.serve()
+    finally:
+        logger.info("Initiating shutdown...")
+        await kernel.shutdown()
+        logger.info("VIRA shutdown complete")
 
 if __name__ == "__main__":
     asyncio.run(main())
