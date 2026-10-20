@@ -228,6 +228,8 @@ The architecture is intentionally modular and follows microservice principles �
 For a full technical breakdown of the framework — subsystems, event schemas, agent spec, sensor spec, memory schema, workflow schema, and config reference — see the framework documentation:
 
 > 📖 **[VIRA Framework Documentation →](./docs/VIRA_DOCS.md)**
+>
+> 🏗️ **[System Design: HLD, LLD, persistence, and database selection →](./docs/SYSTEM_DESIGN.md)**
 
 The documentation covers:
 - Full architecture diagram (all layers: Kernel, Event Bus, Agent Orchestration, LLM, Memory, Tools)
