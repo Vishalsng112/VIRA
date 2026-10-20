@@ -67,8 +67,15 @@ That means VIRA can be used as a personal assistant today, an agent-development
 framework tomorrow, and eventually a local capability factory for the tasks you
 choose to automate.
 
+### DASHBOARD
+---
 <!-- add image -->
 ![VIRA Interface](./docs/VIRA_UI.png)
+
+### CHAT AGENT
+---
+<!-- add image -->
+![VIRA Interface](./docs/VIRA_WORKSPACE_CHATAGENT.png)
 ---
 # Quick Start
 
