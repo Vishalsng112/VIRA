@@ -110,7 +110,7 @@ llm:
     #   max_tokens: 4096
     - name: "local-llama"
       provider: "ollama"
-      model: "ornith:9b"
+      model: "gemma4:e4b"
       base_url: "http://localhost:11434"
       temperature: 0.8
 

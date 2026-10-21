@@ -141,7 +141,7 @@ stream_manager = EventStreamManager()
 def create_app(kernel: Kernel) -> FastAPI:
     set_kernel(kernel)
 
-    app = FastAPI(title="VIRA Kernel API", version="0.1.0")
+    app = FastAPI(title="VIRA Kernel API", version="0.2.0")
 
     # --- Session Middleware ---
     secret_key = kernel.config_manager.get("auth.secret_key", "default-secret-change-me")
