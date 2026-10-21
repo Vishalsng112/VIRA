@@ -72,6 +72,35 @@ choose to automate.
 <!-- add image -->
 ![VIRA Interface](./docs/VIRA_UI.png)
 
+### Agent sandboxes
+
+On Linux, agents can use the Bubblewrap-backed `sandbox` tool. Each sandbox is
+created below `/AgentWorkspace` by default and exposes only its own writable
+`/workspace` and `/artifacts` directories. Network access is disabled by
+default, and common host data directories are hidden from the sandbox. Install
+Bubblewrap before starting VIRA:
+
+```bash
+sudo apt-get install bubblewrap
+sudo mkdir -p /AgentWorkspace
+sudo chown "$USER":"$USER" /AgentWorkspace
+```
+
+The sandbox tool supports `create`, `execute`, `archive`, `restore`, and
+`delete`, plus controlled `install` for Python packages. Installation creates
+`/workspace/.venv` and temporarily enables network access only for the pip
+installation command; regular sandbox commands remain network-isolated.
+Package specifications are validated and are not allowed to contain shell
+syntax. VIRA uses namespace and mount restrictions rather than a blacklist of
+commands, so commands such as `rm` cannot reach files outside the task
+workspace. Bubblewrap shares the host kernel and is intended for Linux
+development workloads; use a container or microVM for hostile code.
+
+For convenience, `execute` automatically creates a sandbox when `sandbox_id`
+is omitted. Its result includes the generated `sandbox_id` and absolute
+workspace path, so a relative output such as `figure.png` is located under
+`/AgentWorkspace/<sandbox-id>/workspace/figure.png`.
+
 ### CHAT AGENT
 ---
 <!-- add image -->

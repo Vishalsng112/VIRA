@@ -14,6 +14,9 @@ from vira.tools.executor import ToolExecutor
 from vira.tools.registry import ToolRegistry
 from vira.tools.connection import MCPServerConnection
 from vira.tools.base import ToolPermission
+from vira.sandbox import SandboxManager
+from vira.sandbox import SandboxPolicy
+from vira.tools.sandbox import SandboxTool
 from vira.tools.chat_statistics import ChatStatisticsTool
 from vira.auth import database
 
@@ -85,6 +88,17 @@ class AgentOrchestratorModule(ViraModule):
             self.tool_registry = ToolRegistry()
             self.tool_executor = ToolExecutor(self.tool_registry, self._security_manager)
             self.tool_registry.register(ChatStatisticsTool())
+            sandbox_config = self._config_manager.get("sandbox", {}) or {}
+            sandbox_policy = {
+                key: sandbox_config[key]
+                for key in ("network_enabled", "timeout_seconds", "max_processes",
+                            "cpu_seconds", "memory_mb", "allow_package_install")
+                if key in sandbox_config
+            }
+            self.tool_registry.register(SandboxTool(SandboxManager(
+                root=sandbox_config.get("root", "/AgentWorkspace"),
+                default_policy=SandboxPolicy(**sandbox_policy),
+            )))
 
             # --- MCP Connection with enhanced logging ---
             mcp_config = self._config_manager.get("mcp_server", {}) or {}

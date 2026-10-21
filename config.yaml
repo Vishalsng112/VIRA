@@ -19,6 +19,16 @@ event_bus:
 scheduler:
   tick_interval: 1.0
 
+sandbox:
+  backend: bubblewrap
+  root: /AgentWorkspace
+  network_enabled: false
+  timeout_seconds: 900
+  max_processes: 128
+  cpu_seconds: 600
+  memory_mb: 2048
+  allow_package_install: true
+
 security:
   default_permissions:
     - "event.publish.*"

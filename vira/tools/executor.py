@@ -106,7 +106,11 @@ class ToolExecutor:
         permission_allowed = True
 
         try:
-            result = await tool.execute(**kwargs)
+            # Sandbox tools need the caller identity for workspace ownership checks.
+            tool_kwargs = dict(kwargs)
+            if agent_id is not None and tool_name == "sandbox":
+                tool_kwargs["agent_id"] = agent_id
+            result = await tool.execute(**tool_kwargs)
             status = "failed" if getattr(result, "isError", False) else "succeeded"
             self._record(tool_name, kwargs, result, status, permission_allowed, required_action,
                          started, correlation_id=correlation_id, agent_id=agent_id)
