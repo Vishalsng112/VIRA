@@ -88,6 +88,36 @@ def test_tool_auto_creates_sandbox_for_execute():
     assert payload["workspace"].endswith("/workspace")
 
 
+def test_tool_installs_packages_and_normalizes_python_command():
+    class FakeManager:
+        def __init__(self):
+            self.installed = None
+            self.executed = None
+
+        async def create(self, agent_id, run_id=None):
+            return {"sandbox_id": "generated", "workspace": "/AgentWorkspace/generated/workspace"}
+
+        async def install(self, sandbox_id, packages, agent_id):
+            self.installed = (sandbox_id, packages, agent_id)
+            return {"exit_code": 0}
+
+        async def execute(self, sandbox_id, command, agent_id, timeout_seconds=None):
+            self.executed = command
+            return {"exit_code": 0, "stdout": "figure.png", "stderr": ""}
+
+        async def get(self, sandbox_id, agent_id):
+            return {"sandbox_id": sandbox_id, "workspace": "/AgentWorkspace/generated/workspace"}
+
+    manager = FakeManager()
+    result = asyncio.run(SandboxTool(manager).execute(
+        "execute", agent_id="agent-a", packages=["matplotlib"],
+        command=["python -c \"print('figure.png')\""],
+    ))
+    assert manager.installed == ("generated", ["matplotlib"], "agent-a")
+    assert manager.executed[:2] == ["/workspace/.venv/bin/python", "-c"]
+    assert json.loads(result.content[0].text)["sandbox_id"] == "generated"
+
+
 def test_restore_rejects_path_traversal(tmp_path):
     archive = tmp_path / "unsafe.tar.gz"
     outside = tmp_path / "outside.txt"

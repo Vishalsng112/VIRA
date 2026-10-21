@@ -22,7 +22,7 @@ scheduler:
 sandbox:
   backend: bubblewrap
   root: /AgentWorkspace
-  network_enabled: false
+  network_enabled: true
   timeout_seconds: 900
   max_processes: 128
   cpu_seconds: 600

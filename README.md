@@ -101,6 +101,10 @@ is omitted. Its result includes the generated `sandbox_id` and absolute
 workspace path, so a relative output such as `figure.png` is located under
 `/AgentWorkspace/<sandbox-id>/workspace/figure.png`.
 
+`execute` can also receive `packages` in the same request. It installs those
+packages before execution and runs `python` through the workspace virtual
+environment. Both a command string and an argument list are accepted.
+
 ### CHAT AGENT
 ---
 <!-- add image -->
