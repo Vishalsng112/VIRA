@@ -105,6 +105,21 @@ workspace path, so a relative output such as `figure.png` is located under
 packages before execution and runs `python` through the workspace virtual
 environment. Both a command string and an argument list are accepted.
 
+### Autonomous behavior agent
+
+VIRA includes an optional `AutonomousBehaviorAgent` configured in
+[`config.yaml`](./config.yaml). It observes hardware and activity sensor
+events, maintains rolling baselines, stores learned summaries as
+`behavior_pattern` memories, and emits an `autonomous.decision` message after a
+configured number of sustained anomalies. Decisions are rate-limited by a
+cooldown and currently notify/store evidence only; the agent does not execute
+host commands or make irreversible changes.
+
+Tune `window_size`, `anomaly_sigma`, `anomaly_minimum`,
+`consecutive_anomalies`, `decision_cooldown_seconds`, and `learning_interval`
+under the agent configuration. Disable it with `enabled: false` when it is not
+needed.
+
 ### CHAT AGENT
 ---
 <!-- add image -->

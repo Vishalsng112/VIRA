@@ -8,7 +8,7 @@ from mcp.types import CallToolResult, TextContent  # adding for type clarity
 class LoadMonitorAgent(BaseAgent):
     """
     Listens for hardware state events, checks CPU/memory load,
-    and reacts if the system is under or over a threshold.
+    and reacts if the system is over a threshold.
     """
 
     def __init__(self, runtime, 
@@ -20,7 +20,7 @@ class LoadMonitorAgent(BaseAgent):
         self.cpu_threshold = cpu_threshold
         self.memory_threshold = memory_threshold
         self.llm_model = llm_model
-        self._subscribed_events = subscribed_events or ["sensor.hardware.state1"]#["sensor.hardware.state"]
+        self._subscribed_events = subscribed_events or ["sensor.hardware.state1"]
         self._capabilities = [
             AgentCapability(
                 name="monitor_load",
@@ -49,8 +49,10 @@ class LoadMonitorAgent(BaseAgent):
             return {"intent": "idle"}
 
         data = event.data
-        cpu = data.get("cpu_percent", 90.0)
-        memory = data.get("memory_percent", 95.0)
+
+        cpu = data.get('cpu', {}).get('usage_percent', 0)
+        memory = data.get('memory', {}).get('percent', 0)
+
         logger.info(f"{self.name}: CPU={cpu}%, Memory={memory}%")
 
         # Determine if under or over load

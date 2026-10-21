@@ -148,6 +148,18 @@ agents:
       temperature: 0.7
       max_tokens: 1024
 
+  - name: AutonomousBehaviorAgent
+    module: vira.agent.Agents.autonomus_agent
+    class: AutonomousAgent
+    enabled: true
+    config:
+      window_size: 30
+      anomaly_sigma: 2.0
+      anomaly_minimum: 80.0
+      consecutive_anomalies: 3
+      decision_cooldown_seconds: 300
+      learning_interval: 10
+
   # - name: "AGENT_1"
   #   module: "vira.agent.examples.AGENT_MONITOR"
   #   class: "LoadMonitorAgent"
