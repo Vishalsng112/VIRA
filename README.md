@@ -83,16 +83,109 @@ VIRA can be run either **natively** (recommended for development) or using **Doc
 
 ---
 
+## 🚀 The Fastest Way to Run VIRA
+
+> **Goal:** install Python, install Ollama with VIRA's default local model,
+> start VIRA, and open the dashboard.
+>
+> **Time:** about 5–10 minutes, depending on the model download speed.
+
+### ✅ Step 1 — Install Python
+
+Install **Python 3.11 or newer** from [python.org/downloads](https://www.python.org/downloads/).
+During Windows installation, enable **Add Python to PATH**.
+
+Check that Python is ready:
+
+```bash
+python --version
+```
+
+> On some Linux systems, use `python3` instead of `python`.
+
+### ✅ Step 2 — Download VIRA
+
+```bash
+git clone https://github.com/Vishalsng112/VIRA.git
+cd VIRA
+```
+
+### ✅ Step 3 — Install Python dependencies
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+### ✅ Step 4 — Install Ollama and VIRA's default model
+
+VIRA uses **Ollama** for local AI inference and is configured by default to use
+the **`ornith:9b`** model.
+
+| Platform | Install Ollama |
+|---|---|
+| Linux | `curl -fsSL https://ollama.com/install.sh \| sh` |
+| macOS / Windows | Download the installer from [ollama.com/download](https://ollama.com/download) |
+
+After installing Ollama, download the model:
+
+```bash
+ollama pull ornith:9b
+```
+
+If Ollama is not already running, start it in a separate terminal:
+
+```bash
+ollama serve
+```
+
+> **Hardware note:** `ornith:9b` is a local 9B-parameter model. The first
+> download is large and response speed depends on your available RAM/VRAM.
+
+### ✅ Step 5 — Start VIRA
+
+From the VIRA project directory:
+
+```bash
+python run.py
+```
+
+You should see the local server start. Open the dashboard in your browser:
+
+<div align="center">
+
+### 🎉 [Open the VIRA Dashboard →](http://localhost:8000)
+
+`http://localhost:8000`
+
+</div>
+
+On the first visit, create your local admin account. After signing in, open
+`http://localhost:8000/chat` to use the personal AI workspace.
+
+<details>
+<summary>🛠️ Quick troubleshooting</summary>
+
+- **`python` not found:** try `python3`, or reinstall Python with PATH enabled.
+- **`ollama` not found:** restart your terminal after installing Ollama.
+- **Model not found:** run `ollama pull ornith:9b` again.
+- **VIRA cannot connect to Ollama:** make sure `ollama serve` is running.
+- **Port 8000 is busy:** stop the process using the port, then run VIRA again.
+
+</details>
+
+---
+
 ## Prerequisites
 
 Before getting started, ensure the following software is installed:
 
-- Python **3.11**
+- Python **3.11+**
 - Git
 - Pip
 - UV or Conda
 - Docker *(only for Docker installation)*
-- Ollama *(required for local LLM inference)*
+- Ollama with the `ornith:9b` model *(required for local LLM inference)*
 
 ---
 

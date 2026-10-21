@@ -15,7 +15,7 @@ dbus-next==0.2.3
 GPUtil==1.4.0
 cups==0.0.6
 screeninfo==0.8.1
-
+beautifulsoup4==4.15.0
 
 
 #--OUTDATED, now running with more updated packages, but keeping this for reference in case of issues with the new versions.

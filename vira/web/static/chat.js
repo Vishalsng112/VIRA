@@ -2,6 +2,7 @@ const state = {
   conversations: [],
   conversationId: null,
   incognito: false,
+  username: "User",
   sending: false,
 };
 
@@ -38,6 +39,25 @@ function setStatus(message = "", error = false) {
   const element = $("#conversation-status");
   element.textContent = message;
   element.classList.toggle("error", error);
+}
+
+async function loadCurrentUser() {
+  try {
+    const principal = await api("/api/v1/auth/me");
+    if (principal?.username) {
+      state.username = principal.username;
+    }
+  } catch (error) {
+    setStatus(error.message, true);
+  }
+}
+
+function messageAuthor(role) {
+  return role === "assistant" ? "VIRA" : state.username;
+}
+
+function userInitial() {
+  return (state.username.trim().charAt(0) || "U").toUpperCase();
 }
 
 function renderConversations() {
@@ -78,9 +98,9 @@ function renderMessages(messages) {
   $("#welcome-state").hidden = messages.length > 0;
   $("#message-list").innerHTML = messages.map((message) => `
     <article class="message ${message.role === "assistant" ? "assistant" : ""}">
-      <div class="message-avatar">${message.role === "assistant" ? "V" : "You"}</div>
+      <div class="message-avatar">${message.role === "assistant" ? "V" : escapeHtml(userInitial())}</div>
       <div class="message-content">
-        <div class="message-role">${escapeHtml(message.role)}</div>
+        <div class="message-role">${escapeHtml(messageAuthor(message.role))}</div>
         <div>${escapeHtml(message.content)}</div>
       </div>
     </article>
@@ -154,8 +174,8 @@ async function sendMessage(event) {
     $("#welcome-state").hidden = true;
     list.insertAdjacentHTML("beforeend", `
       <article class="message">
-        <div class="message-avatar">You</div>
-        <div class="message-content"><div class="message-role">user</div><div>${escapeHtml(message)}</div></div>
+        <div class="message-avatar">${escapeHtml(userInitial())}</div>
+        <div class="message-content"><div class="message-role">${escapeHtml(state.username)}</div><div>${escapeHtml(message)}</div></div>
       </article>
       <article id="typing-message" class="message assistant">
         <div class="message-avatar">V</div>
@@ -255,4 +275,4 @@ $("#logout-button").addEventListener("click", async () => {
 });
 
 applyTheme(localStorage.getItem("vira-chat-theme") || "dark");
-loadConversations();
+loadCurrentUser().then(() => loadConversations());
