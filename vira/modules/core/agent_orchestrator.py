@@ -191,13 +191,39 @@ class AgentOrchestratorModule(ViraModule):
             # Load agents from config (now tools are already registered)
             agents_cfg = self._config_manager.get("agents", []) or []
             persisted_cfg = database.list_agent_definitions()
+            persisted_by_identity = {}
+            for item in sorted(
+                persisted_cfg,
+                key=lambda definition: definition.get("updated_at", ""),
+                reverse=True,
+            ):
+                identity = (item["name"], item["module"], item["class_name"])
+                persisted_by_identity.setdefault(identity, item)
+
             configured_ids = {cfg.get("agent_id") for cfg in agents_cfg}
             configured_keys = {
                 (cfg.get("module"), cfg.get("class"))
                 for cfg in agents_cfg
             }
-            agents_cfg = agents_cfg + [
-                {
+            persisted_agents = []
+            persisted_keys = set()
+            for item in sorted(
+                persisted_cfg,
+                key=lambda definition: definition.get("updated_at", ""),
+                reverse=True,
+            ):
+                if not item["enabled"]:
+                    continue
+                if item["agent_id"] in configured_ids:
+                    continue
+                if (item["module"], item["class_name"]) in configured_keys:
+                    continue
+
+                identity = (item["name"], item["module"], item["class_name"])
+                if identity in persisted_keys:
+                    continue
+                persisted_keys.add(identity)
+                persisted_agents.append({
                     "name": item["name"],
                     "module": item["module"],
                     "class": item["class_name"],
@@ -206,11 +232,8 @@ class AgentOrchestratorModule(ViraModule):
                     "version": item["version"],
                     "description": item["description"],
                     "config": item["config"],
-                }
-                for item in persisted_cfg
-                if item["agent_id"] not in configured_ids
-                and (item["module"], item["class_name"]) not in configured_keys
-            ]
+                })
+            agents_cfg = agents_cfg + persisted_agents
             allowed_modules = self._config_manager.get(
                 "agent_policy.allowed_modules",
                 ["vira.agent", "vira.modules"],
@@ -238,6 +261,12 @@ class AgentOrchestratorModule(ViraModule):
                     agent = agent_class(self.runtime, **agent_config)
                     if cfg.get("agent_id"):
                         agent.agent_id = cfg["agent_id"]
+                    else:
+                        persisted_definition = persisted_by_identity.get(
+                            (cfg.get("name"), module_name, class_name)
+                        )
+                        if persisted_definition:
+                            agent.agent_id = persisted_definition["agent_id"]
                     if cfg.get("version"):
                         agent.version = cfg["version"]
                     await agent.initialize()
