@@ -1,0 +1,81 @@
+name: Build AppImage
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version number (example: 0.1.0)"
+        required: true
+        default: "0.1.0"
+        type: string
+      build_number:
+        description: "Build number (leave empty to use the automatic run number)"
+        required: false
+        default: ""
+        type: string
+      create_release:
+        description: "Publish a GitHub Release with the AppImage"
+        required: true
+        default: true
+        type: boolean
+      prerelease:
+        description: "Mark the release as pre-release"
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Work out version and build number
+        id: ver
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_BUILD: ${{ inputs.build_number }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          VERSION="${INPUT_VERSION#v}"
+          BUILD="${INPUT_BUILD:-$RUN_NUMBER}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}-build${BUILD}" >> "$GITHUB_OUTPUT"
+          echo "file=VIRA-${VERSION}-build${BUILD}-x86_64.AppImage" >> "$GITHUB_OUTPUT"
+
+      - name: Build AppImage
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          BUILD_NUMBER: ${{ steps.ver.outputs.build }}
+        run: bash packaging/build_appimage.sh
+
+      - name: Rename and checksum
+        env:
+          FILE: ${{ steps.ver.outputs.file }}
+        run: |
+          mkdir -p dist
+          mv build/appimage/VIRA-x86_64.AppImage "dist/$FILE"
+          chmod +x "dist/$FILE"
+          cd dist && sha256sum "$FILE" > "$FILE.sha256"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ver.outputs.file }}
+          path: dist/*
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: ${{ inputs.create_release }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: VIRA ${{ steps.ver.outputs.version }} (build ${{ steps.ver.outputs.build }})
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ inputs.prerelease }}
+          files: dist/*

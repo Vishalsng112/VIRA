@@ -1,0 +1,10 @@
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "$0")")"
+export VIRA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/vira"
+mkdir -p "$VIRA_HOME"
+[ -f "$VIRA_HOME/config.yaml" ] || cp "$HERE/opt/vira/config.yaml" "$VIRA_HOME/config.yaml"
+export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
+ln -sfn "$HERE/opt/vira/vira" "$VIRA_HOME/vira"
+cd "$VIRA_HOME"
+exec "$HERE/opt/python3.11/bin/python3.11" "$HERE/opt/vira/run.py" "$@"

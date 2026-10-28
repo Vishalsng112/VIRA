@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=VIRA
+Exec=AppRun
+Icon=vira
+Categories=Utility;
+Terminal=false
