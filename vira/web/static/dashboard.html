@@ -2,252 +2,283 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VIRA Control Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Overview · VIRA</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="/static/style.css">
   <script>
     (() => {
-      const savedTheme = localStorage.getItem("vira-theme");
-      const systemTheme = window.matchMedia("(prefers-color-scheme: light)").matches
-        ? "light"
-        : "dark";
-      document.documentElement.dataset.theme = savedTheme || systemTheme;
+      let saved = null;
+      try { saved = localStorage.getItem("vira-theme"); } catch (e) {}
+      const system = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.dataset.theme = saved || system;
     })();
   </script>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar" aria-label="Dashboard navigation">
-      <div class="brand">
-        <span class="brand-mark">V</span>
-        <div>
-          <strong>VIRA</strong>
-          <span>Control Center</span>
-        </div>
+
+<!-- Icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-agents" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.4c2.2.7 3.5 2.6 3.5 5.6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.5 3.1 8.2 7.5 9.5 4.4-1.3 7.5-5 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="M12 3 3.5 7.5v9L12 21l8.5-4.5v-9z"/><path d="m3.5 7.5 8.5 4.5 8.5-4.5M12 12v9"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 7 5 5-5 5M12 18h8"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4M4 4v4h4M4 13a8 8 0 0 0 14.5 4M20 20v-4h-4"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9"/></symbol>
+    <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5v.01"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m7 4 13 8-13 8z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  </defs>
+</svg>
+
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="shell">
+
+  <!-- ============ Sidebar ============ -->
+  <aside class="sidebar" id="sidebar" aria-label="Primary">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">V</span>
+      <div class="brand-text">
+        <strong>VIRA</strong>
+        <span>Control center</span>
       </div>
-      <nav class="sidebar-nav">
-        <p class="nav-label">Workspace</p>
-        <a class="nav-item" href="/chat"><span class="nav-icon">✦</span>Chat</a>
-        <a class="nav-item active" href="#overview"><span class="nav-icon">⌂</span>Overview</a>
-        <a class="nav-item" href="#orchestration"><span class="nav-icon">◈</span>Agents</a>
-        <a class="nav-item" href="#security"><span class="nav-icon">◉</span>Security</a>
-        <a class="nav-item" href="#api-console"><span class="nav-icon">⌘</span>API console</a>
-        <p class="nav-label nav-label-spaced">Operations</p>
-        <a class="nav-item" href="#runtime"><span class="nav-icon">▣</span>Runtime data</a>
-        <a class="nav-item" href="#events"><span class="nav-icon">≋</span>Event stream</a>
-      </nav>
-      <div class="sidebar-footer">
-        <div class="workspace-user">
-          <span class="avatar">A</span>
-          <div><strong id="workspace-user-name">Admin workspace</strong><span>Local runtime</span></div>
+    </div>
+
+    <nav class="nav" aria-label="Dashboard sections">
+      <a class="nav-link" href="#overview" data-view="overview"><svg class="icon"><use href="#i-home"/></svg><span>Overview</span></a>
+      <a class="nav-link" href="#agents" data-view="agents"><svg class="icon"><use href="#i-agents"/></svg><span>Agents</span></a>
+      <a class="nav-link" href="#security" data-view="security"><svg class="icon"><use href="#i-shield"/></svg><span>Security</span></a>
+      <a class="nav-link" href="#events" data-view="events"><svg class="icon"><use href="#i-activity"/></svg><span>Events</span></a>
+      <a class="nav-link" href="#modules" data-view="modules"><svg class="icon"><use href="#i-box"/></svg><span>Modules</span></a>
+      <a class="nav-link" href="#developer" data-view="developer"><svg class="icon"><use href="#i-terminal"/></svg><span>Developer tools</span></a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <a class="nav-link nav-chat" href="/chat"><svg class="icon"><use href="#i-chat"/></svg><span>Open chat</span></a>
+      <div class="user">
+        <span class="avatar" id="user-avatar" aria-hidden="true">A</span>
+        <div class="user-text">
+          <strong id="user-name">Admin</strong>
+          <span>Local runtime</span>
         </div>
-        <span class="connection-dot"><i></i> Connected</span>
-        <button id="logout-btn" class="logout-btn" type="button">Log out</button>
+        <button class="icon-btn" id="logout-btn" type="button" aria-label="Log out" title="Log out">
+          <svg class="icon"><use href="#i-logout"/></svg>
+        </button>
       </div>
-    </aside>
-    <main class="dashboard">
-    <header class="topbar" id="overview">
-      <div>
-        <p class="eyebrow">Workspace overview</p>
-        <h1>Good morning, Admin</h1>
-        <p class="subtext">Monitor your VIRA runtime and test connected services.</p>
+    </div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <!-- ============ Main ============ -->
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menu-btn" type="button" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">
+        <svg class="icon"><use href="#i-menu"/></svg>
+      </button>
+      <div class="page-head">
+        <h1 id="page-title">Overview</h1>
+        <p id="page-sub">Live status of your VIRA runtime.</p>
       </div>
       <div class="topbar-actions">
-        <span id="status" class="status">Running</span>
-        <button id="refresh-all-btn" class="btn btn-secondary" type="button">Refresh</button>
-        <button id="theme-toggle" class="btn btn-secondary theme-toggle" type="button" aria-label="Switch to light theme">
-          <span id="theme-icon" aria-hidden="true">☀</span>
-          <span id="theme-label">Light mode</span>
+        <span id="status" class="pill pill-neutral">Checking…</span>
+        <span id="last-updated" class="updated"></span>
+        <button class="icon-btn" id="refresh-btn" type="button" aria-label="Refresh data" title="Refresh">
+          <svg class="icon"><use href="#i-refresh"/></svg>
+        </button>
+        <button class="icon-btn" id="theme-btn" type="button" aria-label="Switch theme" title="Switch theme">
+          <svg class="icon"><use id="theme-icon" href="#i-moon"/></svg>
         </button>
       </div>
     </header>
 
-    <section class="summary-grid">
-      <article class="metric-card">
-        <p class="metric-label">Kernel Health</p>
-        <p id="health-status" class="metric-value">Loading...</p>
-      </article>
-      <article class="metric-card">
-        <p class="metric-label">Modules Running</p>
-        <p class="metric-value"><span id="running-modules">0</span>/<span id="total-modules">0</span></p>
-      </article>
-      <article class="metric-card">
-        <p class="metric-label">Events Received</p>
-        <p id="event-count" class="metric-value">0</p>
-      </article>
-      <article class="metric-card">
-        <p class="metric-label">Event Stream</p>
-        <p id="stream-status" class="metric-value">Connecting...</p>
-      </article>
-    </section>
+    <main class="content" id="main" tabindex="-1">
 
-    <section class="workspace-grid">
-      <div class="column">
-        <section class="panel" id="runtime">
-          <div class="panel-header">
-            <h2>Runtime Snapshot</h2>
-            <span class="panel-note">Auto-refresh every 30s</span>
+      <!-- ===== Overview ===== -->
+      <section class="view" id="view-overview">
+        <div class="banner" id="health-banner" data-state="loading">
+          <svg class="icon banner-icon"><use id="banner-icon" href="#i-info"/></svg>
+          <div>
+            <h2 id="banner-title">Checking system status…</h2>
+            <p id="banner-text">Loading runtime information.</p>
+            <ul id="banner-issues" class="banner-issues" hidden></ul>
           </div>
-          <div class="snapshot-grid">
-            <article>
-              <h3>Health</h3>
-              <pre id="health-json" class="json-box">Loading...</pre>
-            </article>
-            <article>
-              <h3>Metrics</h3>
-              <pre id="metrics-json" class="json-box">Loading...</pre>
-            </article>
-            <article>
-              <h3>Context</h3>
-              <pre id="context-json" class="json-box">Loading...</pre>
-            </article>
-            <article>
-              <h3>Config</h3>
-              <pre id="config-json" class="json-box">Loading...</pre>
-            </article>
-          </div>
-        </section>
+        </div>
 
-        <section class="panel orchestration-panel" id="orchestration">
-          <div class="panel-header">
-            <div>
-              <h2>Agent Orchestration</h2>
-              <p class="panel-subtitle">Lifecycle, routing, scheduling, runtime, and tool visibility.</p>
-            </div>
-            <span id="orchestration-status" class="panel-state">Loading...</span>
-          </div>
-          <div class="orchestration-summary">
-            <article class="orchestration-stat">
-              <span>Agents</span>
-              <strong id="orchestration-agent-count">0</strong>
-            </article>
-            <article class="orchestration-stat">
-              <span>Running agents</span>
-              <strong id="orchestration-running-count">0</strong>
-            </article>
-            <article class="orchestration-stat">
-              <span>Scheduler tasks</span>
-              <strong id="orchestration-task-count">0/0</strong>
-            </article>
-            <article class="orchestration-stat">
-              <span>Registered tools</span>
-              <strong id="orchestration-tool-count">0</strong>
-            </article>
-          </div>
-          <div class="orchestration-grid">
-            <div>
-              <h3>Agents</h3>
-              <div id="orchestration-agents" class="agent-list">
-                <p class="empty-state">Loading agents...</p>
-              </div>
-            </div>
-            <div>
-              <h3>Control Plane</h3>
-              <pre id="orchestration-control" class="json-box">Loading...</pre>
-            </div>
-          </div>
-          <div class="orchestration-tools">
-            <h3>Registered Tools</h3>
-            <div id="orchestration-tools" class="chip-group">
-              <span class="empty-state">Loading tools...</span>
-            </div>
-          </div>
-        </section>
+        <div class="kpis">
+          <article class="kpi">
+            <span class="kpi-label">Kernel</span>
+            <strong class="kpi-value" id="kpi-kernel">—</strong>
+            <span class="kpi-sub" id="kpi-kernel-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Modules running</span>
+            <strong class="kpi-value" id="kpi-modules">—</strong>
+            <span class="kpi-sub" id="kpi-modules-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Active agents</span>
+            <strong class="kpi-value" id="kpi-agents">—</strong>
+            <span class="kpi-sub" id="kpi-agents-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Events this session</span>
+            <strong class="kpi-value" id="kpi-events">0</strong>
+            <span class="kpi-sub" id="kpi-events-sub">Connecting…</span>
+          </article>
+        </div>
 
-        <section class="panel security-panel" id="security">
-          <div class="panel-header">
-            <div>
-              <h2>Security &amp; Trust Center</h2>
-              <p class="panel-subtitle">A live, read-only view of how VIRA authenticates, authorizes, and handles events.</p>
-            </div>
-            <span id="security-status" class="panel-state">Loading...</span>
-          </div>
-          <div class="security-posture" id="security-posture"></div>
-          <div class="security-grid">
-            <div>
-              <h3>Authentication</h3>
-              <pre id="security-authentication" class="json-box">Loading...</pre>
-            </div>
-            <div>
-              <h3>Authorization</h3>
-              <pre id="security-authorization" class="json-box">Loading...</pre>
-            </div>
-            <div>
-              <h3>Event Dispatch Controls</h3>
-              <pre id="security-events" class="json-box">Loading...</pre>
-            </div>
-            <div>
-              <h3>Agent Runtime Controls</h3>
-              <pre id="security-runtime" class="json-box">Loading...</pre>
-            </div>
-          </div>
-          <div class="security-tools">
-            <h3>Tool Permission Policies</h3>
-            <div id="security-tools-list" class="security-tool-list">
-              <p class="empty-state">Loading tool policies...</p>
-            </div>
-          </div>
-          <div class="security-limits">
-            <h3>Current Visibility Limits</h3>
-            <ul id="security-limits-list">
-              <li>Loading...</li>
-            </ul>
-          </div>
-        </section>
+        <div class="grid grid-2">
+          <section class="card">
+            <header class="card-head"><h2>System resources</h2><span class="card-note">Refreshes every 30 s</span></header>
+            <div id="resource-meters" class="meters"><p class="empty">Loading…</p></div>
+            <dl id="resource-facts" class="kv kv-inline"></dl>
+          </section>
 
-        <section class="panel" id="events">
-          <div class="panel-header">
-            <h2>Module Manager</h2>
-          </div>
-          <ul id="module-list" class="module-list">
-            <li>Loading modules...</li>
-          </ul>
-          <div class="row-actions">
-            <input type="text" id="module-path" placeholder="Module path (e.g. vira/modules/core/health_module.py)">
-            <button id="load-module-btn" class="btn" type="button">Load Module</button>
-          </div>
-          <p id="module-action-result" class="inline-result"></p>
-        </section>
-      </div>
-      <div class="column">
-        <section class="panel" id="api-console">
-          <div class="panel-header">
-            <h2>Live Event Stream</h2>
-            <span class="panel-note" id="events-last-updated">Waiting for events...</span>
-          </div>
-          <div id="event-log" class="event-log"></div>
-        </section>
+          <div class="stack">
+            <section class="card">
+              <header class="card-head">
+                <h2>Recent activity</h2>
+                <a class="link" href="#events">View all events</a>
+              </header>
+              <ul id="recent-events" class="recent"><li class="empty">Waiting for events…</li></ul>
+            </section>
 
-        <section class="panel">
-          <div class="panel-header">
-            <h2>API Test Console</h2>
-            <span class="panel-note">Use available endpoints only</span>
+            <section class="card">
+              <header class="card-head"><h2>Core services</h2><span class="card-note" id="services-count"></span></header>
+              <div id="services-list" class="chips"><span class="empty">Loading…</span></div>
+              <dl id="bus-facts" class="kv kv-inline"></dl>
+            </section>
           </div>
-          <form id="api-test-form" class="stack-form">
-            <div class="form-row">
-              <label for="api-method">Method</label>
-              <select id="api-method">
-                <option>GET</option>
-                <option>POST</option>
+        </div>
+      </section>
+
+      <!-- ===== Agents ===== -->
+      <section class="view" id="view-agents" hidden>
+        <div class="card">
+          <header class="card-head"><h2>Orchestrator</h2><span id="agents-status" class="pill pill-neutral">Loading…</span></header>
+          <dl id="agent-facts" class="kv kv-inline"></dl>
+        </div>
+
+        <div>
+          <div class="section-head"><h2>Registered agents</h2><span class="card-note" id="agents-count"></span></div>
+          <div id="agent-grid" class="agent-grid"><p class="empty">Loading agents…</p></div>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card">
+            <header class="card-head"><h2>Registered tools</h2><span class="card-note" id="tools-count"></span></header>
+            <div id="tool-list" class="chips"><span class="empty">Loading…</span></div>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>Runtime</h2></header>
+            <dl id="runtime-facts" class="kv"></dl>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== Security ===== -->
+      <section class="view" id="view-security" hidden>
+        <div class="card">
+          <header class="card-head"><h2>Security checks</h2><span id="security-status" class="pill pill-neutral">Loading…</span></header>
+          <ul id="security-checks" class="checks"><li class="empty">Loading…</li></ul>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card">
+            <header class="card-head"><h2>Permissions</h2></header>
+            <h3>Granted</h3>
+            <div id="perm-granted" class="chips"><span class="empty">None</span></div>
+            <h3>Default for new sessions</h3>
+            <div id="perm-default" class="chips"><span class="empty">None</span></div>
+            <dl id="perm-facts" class="kv"></dl>
+          </section>
+
+          <section class="card">
+            <header class="card-head"><h2>Tool permissions</h2></header>
+            <ul id="tool-policies" class="policy-list"><li class="empty">Loading…</li></ul>
+          </section>
+        </div>
+
+        <section class="card">
+          <header class="card-head"><h2>Things to be aware of</h2></header>
+          <ul id="security-notices" class="notices"><li class="empty">Loading…</li></ul>
+        </section>
+      </section>
+
+      <!-- ===== Events ===== -->
+      <section class="view" id="view-events" hidden>
+        <div class="split">
+          <section class="card card-flush">
+            <div class="toolbar">
+              <span id="stream-pill" class="pill pill-neutral">Connecting…</span>
+              <input id="event-search" type="search" placeholder="Search type or data" aria-label="Search events">
+              <select id="event-filter" aria-label="Filter by priority">
+                <option value="ALL">All priorities</option>
+                <option value="CRITICAL">Critical</option>
+                <option value="HIGH">High</option>
+                <option value="NORMAL">Normal</option>
+                <option value="LOW">Low</option>
               </select>
+              <button class="btn btn-ghost" id="pause-btn" type="button"><svg class="icon"><use id="pause-icon" href="#i-pause"/></svg><span id="pause-label">Pause</span></button>
+              <button class="btn btn-ghost" id="clear-btn" type="button"><svg class="icon"><use href="#i-trash"/></svg><span>Clear</span></button>
             </div>
-            <div class="form-row">
-              <label for="api-endpoint">Endpoint</label>
-              <input id="api-endpoint" type="text" value="/health" required>
+            <div class="event-head" aria-hidden="true"><span>Time</span><span>Event</span><span>Priority</span><span>Data</span></div>
+            <div id="event-log" class="event-log" role="log" aria-live="off"></div>
+            <p id="event-empty" class="empty empty-pad">No events yet. They appear here as they arrive.</p>
+            <footer class="card-foot"><span id="events-meta">Showing 0 events</span></footer>
+          </section>
+
+          <section class="card">
+            <header class="card-head"><h2>Publish a test event</h2></header>
+            <form id="publish-form" class="form">
+              <label for="event-type">Event type</label>
+              <input id="event-type" type="text" value="test.event" required>
+              <label for="event-data">Data (JSON)</label>
+              <textarea id="event-data" rows="4" required>{"message":"Hello VIRA"}</textarea>
+              <button class="btn" type="submit">Publish event</button>
+              <p id="publish-result" class="result" role="status"></p>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== Modules ===== -->
+      <section class="view" id="view-modules" hidden>
+        <div class="split">
+          <section class="card">
+            <header class="card-head"><h2>Loaded modules</h2><span class="card-note" id="module-count"></span></header>
+            <ul id="module-list" class="module-list"><li class="empty">Loading…</li></ul>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>Load a module</h2></header>
+            <div class="form">
+              <label for="module-path">Module path</label>
+              <input id="module-path" type="text" placeholder="vira/modules/core/health_module.py" autocomplete="off">
+              <button class="btn" id="load-module-btn" type="button">Load module</button>
+              <p id="module-action-result" class="result" role="status"></p>
             </div>
-            <div class="form-row">
-              <label for="api-body">Body (JSON)</label>
-              <textarea id="api-body" rows="4" placeholder='{"key":"value"}'></textarea>
-            </div>
-            <div class="row-actions">
-              <button class="btn" type="submit">Send Request</button>
-              <span id="api-response-meta" class="inline-result"></span>
-            </div>
-          </form>
-          <pre id="api-response" class="json-box response-box">Response will appear here.</pre>
-          <div class="chip-group">
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== Developer ===== -->
+      <section class="view" id="view-developer" hidden>
+        <section class="card">
+          <header class="card-head"><h2>API console</h2><span class="card-note">Sensitive values are hidden in responses</span></header>
+          <div class="chips chips-top">
             <button class="chip" type="button" data-endpoint="/health" data-method="GET">GET /health</button>
             <button class="chip" type="button" data-endpoint="/metrics" data-method="GET">GET /metrics</button>
             <button class="chip" type="button" data-endpoint="/modules" data-method="GET">GET /modules</button>
@@ -255,44 +286,40 @@
             <button class="chip" type="button" data-endpoint="/config" data-method="GET">GET /config</button>
             <button class="chip" type="button" data-endpoint="/events/publish" data-method="POST">POST /events/publish</button>
           </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-header">
-            <h2>Publish Test Event</h2>
-          </div>
-          <form id="publish-form" class="stack-form">
+          <form id="api-test-form" class="form">
             <div class="form-row">
-              <label for="event-type">Event Type</label>
-              <input type="text" id="event-type" value="test.event" required>
+              <div class="field field-method">
+                <label for="api-method">Method</label>
+                <select id="api-method"><option>GET</option><option>POST</option></select>
+              </div>
+              <div class="field field-grow">
+                <label for="api-endpoint">Endpoint</label>
+                <input id="api-endpoint" type="text" value="/health" required>
+              </div>
             </div>
-            <div class="form-row">
-              <label for="event-data">Data (JSON)</label>
-              <textarea id="event-data" rows="3" required>{"message":"Hello VIRA"}</textarea>
-            </div>
-            <div class="row-actions">
-              <button class="btn" type="submit">Publish Event</button>
+            <label for="api-body">Body (JSON, POST only)</label>
+            <textarea id="api-body" rows="3" placeholder='{"key":"value"}'></textarea>
+            <div class="form-actions">
+              <button class="btn" type="submit">Send request</button>
+              <span id="api-response-meta" class="result" role="status"></span>
             </div>
           </form>
-          <p id="publish-result" class="inline-result"></p>
+          <pre id="api-response" class="code">Response will appear here.</pre>
         </section>
 
-        <section class="panel muted-panel">
-          <h2>Planned Features</h2>
-          <p>The following surfaces are intentionally deferred until APIs are added:</p>
-          <ul>
-            <li>Agent orchestration timeline explorer</li>
-            <li>Sensor-specific drill-down and controls</li>
-            <li>Historical analytics and trend comparisons</li>
-            <li>Policy and permission management console</li>
-          </ul>
-          <p class="panel-note">This dashboard is finalized for all currently available backend APIs.</p>
+        <section class="card">
+          <header class="card-head"><h2>Raw runtime data</h2><span class="card-note">For debugging</span></header>
+          <details class="raw"><summary>Health</summary><pre id="raw-health" class="code">Loading…</pre></details>
+          <details class="raw"><summary>Metrics</summary><pre id="raw-metrics" class="code">Loading…</pre></details>
+          <details class="raw"><summary>Context</summary><pre id="raw-context" class="code">Loading…</pre></details>
+          <details class="raw"><summary>Config</summary><pre id="raw-config" class="code">Loading…</pre></details>
         </section>
-      </div>
-    </section>
+      </section>
+
     </main>
   </div>
+</div>
 
-  <script src="/static/app.js"></script>
+<script src="/static/app.js"></script>
 </body>
 </html>
