@@ -14,6 +14,32 @@
 
 </div>
 
+> ### 🧪 Want to see the current build? Try the AppImage
+>
+> The quickest way to test VIRA is the prebuilt **AppImage** (Linux x86_64) — no
+> clone, no virtualenv.
+>
+> 1. Download the latest `VIRA-<version>-build<N>-x86_64.AppImage` (and its `.sha256`)
+>    from the **[Releases page](https://github.com/Vishalsng112/VIRA/releases)**.
+>    Each build is also attached to the *Build AppImage* GitHub Actions run.
+> 2. Run it:
+>
+>    ```bash
+>    sha256sum -c VIRA-*-x86_64.AppImage.sha256   # optional integrity check
+>    chmod +x VIRA-*-x86_64.AppImage
+>    ./VIRA-*-x86_64.AppImage
+>    ```
+> 3. Open <http://localhost:8000>, create the admin account, then use `/chat`.
+>
+> Your data and `config.yaml` live in `~/.local/share/vira` (not inside the
+> AppImage), so they survive upgrades. You still need
+> [Ollama](https://ollama.com/download) running with the default model
+> (`ollama pull ornith:9b`) for chat. AppImage builds are *pre-releases* of the
+> current development state; if a build predates a feature described below, build
+> from source ([Quick Start](#quick-start)) instead.
+
+---
+
 ---
 
 ## Table of Contents
@@ -22,6 +48,7 @@
 - [Why VIRA?](#why-vira)
 - [What VIRA can do today](#what-vira-can-do-today)
 - [Quick Start](#quick-start)
+- [Multi-user and multi-device](#multi-user-and-multi-device)
 - [Core Principles](#core-principles)
 - [How it works](#how-it-works)
 - [Architecture](#architecture)
@@ -375,6 +402,82 @@ The MCP tool surface includes a permissioned web-browsing tool so agents can
 retrieve current public information when a question requires research.
 
 ---
+## Multi-user and multi-device
+
+One VIRA **server** can now serve several users and several **endpoint devices**.
+The server owns identity, authorization, persistence and orchestration; devices
+(laptops, phones, other machines) are clients that register, authenticate with
+their own revocable credential and send events. **The server itself is also an
+endpoint device**: it registers itself at startup, and its built-in sensors go
+through exactly the same validated ingestion path as remote devices.
+
+| Concept | Summary |
+|---|---|
+| Users | Created by an administrator (`admin` / `user` roles); can be disabled or soft-deleted; the last active admin is protected. |
+| Devices | Registered by a signed-in user; lifecycle `pending → active → revoked → retired`. |
+| Device credentials | Separate from user sessions, shown **once**, stored hashed, scoped, expiring, rotatable and revocable without touching the user's password or other devices. |
+| Access grants | Many-to-many user ↔ device with `owner`, `operator` or `viewer` roles. Users only see devices they were granted. |
+| Events | Server-resolved `device_id`, source component, client and server timestamps, idempotent by `event_id`, allow-listed types, per-class retention. |
+| Streams | `/events/stream` is filtered per user and per device grant; viewers receive metadata without payloads. |
+
+### First steps
+
+```bash
+# 1. Open http://localhost:8000 and create the first admin (bootstrap works only once).
+
+# 2. Sign in and create another user (admin only)
+curl -s -c jar -H 'Content-Type: application/json' \
+     -d '{"username":"admin","password":"..."}' http://localhost:8000/api/v1/auth/login
+curl -s -b jar -H 'Content-Type: application/json' \
+     -d '{"username":"alice","role":"user"}' http://localhost:8000/api/v1/admin/users
+# -> returns a one-time temporary password and recovery code
+
+# 3. On another machine, enrol it as a device and start reporting
+python -m vira.clients.endpoint_agent enroll --server http://SERVER:8000 \
+       --username alice --name "Alice laptop"
+python -m vira.clients.endpoint_agent run
+```
+
+The reference client stores its credential in a `0600` file, queues events in a
+local SQLite file while offline and retries with backoff. If the device is
+revoked on the server, the client stops.
+
+### API at a glance (`/api/v1`)
+
+| Area | Endpoints |
+|---|---|
+| Auth | `POST /auth/bootstrap`, `/auth/login`, `/auth/logout`, `GET /auth/me`, `POST /auth/password/change`, `/auth/sessions/revoke-all` |
+| Admin | `GET/POST /admin/users`, `GET/PATCH/DELETE /admin/users/{id}`, `GET /admin/devices`, `GET /admin/audit`, `GET /ops/devices/health` |
+| Devices (user) | `POST/GET /devices`, `GET/PATCH /devices/{id}`, `POST /devices/{id}/credentials:rotate`, `/revoke`, `/retire`, `POST /devices/{id}/access`, `DELETE /devices/{id}/access/{user_id}`, `GET /devices/{id}/events`, `GET /devices/{id}/state` |
+| Devices (credential) | `POST /devices/{id}/heartbeat`, `POST /devices/{id}/events:batch` |
+| Chat | `POST /conversations/{id}/messages` (optional `device_id`), `GET /conversations`, `GET /runs/{id}`, `/memories` |
+| Streaming | `GET /events/stream` (Server-Sent Events, access-filtered) |
+
+Errors use `{"detail": ..., "error": {"code", "message", "correlation_id"}}`; every
+response carries `X-Correlation-ID`. The older unversioned routes (`/chat`,
+`/conversations`, …) remain as legacy adapters used by the bundled web UI; new
+clients should use `/api/v1`. Kernel, config, metrics, module and agent-control
+routes are **administrator-only**.
+
+### Configuration
+
+The `devices:` section of [`config.yaml`](./config.yaml) controls credential
+lifetime, whether the server device is shared with all users (`share_with_all_users`),
+batch/payload limits, rate limits and the event-type allow-list with per-class
+retention. Telemetry payloads (e.g. clipboard content) are not kept at rest by default.
+Existing `config.yaml` files without this section keep working with the defaults.
+
+### Security notes
+
+- Set a random `auth.secret_key` and put VIRA behind **TLS** before exposing it to remote devices.
+- A device can never claim a user identity: `device_id` comes from its credential, and `user.*`, `agent.*`, `command.*`, `kernel.*` and `system.*` event types are always rejected.
+- Upgrading an existing database is automatic and idempotent (versioned migrations); existing users keep working and receive a public id.
+
+> Design: [`VIRA_MULTI_DEVICE_DESIGN.md`](./docs/VIRA_MULTI_DEVICE_DESIGN.md) ·
+> What was implemented and what is still open:
+> [`docs/MULTI_DEVICE_IMPLEMENTATION.md`](./docs/MULTI_DEVICE_IMPLEMENTATION.md)
+
+---
 ## Why VIRA?
 
 Most AI assistants begin with a blank prompt. They do not continuously understand your environment, retain structured personal context, or provide a safe runtime for extending their capabilities.
@@ -428,7 +531,8 @@ The long-term vision is a personal AI system that can understand what you need, 
 - Inspect kernel health, sensors, context, metrics, agents, tools, event lag, and outbox status.
 - Persist durable state changes through an SQLite outbox.
 - Retry failed durable event publication.
-- Use an authenticated local dashboard and API.
+- Use an authenticated dashboard and API (administrators) and the chat workspace (all users).
+- Serve multiple users and devices from one server, with per-device provenance and access-filtered event streams.
 
 ---
 
@@ -490,6 +594,7 @@ The documentation covers:
 ```
 ├── config.yaml
 ├── docs/
+│   ├── MULTI_DEVICE_IMPLEMENTATION.md ← Multi-user / multi-device implementation notes
 │   ├── VIRA_DOCS.md          ← Framework documentation & schemas
 │   └── VIRA_architecture.svg ← Architecture diagram
 ├── CONTRIBUTING.md           ← Contribution guide
@@ -506,8 +611,10 @@ The documentation covers:
     ├── tools/                ← ToolExecutor, ToolRegistry, MCP server
     ├── modules/core/         ← Built-in kernel modules
     ├── plugins/              ← Drop-in plugin directory
-    ├── api/                  ← FastAPI app
-    └── auth/                 ← Session auth
+    ├── api/                  ← FastAPI app, device/admin routes, access-filtered SSE
+    ├── auth/                 ← Sessions, typed principals, user admin, migrations
+    ├── devices/              ← Device registry, credentials, access grants, event ingestion
+    └── clients/              ← Reference endpoint client (enrol, queue, send)
 ```
 
 ---
@@ -524,7 +631,9 @@ The core runtime is functional end-to-end. VIRA now has the major primitives req
 - Scoped memory, expiry, search, deletion, and bounded context assembly — functional
 - Agent lifecycle, capabilities, event subscriptions, versioned definitions, and allow-listing — functional
 - Local and MCP tool registry with permission checks and durable tool-call auditing — functional
-- Authenticated dashboard and operations APIs — functional
+- Authenticated dashboard and operations APIs — functional (administrators only)
+- Multi-user accounts, device registration, device credentials, access grants, and device event ingestion — implemented; the server registers itself as a device
+- Not yet: PostgreSQL/broker adapters, web UI for user and device administration, Android/iOS clients, TLS/CSRF hardening (see the implementation notes)
 - High-frequency sensor collection — primarily polling today; OS-native event adapters remain a goal
 - Linux is the primary supported development platform today
 
