@@ -1,22 +1,21 @@
 import bcrypt
 import secrets
 import string
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
 from . import database
+from .principals import (  # noqa: F401  (re-exported)
+    ROLE_ADMIN,
+    ROLE_USER,
+    VALID_ROLES,
+    DevicePrincipal,
+    ServicePrincipal,
+    UserPrincipal,
+)
 
-
-@dataclass(frozen=True)
-class Principal:
-    user_id: int
-    username: str
-    roles: tuple[str, ...]
-    session_id: str
-
-    def has_role(self, role: str) -> bool:
-        return role in self.roles
+# Backwards-compatible name used by existing routes and tools.
+Principal = UserPrincipal
 
 
 def hash_password(password: str) -> str:
@@ -41,20 +40,24 @@ def verify_recovery_code(code: str, code_hash: str) -> bool:
 
 
 def admin_exists() -> bool:
-    return database.count_users() > 0
+    return database.count_admins() > 0
 
 
 def create_admin(username: str, password: str) -> str:
-    if admin_exists():
-        raise RuntimeError("Admin already exists")
+    """Bootstrap the first administrator; atomic and only once (FR-ID-01)."""
     recovery_code = generate_recovery_code()
-    database.create_user(username.strip(), hash_password(password), hash_recovery_code(recovery_code))
+    database.create_first_admin(
+        username.strip(), hash_password(password), hash_recovery_code(recovery_code)
+    )
     return recovery_code
 
 
 def authenticate_user_record(username: str, password: str) -> Optional[dict]:
     user = database.get_user_by_username(username)
     if not user or not verify_password(password, user["password_hash"]):
+        return None
+    # Disabled / deleted accounts can never create sessions (state machine 9.4).
+    if user.get("status", "active") != "active":
         return None
     return user
 
@@ -75,6 +78,8 @@ def resolve_principal(session_id: Optional[str]) -> Optional[Principal]:
         return None
     session = database.get_session(session_id)
     if not session or session["revoked_at"]:
+        return None
+    if session.get("user_status", "active") != "active":
         return None
     try:
         expires_at = datetime.fromisoformat(session["expires_at"])
@@ -107,6 +112,7 @@ def resolve_principal(session_id: Optional[str]) -> Optional[Principal]:
         username=session["username"],
         roles=(session["role"],),
         session_id=session_id,
+        public_id=session.get("user_public_id") or "",
     )
 
 
@@ -121,8 +127,22 @@ def revoke_session(session_id: str, user_id: Optional[int] = None) -> None:
     )
 
 
+def change_password(user_id: int, current_password: str, new_password: str) -> bool:
+    """Change a password and revoke every session (FR-ID-04)."""
+    user = database.get_user_by_id(user_id)
+    if not user or not verify_password(current_password, user["password_hash"]):
+        database.record_auth_audit("password_change", "password.change", False, user_id=user_id)
+        return False
+    database.update_password(user["username"], hash_password(new_password))
+    database.revoke_user_sessions(user_id)
+    database.record_auth_audit("password_change", "password.change", True, user_id=user_id)
+    return True
+
+
 def reset_password(username: str, recovery_code: str, new_password: str) -> bool:
     user = database.get_user_by_username(username)
+    if user and user.get("status", "active") != "active":
+        return False
     if not user or not verify_recovery_code(recovery_code, user["recovery_code_hash"]):
         if user:
             database.record_auth_audit(

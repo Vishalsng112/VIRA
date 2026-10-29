@@ -53,6 +53,8 @@ class AutonomousAgent(BaseAgent):
         self.consecutive_anomalies = consecutive_anomalies
         self.decision_cooldown_seconds = decision_cooldown_seconds
         self.learning_interval = learning_interval
+        # State is kept per (device, metric): one device's load must never
+        # distort another device's baseline.
         self._samples: Dict[str, deque[float]] = defaultdict(
             lambda: deque(maxlen=self.window_size)
         )
@@ -76,30 +78,34 @@ class AutonomousAgent(BaseAgent):
         event = kwargs.get("event")
         if event is None or not isinstance(event.data, dict):
             return {"decision": "ignore", "reason": "event has no structured data"}
+        device_id = getattr(event, "device_id", None) or "unknown-device"
         metrics = self._extract_metrics(event.type, event.data)
         if not metrics:
             return {"decision": "ignore", "reason": "no numeric metrics", "event_type": event.type}
 
         anomalies = []
         for metric, value in metrics.items():
-            history = self._samples[metric]
+            key = f"{device_id}:{metric}"
+            history = self._samples[key]
             baseline = self._baseline(history)
             history.append(value)
             if baseline and self._is_anomaly(value, baseline):
-                self._anomaly_counts[metric] += 1
+                self._anomaly_counts[key] += 1
                 anomalies.append({
+                    "device_id": device_id,
                     "metric": metric,
                     "value": value,
                     "baseline": round(baseline["mean"], 3),
                     "deviation": round(value - baseline["mean"], 3),
-                    "consecutive_count": self._anomaly_counts[metric],
+                    "consecutive_count": self._anomaly_counts[key],
                 })
             else:
-                self._anomaly_counts[metric] = 0
+                self._anomaly_counts[key] = 0
         self._observations += 1
         return {
             "decision": "evaluate",
             "event_type": event.type,
+            "device_id": device_id,
             "metrics": metrics,
             "anomalies": anomalies,
             "observation_count": self._observations,
@@ -165,33 +171,41 @@ class AutonomousAgent(BaseAgent):
         return value >= threshold
 
     async def _store_pattern(self) -> Dict[str, Any]:
-        summary = {
-            metric: {
+        """Persist learned baselines, one memory per device (device-scoped ACL)."""
+        per_device: Dict[str, Dict[str, Any]] = defaultdict(dict)
+        for key, history in self._samples.items():
+            if not history:
+                continue
+            device_id, _, metric = key.partition(":")
+            per_device[device_id][metric] = {
                 "samples": len(history),
                 "mean": round(mean(history), 3),
                 "min": round(min(history), 3),
                 "max": round(max(history), 3),
             }
-            for metric, history in self._samples.items()
-            if history
-        }
-        await self.runtime.memory_operation(
-            self.agent_id,
-            "store",
-            content=f"Learned behavior pattern after {self._observations} observations: {summary}",
-            memory_type="behavior_pattern",
-            metadata={"type": "learned_behavior", "observations": self._observations},
-            importance=0.3,
-        )
-        return {"learned_pattern": summary}
+        for device_id, summary in per_device.items():
+            await self.runtime.memory_operation(
+                self.agent_id,
+                "store",
+                content=f"Learned behavior pattern after {self._observations} observations: {summary}",
+                memory_type="behavior_pattern",
+                metadata={"type": "learned_behavior", "observations": self._observations,
+                          "device_id": device_id},
+                importance=0.3,
+                device_id=device_id if device_id != "unknown-device" else None,
+            )
+        return {"learned_pattern": dict(per_device)}
 
     async def _make_decision(self, anomaly: Dict[str, Any], event: Any) -> Optional[Dict[str, Any]]:
         metric = anomaly["metric"]
+        device_id = anomaly.get("device_id")
+        cooldown_key = f"{device_id}:{metric}"
         now = time.monotonic()
-        if now - self._last_decisions.get(metric, 0.0) < self.decision_cooldown_seconds:
+        if now - self._last_decisions.get(cooldown_key, 0.0) < self.decision_cooldown_seconds:
             return None
-        self._last_decisions[metric] = now
+        self._last_decisions[cooldown_key] = now
         decision = {
+            "device_id": device_id,
             "decision": "notify",
             "reason": "sustained_behavior_anomaly",
             "metric": metric,
@@ -205,8 +219,9 @@ class AutonomousAgent(BaseAgent):
             "store",
             content=f"Autonomous decision: {decision}",
             memory_type="autonomous_decision",
-            metadata={"type": "behavior_anomaly", "metric": metric},
+            metadata={"type": "behavior_anomaly", "metric": metric, "device_id": device_id},
             importance=0.8,
+            device_id=device_id if device_id != "unknown-device" else None,
         )
         await self.send_event("autonomous.decision", decision)
         logger.warning("Autonomous behavior decision: {}", decision)

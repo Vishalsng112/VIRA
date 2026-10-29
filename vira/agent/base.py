@@ -31,6 +31,12 @@ class BaseAgent(ABC):
         self._subscribed_events: List[str] = []
         self._interval_seconds: Optional[float] = None
         self._context: Optional[AgentContext] = None
+        self._active = 0
+
+    # Re-entrant agents keep no per-request instance state and may handle many
+    # events concurrently (e.g. chat for several users).  All other agents are
+    # processed one event at a time through a per-agent queue.
+    reentrant: bool = False
 
     @property
     def capabilities(self) -> List[AgentCapability]:
@@ -75,7 +81,9 @@ class BaseAgent(ABC):
         Event‑driven entry point. 
         Usually calls think/plan/act/reflect based on event.
         """
-        self.state = AgentState.RUNNING
+        self._active += 1
+        if not self.reentrant:
+            self.state = AgentState.RUNNING
         try:
             # Refresh context
             self._context = await self.runtime.get_context(self.agent_id)
@@ -85,7 +93,8 @@ class BaseAgent(ABC):
             self.state = AgentState.FAILED
             raise
         finally:
-            if self.state != AgentState.FAILED:
+            self._active -= 1
+            if self.state != AgentState.FAILED and (not self.reentrant or self._active == 0):
                 self.state = AgentState.READY
 
     async def run(self, input_data: Dict = None):

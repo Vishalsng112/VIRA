@@ -11,6 +11,9 @@ from vira.kernel.event_bus import Event
 
 
 class ChatAgent(BaseAgent):
+    # Keeps no per-request instance state, so chats of different users/devices
+    # run concurrently without leaking identity between requests.
+    reentrant = True
     _conversation_histories: Dict[str, List[Dict]] = {}
 
     def __init__(
@@ -103,12 +106,6 @@ class ChatAgent(BaseAgent):
             history = self._conversation_histories.get(conversation_id, [])
         logger.debug(f"[{self.name}] Retrieved {len(history)} messages for {conversation_id}")
 
-        # Store for later
-        self._current_conversation_id = conversation_id
-        self._current_user_message = message
-        self._current_history = history
-        self._current_user_id = event.data.get("user_id")
-
         return {
             "conversation_id": conversation_id,
             "user_message": message,
@@ -128,6 +125,8 @@ class ChatAgent(BaseAgent):
     async def act(self, plan: List[Dict], **kwargs) -> Any:
         logger.debug(f"[{self.name}] Acting...")
 
+        event = kwargs.get("event")
+        user_id = event.data.get("user_id") if event is not None else None
         # Find the LLM step (there should be only one)
         llm_step = next((s for s in plan if s.get("step") == "llm_generate"), None)
         if not llm_step:
@@ -178,7 +177,7 @@ class ChatAgent(BaseAgent):
                 tool_result = await self.runtime.use_tool(
                     self.agent_id,
                     tool_name,
-                    user_id=self._current_user_id,
+                    user_id=user_id,
                     **{key: value for key, value in params.items() if key != "user_id"},
                 )
                 print(f"[TOOL RESULT] {tool_result}")
@@ -240,9 +239,11 @@ class ChatAgent(BaseAgent):
 
     async def reflect(self, result: Any, **kwargs) -> Dict:
         logger.debug(f"[{self.name}] Reflecting...")
-        conversation_id = self._current_conversation_id
-        user_message = self._current_user_message
-        history = self._current_history
+        event = kwargs.get("event")
+        data = event.data
+        conversation_id = data.get("conversation_id") or str(uuid.uuid4())
+        user_message = data.get("message")
+        history = list(data.get("history") or [])
 
         response_text = result if isinstance(result, str) else str(result)
 
@@ -256,6 +257,9 @@ class ChatAgent(BaseAgent):
                 "conversation_id": conversation_id,
                 "response": response_text,
                 "original_message": user_message,
+                # Routing only: lets the stream deliver this to the requester alone.
+                "user_id": data.get("user_id"),
+                "run_id": data.get("run_id"),
             },
             target_agent_ids=None
         )

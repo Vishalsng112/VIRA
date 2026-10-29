@@ -13,6 +13,31 @@ auth:
   session_max_age: 86400  # 24 hours
   database_url: "sqlite:///data/vira.sqlite3"
 
+# --- Multi-user / multi-device platform -------------------------------------
+# The VIRA server is itself registered as an endpoint device ("server-local");
+# its sensors below publish through the same ingestion path as remote devices.
+devices:
+  credential_ttl_days: 365        # device credentials expire; rotate before then
+  local:
+    display_name: null            # default: "VIRA Server (<hostname>)"
+    share_with_all_users: false   # true: every active user gets viewer access to the server device
+  event_policy:
+    max_batch_size: 100
+    max_event_payload_bytes: 65536
+    max_batch_bytes: 1048576
+    max_future_skew_seconds: 300
+    max_past_age_days: 30
+    events_per_minute: 1200       # per device
+    heartbeats_per_minute: 30     # per device
+    # Allow-list; first match wins. Types not matched here are rejected, and
+    # user./agent./command./kernel./system./autonomous./admin. are always denied.
+    types:
+      - {pattern: "sensor.clipboard.*",  class: telemetry, persist_payload: false, keep_latest: false, retention_hours: 24}
+      - {pattern: "sensor.*",            class: telemetry, persist_payload: false, keep_latest: true,  retention_hours: 24}
+      - {pattern: "device.telemetry.*",  class: telemetry, persist_payload: false, keep_latest: true,  retention_hours: 24}
+      - {pattern: "file.*",              class: activity,  persist_payload: true,  keep_latest: false, retention_hours: 168}
+      - {pattern: "device.*",            class: domain,    persist_payload: true,  keep_latest: false, retention_hours: 720}
+
 event_bus:
   max_queue_size: 10000
 

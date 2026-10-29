@@ -62,17 +62,27 @@ class EventRouter:
             data=event.data,
             sender_agent_id=None,
             target_agent_ids=None,
-            exclude_sender=False
+            exclude_sender=False,
+            event_id=event.event_id,
+            correlation_id=event.correlation_id,
+            device_id=event.device_id,
+            actor_user_id=event.actor_user_id,
+            source_component=event.source_component,
         )
         await self._route_message(msg)
 
     async def _route_agent_message(self, msg: AgentMessage):
         # is the Agent has sent this message
         if msg.type == "agent.response":
+            # Agent responses are addressed to the requesting user only.  They carry
+            # no device_id so device sharing never exposes another user's chat.
+            owner = msg.data.get("user_id") if isinstance(msg.data, dict) else None
             kernel_event = Event(
                 type=msg.type,
                 data=msg.data,
                 source=msg.sender_agent_id or "agent",
+                actor_user_id=owner if isinstance(owner, int) else msg.actor_user_id,
+                correlation_id=msg.correlation_id or str(__import__("uuid").uuid4()),
             )
             await self._event_bus.publish(kernel_event)
             logger.debug(f"Forwarded agent.response to kernel bus: {kernel_event.data}")
@@ -106,7 +116,10 @@ class EventRouter:
             agent = await self._registry.get_instance(meta.agent_id)
             if not agent:
                 continue
-            if agent.state not in (AgentState.READY, AgentState.WAITING):
+            # RUNNING agents are not skipped any more: the scheduler queues the
+            # event (or runs it concurrently for re-entrant agents) instead of
+            # silently dropping other users'/devices' events.
+            if agent.state not in (AgentState.READY, AgentState.WAITING, AgentState.RUNNING):
                 continue
             if not await agent.can_handle(msg):   # we need to adapt can_handle to accept msg
                 continue

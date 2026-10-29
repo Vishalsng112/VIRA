@@ -19,6 +19,14 @@ from .event_pipeline import EventPipeline
 from .event_dispatcher import EventDispatcher
 from .outbox import OutboxPublisher
 from vira.auth import database
+from vira.devices import (
+    DeviceService,
+    EventIngestionService,
+    EventPolicy,
+    LocalDeviceDispatcher,
+    LocalDeviceManager,
+)
+from vira.devices import store as device_store
 # from .agent_manager import AgentManager
 
 # logger = logging.getLogger(__name__)
@@ -51,6 +59,15 @@ class Kernel:
         self.context_manager = ContextManager()
         self.event_pipeline = EventPipeline()
         self.outbox_publisher = OutboxPublisher(self.event_bus)
+
+        # Multi-device platform services (created in boot() once config is loaded).
+        # The server itself is registered as an endpoint device: its sensors
+        # publish through the same ingestion path as remote devices.
+        self.device_service: Optional[DeviceService] = None
+        self.ingestion_service: Optional[EventIngestionService] = None
+        self.local_device: Optional[LocalDeviceManager] = None
+        self.local_dispatcher: Optional[LocalDeviceDispatcher] = None
+        self._maintenance_task: Optional[asyncio.Task] = None
 
         self._running = False
         self._state = "INIT"
@@ -159,6 +176,9 @@ class Kernel:
             metrics_manager=self.metrics_manager,
         )
 
+        # Device platform: policy, services, and the server-as-device record.
+        self._init_device_platform()
+
         # 2. Start Event Bus
         self._state = "STARTING_EVENT_BUS"
         await self.event_bus.start()
@@ -246,6 +266,7 @@ class Kernel:
                 await self._start_sensor(sensor_cfg)
         logger.info("✓ Sensors started")
         await self.outbox_publisher.start()
+        self._maintenance_task = asyncio.create_task(self._device_maintenance())
 
         # 10. Enter RUNNING State
         self._state = "RUNNING"
@@ -268,6 +289,60 @@ class Kernel:
                 logger.info(f"✅ Agent orchestrator assigned: {module.name}")
                 break        
 
+    # ------------------------------------------------------------------ #
+    # Multi-device platform
+    # ------------------------------------------------------------------ #
+    def _init_device_platform(self) -> None:
+        cfg = self.config_manager.get
+        policy = EventPolicy.from_config(cfg("devices.event_policy", {}))
+        ttl = cfg("devices.credential_ttl_days", 365)
+        self.device_service = DeviceService(policy, credential_ttl_days=int(ttl) if ttl else None)
+        self.ingestion_service = EventIngestionService(
+            policy,
+            dispatch=self._dispatch_device_envelope,
+            kick_outbox=self.outbox_publisher.publish_pending,
+        )
+        self.local_device = LocalDeviceManager(
+            display_name=cfg("devices.local.display_name"),
+            share_with_all_users=bool(cfg("devices.local.share_with_all_users", False)),
+        )
+        device_id = self.local_device.ensure()
+        self.local_dispatcher = LocalDeviceDispatcher(self.local_device, self.ingestion_service)
+        self.service_registry.register("device_service", self.device_service)
+        self.service_registry.register("ingestion_service", self.ingestion_service)
+        logger.info("✓ Server registered as endpoint device {}", device_id)
+
+    async def _dispatch_device_envelope(self, envelope: Dict[str, Any]) -> None:
+        """Deliver an already-persisted, non-durable device event to in-process consumers."""
+        payload = self.ingestion_service.to_event_dict(envelope)
+        event = Event.from_dict(payload)
+        try:
+            event = await self.event_pipeline.process(event)
+        except Exception as exc:  # pipeline problems must not drop an accepted event
+            logger.error("Event pipeline failed for {}: {}", event.type, exc)
+        await self.event_bus.publish(event)
+        self.metrics_manager.record_event_published(event.type, event.source)
+
+    async def _device_maintenance(self) -> None:
+        """Server-device heartbeat, access sync and telemetry retention."""
+        ticks = 0
+        while True:
+            try:
+                await asyncio.to_thread(
+                    self.local_device.heartbeat, sorted(s.name for s in self._sensors)
+                )
+                await asyncio.to_thread(self.local_device.sync_access)
+                if ticks % 20 == 0:  # ~ every 10 minutes
+                    purged = await asyncio.to_thread(device_store.purge_expired)
+                    if purged:
+                        logger.info("Purged {} expired device events", purged)
+                ticks += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.error("Device maintenance failed: {}", exc)
+            await asyncio.sleep(30)
+
     async def _start_sensor(self, sensor_config: Dict[str, Any]) -> None:
         """Start a sensor using the registry."""
         sensor_name = sensor_config.get("name")
@@ -282,10 +357,12 @@ class Kernel:
 
         try:
             # Create sensor instance using the registered factory
+            # Server-side sensors publish as the server-local device, through the
+            # same validated ingestion path as remote endpoints.
             sensor = factory(
                 sensor_config,
                 self.event_bus,
-                self.dispatcher,
+                self.local_dispatcher or self.dispatcher,
                 self.metrics_manager
             )
             await sensor.start()
@@ -299,6 +376,13 @@ class Kernel:
         logger.info("=== Shutting down VIRA Kernel ===")
         self._running = False
         self._state = "SHUTDOWN"
+
+        if self._maintenance_task:
+            self._maintenance_task.cancel()
+            try:
+                await self._maintenance_task
+            except asyncio.CancelledError:
+                pass
 
         # Stop sensors
         for sensor in self._sensors:
@@ -376,6 +460,10 @@ class Kernel:
             },
             "sensors": [sensor.health() for sensor in self._sensors],
             "outbox": database.outbox_counts(),
+            "devices": {
+                "server_device_id": self.local_device.device_id if self.local_device else None,
+                "by_status": device_store.health_summary()["by_status"],
+            },
             "AgentOrchestratorModule": None,  # will be filled if orchestrator is present
         }
 

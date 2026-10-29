@@ -41,6 +41,16 @@ class Event:
     schema_version: int = 1
     verified: bool = False
     durable: bool = False
+    # Provenance (VIRA multi-device design 7.5).  ``source`` stays a free-form
+    # descriptive label; these fields are resolved by the server from
+    # authenticated credentials/sessions and are never trusted from payloads.
+    device_id: Optional[str] = None            # producing endpoint device (may be the server itself)
+    actor_user_id: Optional[int] = None        # authenticated human actor, if any
+    source_component: Optional[str] = None     # sensor/subsystem on the device
+    source_instance_id: Optional[str] = None
+    device_sequence: Optional[int] = None
+    occurred_at: Optional[str] = None          # device clock (ISO-8601 UTC)
+    received_at: Optional[str] = None          # server clock (ISO-8601 UTC)
 
     def dict(self) -> dict:
         return {
@@ -56,7 +66,39 @@ class Event:
             "schema_version": self.schema_version,
             "verified": self.verified,
             "durable": self.durable,
+            "device_id": self.device_id,
+            "actor_user_id": self.actor_user_id,
+            "source_component": self.source_component,
+            "source_instance_id": self.source_instance_id,
+            "device_sequence": self.device_sequence,
+            "occurred_at": self.occurred_at,
+            "received_at": self.received_at,
         }
+
+    @classmethod
+    def from_dict(cls, payload: dict, durable: Optional[bool] = None) -> "Event":
+        """Rebuild an event from ``dict()`` output (outbox replay, ingestion)."""
+        return cls(
+            type=payload["type"],
+            data=payload.get("data"),
+            source=payload.get("source", "outbox"),
+            kind=EventKind(payload.get("kind", EventKind.DOMAIN.value)),
+            priority=EventPriority[payload.get("priority", EventPriority.NORMAL.name)],
+            event_id=payload["event_id"],
+            correlation_id=payload["correlation_id"],
+            causation_id=payload.get("causation_id"),
+            timestamp=payload.get("timestamp") or time.time(),
+            schema_version=payload.get("schema_version", 1),
+            verified=payload.get("verified", False),
+            durable=payload.get("durable", False) if durable is None else durable,
+            device_id=payload.get("device_id"),
+            actor_user_id=payload.get("actor_user_id"),
+            source_component=payload.get("source_component"),
+            source_instance_id=payload.get("source_instance_id"),
+            device_sequence=payload.get("device_sequence"),
+            occurred_at=payload.get("occurred_at"),
+            received_at=payload.get("received_at"),
+        )
 
 
 SubscriberCallback = Callable[[Event], Awaitable[None]]

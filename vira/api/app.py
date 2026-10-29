@@ -28,6 +28,15 @@ from loguru import logger
 
 from vira.kernel import Kernel
 from vira.auth import auth, models, database
+from vira import errors
+from vira.api.deps import (
+    build_auth_dependencies,
+    correlation_id_of,
+    install_error_handling,
+)
+from vira.api.streams import EventStreamManager
+from vira.api.routes_admin import build_admin_router
+from vira.api.routes_devices import build_device_router
 
 # logger = logging.getLogger(__name__)
 
@@ -75,6 +84,13 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = None
     agent_id: Optional[str] = None
     metadata: Dict[str, Any] = {}
+    # Optional device context: validated against the caller's device grants.
+    device_id: Optional[str] = None
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
 
 
 class ConversationCreateRequest(BaseModel):
@@ -101,47 +117,28 @@ class AgentStateRequest(BaseModel):
     enabled: bool
 
 
-# SSE stream management
-class EventStreamManager:
-    def __init__(self):
-        self._queues: List[asyncio.Queue] = []
-        self._sub_id = None
-
-    async def connect(self):
-        queue = asyncio.Queue()
-        self._queues.append(queue)
-        return queue
-
-    def disconnect(self, queue: asyncio.Queue):
-        if queue in self._queues:
-            self._queues.remove(queue)
-
-    async def broadcast(self, event: Event):
-        message = json.dumps({
-            "type": event.type,
-            "data": event.data,
-            "source": event.source,
-            "kind": event.kind.value,
-            "priority": event.priority.name,
-            "event_id": event.event_id,
-            "correlation_id": event.correlation_id,
-            "causation_id": event.causation_id,
-            "timestamp": event.timestamp,
-            "verified": event.verified
-        })
-        for queue in self._queues:
-            try:
-                await queue.put(f"data: {message}\n\n")
-            except Exception:
-                pass
-
-
 stream_manager = EventStreamManager()
+
+_SECRET_MARKERS = ("secret", "api_key", "password", "token")
+
+
+def _redact(value):
+    """Never return secrets (session key, provider API keys) from /config."""
+    if isinstance(value, dict):
+        return {
+            k: "***" if any(m in str(k).lower() for m in _SECRET_MARKERS) else _redact(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact(v) for v in value]
+    return value
+
 
 def create_app(kernel: Kernel) -> FastAPI:
     set_kernel(kernel)
 
-    app = FastAPI(title="VIRA Kernel API", version="0.2.0")
+    app = FastAPI(title="VIRA Server API", version="0.3.0")
+    install_error_handling(app)
 
     # --- Session Middleware ---
     secret_key = kernel.config_manager.get("auth.secret_key", "default-secret-change-me")
@@ -169,45 +166,20 @@ def create_app(kernel: Kernel) -> FastAPI:
     kernel.event_bus.subscribe_all(event_forwarder)
     logger.info("✅ API event forwarder registered")
 
-    # --- Helper for authentication ---
+    # --- Typed principals: user session, device credential, admin gate ---
     session_max_age = kernel.config_manager.get("auth.session_max_age", 86400)
-
-    def get_current_user(request: Request) -> auth.Principal:
-        authorization = request.headers.get("Authorization", "")
-        bearer_token = authorization[7:].strip() if authorization.startswith("Bearer ") else None
-        session_id = bearer_token or request.session.get("session_id")
-        principal = auth.resolve_principal(session_id)
-        if not principal:
-            database.record_auth_audit(
-                "authentication",
-                "request.authenticate",
-                False,
-                session_id=session_id,
-                resource=request.url.path,
-                correlation_id=request.headers.get("X-Correlation-ID"),
-            )
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-        database.record_auth_audit(
-            "authentication",
-            "request.authenticate",
-            True,
-            user_id=principal.user_id,
-            session_id=principal.session_id,
-            resource=request.url.path,
-            correlation_id=request.headers.get("X-Correlation-ID"),
-        )
-        return principal
-
-
-
+    auth_deps = build_auth_dependencies(kernel)
+    get_current_user = auth_deps["get_current_user"]
+    require_admin = auth_deps["require_admin"]
 
     # --- Public endpoints (no auth) ---
 
     @app.get("/")
     async def root(request: Request):
         # Redirect to login or dashboard
-        if auth.resolve_principal(request.session.get("session_id")):
-            return RedirectResponse(url="/dashboard", status_code=302)
+        principal = auth.resolve_principal(request.session.get("session_id"))
+        if principal:
+            return RedirectResponse(url="/dashboard" if principal.is_admin else "/chat", status_code=302)
         if auth.admin_exists():
             return RedirectResponse(url="/login", status_code=302)
         else:
@@ -215,8 +187,9 @@ def create_app(kernel: Kernel) -> FastAPI:
 
     @app.get("/login")
     async def login_page(request: Request):
-        if auth.resolve_principal(request.session.get("session_id")):
-            return RedirectResponse(url="/dashboard", status_code=302)
+        principal = auth.resolve_principal(request.session.get("session_id"))
+        if principal:
+            return RedirectResponse(url="/dashboard" if principal.is_admin else "/chat", status_code=302)
         if not auth.admin_exists():
             return RedirectResponse(url="/setup", status_code=302)
         return FileResponse(str(static_dir / "login.html"))
@@ -229,8 +202,11 @@ def create_app(kernel: Kernel) -> FastAPI:
 
     @app.get("/dashboard")
     async def dashboard_page(request: Request):
-        if not auth.resolve_principal(request.session.get("session_id")):
+        principal = auth.resolve_principal(request.session.get("session_id"))
+        if not principal:
             return RedirectResponse(url="/login", status_code=302)
+        if not principal.is_admin:
+            return RedirectResponse(url="/chat", status_code=302)
         return FileResponse(str(static_dir / "dashboard.html"))
 
     @app.get("/chat")
@@ -258,6 +234,8 @@ def create_app(kernel: Kernel) -> FastAPI:
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         database.record_auth_audit("setup", "user.create_admin", True)
+        if kernel.local_device:
+            kernel.local_device.sync_access()  # the new admin owns the server device
         # Return recovery code to be shown to user (they should save it)
         return {"status": "success", "message": "Admin created", "recovery_code": recovery_code}
 
@@ -305,10 +283,31 @@ def create_app(kernel: Kernel) -> FastAPI:
     async def current_principal(principal: auth.Principal = Depends(get_current_user)):
         return {
             "user_id": principal.user_id,
+            "user_public_id": principal.public_id,
             "username": principal.username,
             "roles": list(principal.roles),
             "session_id": principal.session_id,
         }
+
+    app.add_api_route("/api/v1/auth/bootstrap", setup_admin, methods=["POST"])
+
+    @app.post("/api/v1/auth/password/change")
+    async def change_password(data: PasswordChangeRequest, request: Request,
+                              principal: auth.Principal = Depends(get_current_user)):
+        if len(data.new_password) < 8:
+            raise errors.ValidationFailed("Password must be at least 8 characters")
+        if not auth.change_password(principal.user_id, data.current_password, data.new_password):
+            raise errors.Forbidden("Current password is incorrect", code="invalid_credentials")
+        request.session.clear()  # every session, including this one, was revoked
+        return {"status": "success"}
+
+    @app.post("/api/v1/auth/sessions/revoke-all")
+    async def revoke_all_sessions(request: Request,
+                                  principal: auth.Principal = Depends(get_current_user)):
+        database.revoke_user_sessions(principal.user_id)
+        database.record_auth_audit("logout", "session.revoke_all", True, user_id=principal.user_id)
+        request.session.clear()
+        return {"status": "success"}
 
     # Compatibility aliases for the current local UI.
     app.add_api_route("/api/setup", setup_admin, methods=["POST"])
@@ -319,11 +318,11 @@ def create_app(kernel: Kernel) -> FastAPI:
     # --- Protected API endpoints (require authentication) ---
 
     @app.get("/modules")
-    async def list_modules(user: str = Depends(get_current_user)):
+    async def list_modules(user: auth.Principal = Depends(require_admin)):
         return kernel.module_manager.list_modules()
 
     @app.post("/modules/load")
-    async def load_module(request: ModuleLoadRequest, user: str = Depends(get_current_user)):
+    async def load_module(request: ModuleLoadRequest, user: auth.Principal = Depends(require_admin)):
         # ... existing logic ...
         success = await kernel.module_manager.load_module(request.module_path)
         if not success:
@@ -344,7 +343,15 @@ def create_app(kernel: Kernel) -> FastAPI:
     #     return {"status": "published", "correlation_id": event.correlation_id}
 
     @app.post("/events/publish")
-    async def publish_event(request: EventPublishRequest, user: str = Depends(get_current_user)):
+    async def publish_event(request: EventPublishRequest, http_request: Request,
+                            user: auth.Principal = Depends(require_admin)):
+        """Legacy administrator tool.
+
+        ``source`` is only a descriptive label (it is not authentication).  The
+        human actor comes from the authenticated session; the event carries no
+        device identity, so it is visible on streams to administrators and the
+        acting user only.  Endpoint devices must use /api/v1/devices/{id}/events:batch.
+        """
         try:
             priority = getattr(EventPriority, request.priority.upper(), EventPriority.NORMAL)
         except AttributeError:
@@ -353,65 +360,88 @@ def create_app(kernel: Kernel) -> FastAPI:
         event = Event(
             type=request.type,
             data=request.data,
-            source=request.source,
+            source=f"api:{request.source}"[:64],
             priority=priority,
             kind=request.kind,
             durable=request.durable,
+            actor_user_id=user.user_id,
+            source_component="admin-api",
+            correlation_id=correlation_id_of(http_request),
         )
-
-        # Let the dispatcher handle security, pipeline, and metrics
         try:
             count = await kernel.dispatcher.publish(event)
         except PermissionError as e:
             raise HTTPException(status_code=403, detail=str(e))
-
+        database.record_auth_audit(
+            "admin", "event.publish", True, user_id=user.user_id, resource=f"event:{request.type}",
+            correlation_id=event.correlation_id,
+        )
         return {
             "status": "published",
             "correlation_id": event.correlation_id,
             "subscribers": count,
         }
 
-    @app.get("/events/stream")
-    async def stream_events(request: Request, user: str = Depends(get_current_user)):
-        queue = await stream_manager.connect()
+    async def _stream(request: Request, user: auth.Principal):
+        sub = stream_manager.connect(user.user_id, user.is_admin, user.session_id)
+
         async def event_generator():
             try:
+                idle = 0
                 while True:
-                    data = await queue.get()
-                    yield data
+                    if await request.is_disconnected():
+                        break
+                    try:
+                        data = await asyncio.wait_for(sub.queue.get(), timeout=15)
+                        idle = 0
+                        yield data
+                    except asyncio.TimeoutError:
+                        # Keep-alive; also re-validate the session so a revoked or
+                        # disabled user's stream ends promptly.
+                        if not auth.resolve_principal(user.session_id):
+                            break
+                        yield ": ping\n\n"
             except asyncio.CancelledError:
-                stream_manager.disconnect(queue)
                 raise
+            finally:
+                stream_manager.disconnect(sub)
+
         return StreamingResponse(
             event_generator(),
             media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
 
+    @app.get("/events/stream")
+    async def stream_events(request: Request, user: auth.Principal = Depends(get_current_user)):
+        return await _stream(request, user)
+
+    app.add_api_route("/api/v1/events/stream", stream_events, methods=["GET"])
+
     @app.get("/context")
-    async def get_context(user: str = Depends(get_current_user)):
+    async def get_context(user: auth.Principal = Depends(require_admin)):
         return await kernel.context_manager.get_current_context()
 
     @app.post("/context/update")
-    async def update_context(request: ContextUpdateRequest, user: str = Depends(get_current_user)):
+    async def update_context(request: ContextUpdateRequest, user: auth.Principal = Depends(require_admin)):
         new_context = await kernel.context_manager.update_context(request.updates)
         return {"status": "updated", "context": new_context}
 
     @app.get("/config")
-    async def get_config(user: str = Depends(get_current_user)):
-        return kernel.config_manager.get_all()
+    async def get_config(user: auth.Principal = Depends(require_admin)):
+        return _redact(kernel.config_manager.get_all())
 
     @app.post("/config/update")
-    async def update_config(request: ConfigUpdateRequest, user: str = Depends(get_current_user)):
+    async def update_config(request: ConfigUpdateRequest, user: auth.Principal = Depends(require_admin)):
         kernel.config_manager.set(request.key, request.value)
         return {"status": "updated", "key": request.key, "value": request.value}
 
     @app.get("/metrics")
-    async def get_metrics(user: str = Depends(get_current_user)):
+    async def get_metrics(user: auth.Principal = Depends(require_admin)):
         return kernel.metrics_manager.get_metrics()
 
     @app.get("/health")
-    async def health(user: str = Depends(get_current_user)):
+    async def health(user: auth.Principal = Depends(require_admin)):
         health_status = await kernel.health_check()
         # Add overall health derived from sub-checks (optional)
         overall = "healthy" if kernel.is_running() else "unhealthy"
@@ -422,11 +452,11 @@ def create_app(kernel: Kernel) -> FastAPI:
         }
 
     @app.get("/ops/sensors")
-    async def sensor_status(user: str = Depends(get_current_user)):
+    async def sensor_status(user: auth.Principal = Depends(require_admin)):
         return {"sensors": [sensor.health() for sensor in kernel._sensors]}
 
     @app.get("/ops/events/lag")
-    async def event_lag(user: str = Depends(get_current_user)):
+    async def event_lag(user: auth.Principal = Depends(require_admin)):
         pending = kernel.event_bus.pending_events()
         capacity = kernel.event_bus._max_queue_size
         return {
@@ -437,7 +467,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         }
 
     @app.get("/ops/events/failed")
-    async def failed_events(user: str = Depends(get_current_user)):
+    async def failed_events(user: auth.Principal = Depends(require_admin)):
         counts = auth_database.outbox_counts()
         return {
             "dead_letter": counts.get("dead_letter", 0),
@@ -446,7 +476,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         }
 
     @app.get("/orchestration")
-    async def orchestration_status(user: str = Depends(get_current_user)):
+    async def orchestration_status(user: auth.Principal = Depends(require_admin)):
         """Return the current agent orchestration runtime state."""
         orchestrator = getattr(kernel, "agent_orchestrator", None)
         if orchestrator is None:
@@ -521,7 +551,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         }
 
     @app.get("/agents")
-    async def list_agents(user: str = Depends(get_current_user)):
+    async def list_agents(user: auth.Principal = Depends(require_admin)):
         orchestrator = getattr(kernel, "agent_orchestrator", None)
         loaded = []
         registry = getattr(orchestrator, "registry", None) if orchestrator else None
@@ -537,7 +567,7 @@ def create_app(kernel: Kernel) -> FastAPI:
     async def set_agent_state(
         agent_id: str,
         request: AgentStateRequest,
-        user: str = Depends(get_current_user),
+        user: auth.Principal = Depends(require_admin),
     ):
         orchestrator = getattr(kernel, "agent_orchestrator", None)
         registry = getattr(orchestrator, "registry", None) if orchestrator else None
@@ -548,7 +578,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         return {"agent_id": agent_id, "enabled": request.enabled}
 
     @app.delete("/agents/{agent_id}")
-    async def unregister_agent(agent_id: str, user: str = Depends(get_current_user)):
+    async def unregister_agent(agent_id: str, user: auth.Principal = Depends(require_admin)):
         orchestrator = getattr(kernel, "agent_orchestrator", None)
         registry = getattr(orchestrator, "registry", None) if orchestrator else None
         if not registry or not await registry.unregister(agent_id):
@@ -557,7 +587,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         return {"status": "unregistered", "agent_id": agent_id}
 
     @app.get("/tools/calls")
-    async def list_tool_calls(user: str = Depends(get_current_user)):
+    async def list_tool_calls(user: auth.Principal = Depends(require_admin)):
         return {"tool_calls": auth_database.list_tool_calls()}
 
     @app.post("/conversations")
@@ -664,7 +694,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         return {"status": "deleted", "memory_id": memory_id}
 
     @app.get("/security")
-    async def security_status(user: str = Depends(get_current_user)):
+    async def security_status(user: auth.Principal = Depends(require_admin)):
         """Return safe, read-only security and trust information for the dashboard."""
         security_manager = getattr(kernel, "security_manager", None)
         dispatcher = getattr(kernel, "dispatcher", None)
@@ -729,8 +759,12 @@ def create_app(kernel: Kernel) -> FastAPI:
             ],
         }
 
-    @app.post("/chat")
-    async def chat_endpoint(request: ChatRequest, http_request: Request, user: auth.Principal = Depends(get_current_user)):
+    async def _submit_chat(
+        request: ChatRequest,
+        http_request: Request,
+        user: auth.Principal,
+        conversation_id: Optional[str] = None,
+    ):
         kernel = get_kernel()
         orchestrator = getattr(kernel, "agent_orchestrator", None)
         registry = getattr(orchestrator, "registry", None) if orchestrator else None
@@ -739,11 +773,15 @@ def create_app(kernel: Kernel) -> FastAPI:
                 status_code=503,
                 detail="No chat agent is available. Enable the Chatbot agent and restart VIRA.",
             )
-        correlation_id = http_request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
+        correlation_id = correlation_id_of(http_request)
         idempotency_key = http_request.headers.get("Idempotency-Key")
         if not idempotency_key:
             raise HTTPException(status_code=400, detail="Idempotency-Key header is required")
-        conversation_id = request.conversation_id
+        # Optional device context: accepted only for a device the caller may use.
+        device_id = None
+        if request.device_id:
+            device_id = kernel.device_service.validate_user_device(user, request.device_id)
+        conversation_id = conversation_id or request.conversation_id
         if conversation_id is None:
             conversation_id = auth_database.create_conversation(user.user_id)
         conversation = auth_database.get_conversation(conversation_id, user.user_id)
@@ -767,6 +805,7 @@ def create_app(kernel: Kernel) -> FastAPI:
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             metadata=request.metadata,
+            created_by_device_id=device_id,
         )
         history_rows = auth_database.list_messages(conversation_id, user.user_id, limit=20)
         history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
@@ -777,14 +816,19 @@ def create_app(kernel: Kernel) -> FastAPI:
         response_future = Future()
 
         async def on_response(event: Event):
+            data = event.data if isinstance(event.data, dict) else {}
             if (event.type == "agent.response" and
-                event.data.get("conversation_id") == conversation_id and
+                data.get("conversation_id") == conversation_id and
+                data.get("run_id") in (None, run_id) and
                 not response_future.done()):
-                response_future.set_result(event.data)
+                response_future.set_result(data)
 
         kernel.event_bus.subscribe_all(on_response)
 
         try:
+            # A user action: identity comes from the authenticated session, and the
+            # optional device only after the access check above.  The event has no
+            # device_id so it is streamed to this user alone.
             event = Event(
                 type="user.message",
                 data={
@@ -793,9 +837,12 @@ def create_app(kernel: Kernel) -> FastAPI:
                     "history": history,
                     "run_id": run_id,
                     "user_id": user.user_id,
+                    "device_id": device_id,
                 },
                 source="api",
                 correlation_id=correlation_id,
+                actor_user_id=user.user_id,
+                source_component="chat-api",
             )
             await kernel.dispatcher.publish(event)
 
@@ -807,6 +854,7 @@ def create_app(kernel: Kernel) -> FastAPI:
                 result.get("response", ""),
                 correlation_id=correlation_id,
                 run_id=run_id,
+                created_by_device_id=None,
             )
             auth_database.update_run(run_id, "succeeded", result_message_id=assistant_message["id"])
             return {
@@ -825,4 +873,31 @@ def create_app(kernel: Kernel) -> FastAPI:
             raise
         finally:
             kernel.event_bus.unsubscribe_all(on_response)
+
+    @app.post("/chat")
+    async def chat_endpoint(request: ChatRequest, http_request: Request,
+                            user: auth.Principal = Depends(get_current_user)):
+        return await _submit_chat(request, http_request, user)
+
+    @app.post("/api/v1/conversations/{conversation_id}/messages")
+    async def submit_message(conversation_id: str, request: ChatRequest, http_request: Request,
+                             user: auth.Principal = Depends(get_current_user)):
+        return await _submit_chat(request, http_request, user, conversation_id=conversation_id)
+
+    # --- Versioned (/api/v1) aliases of the legacy unversioned user routes ---
+    # New clients must use these; the unversioned paths remain as legacy adapters.
+    app.add_api_route("/api/v1/conversations", create_conversation, methods=["POST"])
+    app.add_api_route("/api/v1/conversations", list_conversations, methods=["GET"])
+    app.add_api_route("/api/v1/conversations/{conversation_id}", get_conversation, methods=["GET"])
+    app.add_api_route("/api/v1/conversations/{conversation_id}", update_conversation, methods=["PATCH"])
+    app.add_api_route("/api/v1/conversations/{conversation_id}", delete_conversation, methods=["DELETE"])
+    app.add_api_route("/api/v1/conversations/{conversation_id}/messages", list_messages, methods=["GET"])
+    app.add_api_route("/api/v1/runs/{run_id}", get_run, methods=["GET"])
+    app.add_api_route("/api/v1/memories", create_memory, methods=["POST"])
+    app.add_api_route("/api/v1/memories", search_memories, methods=["GET"])
+    app.add_api_route("/api/v1/memories/{memory_id}", delete_memory, methods=["DELETE"])
+
+    # --- Device, admin and operations routers ---
+    app.include_router(build_device_router(kernel, auth_deps, stream_manager))
+    app.include_router(build_admin_router(kernel, auth_deps, stream_manager))
     return app

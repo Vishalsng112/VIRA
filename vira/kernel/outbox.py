@@ -53,20 +53,7 @@ class OutboxPublisher:
         for row in rows:
             try:
                 payload = json.loads(row["payload"])
-                event = Event(
-                    type=payload["type"],
-                    data=payload.get("data"),
-                    source=payload.get("source", "outbox"),
-                    kind=EventKind(payload.get("kind", EventKind.DOMAIN.value)),
-                    priority=EventPriority[payload.get("priority", EventPriority.NORMAL.name)],
-                    event_id=payload["event_id"],
-                    correlation_id=payload["correlation_id"],
-                    causation_id=payload.get("causation_id"),
-                    timestamp=payload.get("timestamp"),
-                    schema_version=payload.get("schema_version", 1),
-                    verified=payload.get("verified", False),
-                    durable=True,
-                )
+                event = Event.from_dict(payload, durable=True)
                 await self._event_bus.publish(event)
                 database.mark_outbox_published(row["id"])
                 published += 1

@@ -49,6 +49,26 @@ class AutonomousAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(item[2]["memory_type"] == "behavior_pattern" for item in runtime.memories))
         self.assertTrue(any(event[1] == "autonomous.decision" for event in runtime.events))
 
+    async def test_baselines_and_decisions_are_per_device(self):
+        runtime = _Runtime()
+        agent = AutonomousAgent(
+            runtime, window_size=5, anomaly_minimum=80, consecutive_anomalies=2,
+            learning_interval=100, decision_cooldown_seconds=0,
+        )
+
+        def state(cpu, device):
+            return Event(type="sensor.hardware.state", data={"cpu": {"usage_percent": cpu}},
+                         device_id=device)
+
+        for _ in range(5):
+            await agent.handle(state(20, "dev-a"))
+            await agent.handle(state(20, "dev-b"))
+        await agent.handle(state(95, "dev-a"))
+        await agent.handle(state(95, "dev-a"))
+        decisions = [e[2] for e in runtime.events if e[1] == "autonomous.decision"]
+        self.assertEqual([d["device_id"] for d in decisions], ["dev-a"])
+        self.assertEqual(agent._anomaly_counts.get("dev-b:cpu.usage_percent", 0), 0)
+
     async def test_ignores_unrelated_events(self):
         runtime = _Runtime()
         agent = AutonomousAgent(runtime)

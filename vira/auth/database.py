@@ -6,7 +6,9 @@ import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Dict, Iterator, List, Optional
+
+from . import migrations
 
 DEFAULT_DB_PATH = Path("data/vira.sqlite3")
 LEGACY_DB_PATH = Path("data/vira.db")
@@ -28,6 +30,8 @@ def init_db() -> None:
         shutil.move(str(LEGACY_DB_PATH), str(DB_PATH))
     with get_connection() as conn:
         conn.execute("PRAGMA foreign_keys = ON")
+        # Local mode: SQLite in WAL mode so API, workers and ingestion can overlap.
+        conn.execute("PRAGMA journal_mode = WAL")
         existing_session_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(sessions)")
         }
@@ -281,17 +285,43 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, sequence_no)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(user_id, agent_id, conversation_id, created_at)")
         conn.commit()
+        # Versioned multi-user / multi-device migrations (see migrations.py).
+        migrations.apply_migrations(conn)
+        conn.commit()
 
 
 @contextmanager
 def get_connection() -> Iterator[sqlite3.Connection]:
-    conn = sqlite3.connect(str(DB_PATH))
+    conn = sqlite3.connect(str(DB_PATH), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 30000")
     try:
         yield conn
     finally:
         conn.close()
+
+
+@contextmanager
+def transaction() -> Iterator[sqlite3.Connection]:
+    """Yield a connection inside an explicit write transaction.
+
+    ``BEGIN IMMEDIATE`` takes the write lock up front so check-then-insert
+    sequences (bootstrap-once, last-admin protection, idempotent event insert)
+    are atomic.  Commits on success, rolls back on any exception.
+    """
+    with get_connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield conn
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+
+
+class LastAdminError(RuntimeError):
+    """Raised when an operation would leave the installation without an active admin."""
 
 
 def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
@@ -306,20 +336,137 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
 
 
-def create_user(username: str, password_hash: str, recovery_code_hash: str) -> int:
+def _insert_user(
+    conn: sqlite3.Connection,
+    username: str,
+    password_hash: str,
+    recovery_code_hash: str,
+    role: str,
+    status: str,
+) -> int:
+    now = _utc_now()
+    cur = conn.execute(
+        "INSERT INTO users (username, password_hash, recovery_code_hash, role, "
+        "public_id, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (username, password_hash, recovery_code_hash, role, str(uuid.uuid4()), status, now),
+    )
+    return int(cur.lastrowid)
+
+
+def create_user(
+    username: str,
+    password_hash: str,
+    recovery_code_hash: str,
+    role: str = "admin",
+    status: str = "active",
+) -> int:
+    with transaction() as conn:
+        return _insert_user(conn, username, password_hash, recovery_code_hash, role, status)
+
+
+def create_first_admin(username: str, password_hash: str, recovery_code_hash: str) -> int:
+    """Atomically create the bootstrap administrator (FR-ID-01)."""
+    with transaction() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin' AND status != 'deleted'"
+        ).fetchone()
+        if int(row["cnt"]) > 0:
+            raise RuntimeError("Admin already exists")
+        return _insert_user(conn, username, password_hash, recovery_code_hash, "admin", "active")
+
+
+def get_user_by_public_id(public_id: str) -> Optional[Dict[str, Any]]:
     with get_connection() as conn:
-        cur = conn.execute(
-            "INSERT INTO users (username, password_hash, recovery_code_hash, role) "
-            "VALUES (?, ?, ?, 'admin')",
-            (username, password_hash, recovery_code_hash),
+        row = conn.execute("SELECT * FROM users WHERE public_id = ?", (public_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def list_users(
+    limit: int = 50, after_id: int = 0, include_deleted: bool = False
+) -> List[Dict[str, Any]]:
+    """Cursor-paginated (by internal id) user listing, without secrets."""
+    clauses = ["id > ?"]
+    values: List[Any] = [after_id]
+    if not include_deleted:
+        clauses.append("status != 'deleted'")
+    values.append(min(max(limit, 1), 200))
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT id, public_id, username, role, status, created_at, updated_at, deleted_at "
+            f"FROM users WHERE {' AND '.join(clauses)} ORDER BY id LIMIT ?",
+            values,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def count_active_admins(conn: Optional[sqlite3.Connection] = None) -> int:
+    sql = "SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin' AND status = 'active'"
+    if conn is not None:
+        return int(conn.execute(sql).fetchone()["cnt"])
+    with get_connection() as own:
+        return int(own.execute(sql).fetchone()["cnt"])
+
+
+def count_admins() -> int:
+    """Administrators that still exist (active or disabled, not deleted)."""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin' AND status != 'deleted'"
+        ).fetchone()
+        return int(row["cnt"]) if row else 0
+
+
+def change_user_state(
+    user_id: int,
+    role: Optional[str] = None,
+    status: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Change a user's role/status atomically with last-admin protection.
+
+    Disabling or deleting a user revokes their sessions; deleting also revokes
+    every device grant (soft delete / tombstone, FR-ID-03).
+    """
+    now = _utc_now()
+    with transaction() as conn:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            return None
+        current = dict(row)
+        new_role = role or current["role"]
+        new_status = status or current["status"]
+        if current["status"] == "deleted" and new_status != "deleted":
+            raise ValueError("Deleted users cannot be restored")
+        was_active_admin = current["role"] == "admin" and current["status"] == "active"
+        stays_active_admin = new_role == "admin" and new_status == "active"
+        if was_active_admin and not stays_active_admin and count_active_admins(conn) <= 1:
+            raise LastAdminError("Cannot remove the last active administrator")
+        conn.execute(
+            "UPDATE users SET role = ?, status = ?, updated_at = ?, "
+            "deleted_at = CASE WHEN ? = 'deleted' THEN COALESCE(deleted_at, ?) ELSE deleted_at END "
+            "WHERE id = ?",
+            (new_role, new_status, now, new_status, now, user_id),
         )
-        conn.commit()
-        return int(cur.lastrowid)
+        if new_status in ("disabled", "deleted") and current["status"] != new_status:
+            conn.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+                (now, user_id),
+            )
+        if new_status == "deleted":
+            conn.execute(
+                "UPDATE user_device_access SET status = 'revoked', revoked_at = ? "
+                "WHERE user_id = ? AND status = 'active'",
+                (now, user_id),
+            )
+        updated = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return dict(updated)
 
 
 def update_password(username: str, new_hash: str) -> None:
     with get_connection() as conn:
-        conn.execute("UPDATE users SET password_hash = ? WHERE username = ?", (new_hash, username))
+        conn.execute(
+            "UPDATE users SET password_hash = ?, updated_at = ? WHERE username = ?",
+            (new_hash, _utc_now(), username),
+        )
         conn.commit()
 
 
@@ -367,7 +514,7 @@ def get_session(session_id: str) -> Optional[Dict[str, Any]]:
     with get_connection() as conn:
         row = conn.execute(
             """
-            SELECT s.*, u.username, u.role
+            SELECT s.*, u.username, u.role, u.status AS user_status, u.public_id AS user_public_id
             FROM sessions s
             JOIN users u ON u.id = s.user_id
             WHERE s.session_id_hash = ?
@@ -413,14 +560,18 @@ def record_auth_audit(
     resource: Optional[str] = None,
     correlation_id: Optional[str] = None,
     details: Optional[str] = None,
+    actor_type: str = "user",
+    target: Optional[str] = None,
+    device_id: Optional[str] = None,
 ) -> None:
+    """Append an audit row.  Never pass raw secrets in ``details``."""
     with get_connection() as conn:
         conn.execute(
             """
             INSERT INTO auth_audit
                 (event_type, user_id, session_id_hash, action, resource, allowed,
-                 correlation_id, details, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 correlation_id, details, created_at, actor_type, target, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event_type,
@@ -432,9 +583,26 @@ def record_auth_audit(
                 correlation_id,
                 details,
                 _utc_now(),
+                actor_type,
+                target,
+                device_id,
             ),
         )
         conn.commit()
+
+
+def list_audit(limit: int = 100, before_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    clauses, values = [], []
+    if before_id:
+        clauses.append("id < ?")
+        values.append(before_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    values.append(min(max(limit, 1), 500))
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM auth_audit {where} ORDER BY id DESC LIMIT ?", values
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def enqueue_outbox_event(event: Dict[str, Any]) -> None:
@@ -445,8 +613,8 @@ def enqueue_outbox_event(event: Dict[str, Any]) -> None:
             """
             INSERT OR IGNORE INTO outbox_events
                 (id, event_type, event_kind, payload, source, correlation_id,
-                 causation_id, available_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 causation_id, available_at, created_at, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 event["event_id"],
@@ -458,6 +626,7 @@ def enqueue_outbox_event(event: Dict[str, Any]) -> None:
                 event.get("causation_id"),
                 now,
                 now,
+                event.get("device_id"),
             ),
         )
         conn.commit()
@@ -762,6 +931,7 @@ def append_message(
     run_id: Optional[str] = None,
     idempotency_key: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    created_by_device_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     message_id = str(uuid.uuid4())
     now = _utc_now()
@@ -796,11 +966,13 @@ def append_message(
             f"""
             INSERT INTO {table_prefix}messages
                 (id, conversation_id, user_id, role, content, sequence_no,
-                 correlation_id, run_id, idempotency_key, metadata, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 correlation_id, run_id, idempotency_key, metadata, created_at,
+                 created_by_device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (message_id, conversation_id, user_id, role, serialized, sequence,
-             correlation_id, run_id, idempotency_key, json.dumps(metadata or {}, default=str), now),
+             correlation_id, run_id, idempotency_key, json.dumps(metadata or {}, default=str), now,
+             created_by_device_id),
         )
         conn.execute(f"UPDATE {table_prefix}conversations SET updated_at = ? WHERE id = ?", (now, conversation_id))
         conn.commit()
@@ -809,6 +981,7 @@ def append_message(
         "role": role, "content": content, "sequence_no": sequence,
         "correlation_id": correlation_id, "run_id": run_id,
         "idempotency_key": idempotency_key, "metadata": metadata or {}, "created_at": now,
+        "created_by_device_id": created_by_device_id,
     }
 
 
@@ -826,26 +999,32 @@ def get_message_by_idempotency(user_id: int, idempotency_key: str) -> Optional[D
         return dict(row) if row else None
 
 
-def list_messages(conversation_id: str, user_id: int, limit: int = 50, offset: int = 0) -> list[Dict[str, Any]]:
+def list_messages(
+    conversation_id: str,
+    user_id: int,
+    limit: int = 50,
+    offset: int = 0,
+    after_sequence: Optional[int] = None,
+) -> list[Dict[str, Any]]:
     with get_connection() as conn:
         rows = conn.execute(
             """
             SELECT m.* FROM messages m
             JOIN conversations c ON c.id = m.conversation_id
-            WHERE m.conversation_id = ? AND c.user_id = ?
+            WHERE m.conversation_id = ? AND c.user_id = ? AND m.sequence_no > ?
             ORDER BY m.sequence_no LIMIT ? OFFSET ?
             """,
-            (conversation_id, user_id, min(max(limit, 1), 100), max(offset, 0)),
+            (conversation_id, user_id, after_sequence or 0, min(max(limit, 1), 100), max(offset, 0)),
         ).fetchall()
         if not rows:
             rows = conn.execute(
                 """
                 SELECT m.* FROM incognito_messages m
                 JOIN incognito_conversations c ON c.id = m.conversation_id
-                WHERE m.conversation_id = ? AND c.user_id = ?
+                WHERE m.conversation_id = ? AND c.user_id = ? AND m.sequence_no > ?
                 ORDER BY m.sequence_no LIMIT ? OFFSET ?
                 """,
-                (conversation_id, user_id, min(max(limit, 1), 100), max(offset, 0)),
+                (conversation_id, user_id, after_sequence or 0, min(max(limit, 1), 100), max(offset, 0)),
             ).fetchall()
         result = []
         for row in rows:
@@ -920,6 +1099,7 @@ def store_memory(
     metadata: Optional[Dict[str, Any]] = None,
     importance: float = 0.0,
     expires_at: Optional[str] = None,
+    device_id: Optional[str] = None,
 ) -> str:
     memory_id = str(uuid.uuid4())
     with get_connection() as conn:
@@ -932,11 +1112,11 @@ def store_memory(
             """
             INSERT INTO memories
                 (id, user_id, agent_id, conversation_id, memory_type, content,
-                 metadata, importance, expires_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 metadata, importance, expires_at, created_at, device_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (memory_id, user_id, agent_id, conversation_id, memory_type, content,
-             json.dumps(metadata or {}, default=str), importance, expires_at, _utc_now()),
+             json.dumps(metadata or {}, default=str), importance, expires_at, _utc_now(), device_id),
         )
         conn.commit()
     return memory_id
@@ -950,8 +1130,15 @@ def search_memories(
     conversation_id: Optional[str] = None,
     memory_type: Optional[str] = None,
 ) -> list[Dict[str, Any]]:
-    clauses = ["(user_id = ? OR user_id IS NULL)", "(expires_at IS NULL OR expires_at > ?)"]
-    values: list[Any] = [user_id, _utc_now()]
+    # System-scope memories (user_id NULL) that are tied to a device are only
+    # visible to users who currently hold an active grant on that device.
+    clauses = [
+        "(user_id = ? OR user_id IS NULL)",
+        "(expires_at IS NULL OR expires_at > ?)",
+        "(device_id IS NULL OR device_id IN ("
+        "SELECT device_id FROM user_device_access WHERE user_id = ? AND status = 'active'))",
+    ]
+    values: list[Any] = [user_id, _utc_now(), user_id]
     if query:
         clauses.append("content LIKE ?")
         values.append(f"%{query}%")
