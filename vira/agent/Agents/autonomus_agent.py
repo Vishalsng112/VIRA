@@ -11,6 +11,7 @@ import time
 from loguru import logger
 
 from vira.agent.base import BaseAgent
+from vira.agent.toolcalls import extract_json
 from vira.agent_orchestration.registry import AgentCapability
 from vira.agent_runtime.runtime import AgentContext
 
@@ -27,6 +28,7 @@ class AutonomousAgent(BaseAgent):
         consecutive_anomalies: int = 3,
         decision_cooldown_seconds: float = 300.0,
         learning_interval: int = 10,
+        llm_triage: bool = False,
         subscribed_events: Optional[List[str]] = None,
         **kwargs,
     ):
@@ -53,6 +55,9 @@ class AutonomousAgent(BaseAgent):
         self.consecutive_anomalies = consecutive_anomalies
         self.decision_cooldown_seconds = decision_cooldown_seconds
         self.learning_interval = learning_interval
+        # Optional: ask the local LLM for severity + a short explanation of a
+        # confirmed anomaly. The statistical detector stays the source of truth.
+        self.llm_triage = llm_triage
         # State is kept per (device, metric): one device's load must never
         # distort another device's baseline.
         self._samples: Dict[str, deque[float]] = defaultdict(
@@ -196,6 +201,28 @@ class AutonomousAgent(BaseAgent):
             )
         return {"learned_pattern": dict(per_device)}
 
+    async def _triage(self, anomaly: Dict[str, Any]) -> Dict[str, Any]:
+        """One short LLM call; any failure just leaves the decision unchanged."""
+        prompt = (
+            "You triage device anomalies. Reply with ONLY JSON: "
+            '{"severity": "low|medium|high", "explanation": "<one sentence>"}\n'
+            f"Metric {anomaly['metric']} on {anomaly.get('device_id')} is {anomaly['value']} "
+            f"(baseline {anomaly['baseline']}) for {anomaly['consecutive_count']} consecutive samples."
+        )
+        try:
+            response = await self.runtime.call_llm(self.agent_id, prompt, temperature=0.1, max_tokens=120)
+            data = extract_json(getattr(response, "text", None) or str(response)) or {}
+        except Exception as exc:
+            logger.debug("LLM triage skipped: {}", exc)
+            return {}
+        severity = data.get("severity")
+        out: Dict[str, Any] = {}
+        if severity in ("low", "medium", "high"):
+            out["severity"] = severity
+        if isinstance(data.get("explanation"), str):
+            out["explanation"] = data["explanation"][:300]
+        return out
+
     async def _make_decision(self, anomaly: Dict[str, Any], event: Any) -> Optional[Dict[str, Any]]:
         metric = anomaly["metric"]
         device_id = anomaly.get("device_id")
@@ -214,6 +241,8 @@ class AutonomousAgent(BaseAgent):
             "source_event": getattr(event, "type", None),
             "agent_id": self.agent_id,
         }
+        if self.llm_triage:
+            decision.update(await self._triage(anomaly))
         await self.runtime.memory_operation(
             self.agent_id,
             "store",

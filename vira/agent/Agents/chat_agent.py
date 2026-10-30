@@ -1,13 +1,23 @@
-# vira/agents/chat_agent.py
+# vira/agent/Agents/chat_agent.py
+"""Chat agent: a Claude-style tool loop designed for local models.
+
+Per message: recall lessons -> multi-step tool loop (AgentLoop) -> optional
+delegation to markdown-defined sub-agents -> learn from mistakes -> answer.
+"""
 import uuid
-import json
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
 
 from vira.agent.base import BaseAgent
-from vira.agent_runtime.runtime import AgentContext
+from vira.agent.definitions import AgentDefinition, load_definitions
+from vira.agent.lessons import LessonStore
+from vira.agent.loop import AgentLoop, LoopConfig, LoopResult
+from vira.agent.toolcalls import clip
 from vira.agent_orchestration.registry import AgentCapability
-from vira.kernel.event_bus import Event
+from vira.agent_runtime.runtime import AgentContext
+
+DELEGATE = "delegate"
 
 
 class ChatAgent(BaseAgent):
@@ -16,54 +26,51 @@ class ChatAgent(BaseAgent):
     reentrant = True
     _conversation_histories: Dict[str, List[Dict]] = {}
 
-    def __init__(
-        self,
-        runtime,
-        config: Optional[Dict] = None,
-        **kwargs
-    ):
-        # Merge config and direct kwargs; direct kwargs take precedence
-        merged = config or {}
-        merged.update(kwargs)   # kwargs overrides config
+    def __init__(self, runtime, config: Optional[Dict] = None, **kwargs):
+        merged = dict(config or {})
+        merged.update(kwargs)  # direct kwargs override config
 
-        # Extract values
-        name = merged.get("name", "ChatAgent")
-        description = merged.get("description", "Conversational AI agent with tool support")
-        agent_id = merged.get("agent_id")
-        system_prompt = merged.get("system_prompt")
-        model = merged.get("model")
-        temperature = merged.get("temperature", 0.7)
-        max_tokens = merged.get("max_tokens", 1024)
-
-        # Call base class – do NOT pass config
         super().__init__(
-            name=name,
-            description=description,
+            name=merged.get("name", "ChatAgent"),
+            description=merged.get("description", "Conversational AI agent with tool support"),
             runtime=runtime,
-            agent_id=agent_id
+            agent_id=merged.get("agent_id"),
         )
-
-        # Store all settings
-        self.config = merged   # <-- now a dict, so .get() will work
-        self.system_prompt = system_prompt or (
-            "You are a helpful Agent (VIRA-AGENT) that can use tools when appropriate.\n"
+        self.config = merged
+        self.system_prompt = merged.get("system_prompt") or (
+            "You are VIRA, a helpful assistant running on the user's own machine. "
+            "Be concise and accurate. Use tools when they help; otherwise answer directly."
         )
-        self.model = model
-        self.temperature = temperature
-        self.max_tokens = max_tokens
-
-        # Load tools (same as before)
+        self.model = merged.get("model")
+        self.temperature = merged.get("temperature", 0.7)
+        self.max_tokens = merged.get("max_tokens", 1024)
+        self.history_limit = int(merged.get("history_limit", 20))
+        self.loop_config = LoopConfig(
+            max_steps=int(merged.get("max_steps", 6)),
+            max_tool_chars=int(merged.get("max_tool_chars", 3000)),
+            max_prompt_chars=int(merged.get("max_prompt_chars", 12000)),
+            tool_timeout=float(merged.get("tool_timeout", 90)),
+        )
+        self.lessons = LessonStore(
+            runtime, self.agent_id,
+            enabled=bool(merged.get("learn_lessons", True)),
+            recall_limit=int(merged.get("lesson_recall_limit", 3)),
+        )
+        self.definitions: Dict[str, AgentDefinition] = (
+            load_definitions([merged["definitions_dir"]] if merged.get("definitions_dir") else [])
+            if merged.get("delegation", True) else {}
+        )
         self.available_tools = self._load_tools()
-        tool_names = [t.get("name", "unknown") for t in self.available_tools]
-        logger.info(f"[{self.name}] Loaded tools: {tool_names}")
+        logger.info(f"[{self.name}] tools={[t['name'] for t in self.available_tools]} "
+                    f"sub-agents={list(self.definitions)}")
 
         self._subscribed_events = ["user.message"]
         self._capabilities = [
             AgentCapability(
                 name="chat",
-                description="Respond to user messages, optionally using tools.",
+                description="Respond to user messages, using tools and sub-agents over several steps.",
                 input_schema={"type": "object", "properties": {"message": {"type": "string"}}},
-                output_schema={"type": "object", "properties": {"response": {"type": "string"}}}
+                output_schema={"type": "object", "properties": {"response": {"type": "string"}}},
             )
         ]
 
@@ -73,10 +80,9 @@ class ChatAgent(BaseAgent):
             executor = self.runtime.tool_executor
             if not executor:
                 return []
-            names = executor.list_tools()
             registry = getattr(executor, "_registry", None)
             tools = []
-            for name in names:
+            for name in executor.list_tools():
                 tool = registry.get(name) if registry else None
                 tools.append({
                     "name": name,
@@ -88,168 +94,96 @@ class ChatAgent(BaseAgent):
             logger.warning("ToolExecutor does not support listing tools. No tools loaded.")
             return []
 
+    # ---- think: gather what the loop needs --------------------------------
     async def think(self, context: AgentContext, **kwargs) -> Dict:
-        logger.debug(f"[{self.name}] Thinking...")
         event = kwargs.get("event")
         if not event:
             raise ValueError("ChatAgent requires an event")
-
         message = event.data.get("message")
         if not message:
             raise ValueError("Event data missing 'message'")
 
-        conversation_id = event.data.get("conversation_id", str(uuid.uuid4()))
-
-        # Retrieve history
+        conversation_id = event.data.get("conversation_id") or str(uuid.uuid4())
         history = event.data.get("history")
         if history is None:
             history = self._conversation_histories.get(conversation_id, [])
-        logger.debug(f"[{self.name}] Retrieved {len(history)} messages for {conversation_id}")
-
+        user_id = event.data.get("user_id")
         return {
             "conversation_id": conversation_id,
             "user_message": message,
             "history": history,
+            "user_id": user_id,
+            "lessons": await self.lessons.recall(user_id, message),
         }
 
+    # ---- plan: pick the strategy ------------------------------------------
     async def plan(self, thought: Dict, **kwargs) -> List[Dict]:
-        logger.debug(f"[{self.name}] Planning...")
+        return [{"step": "agent_loop", "thought": thought}]
+
+    # ---- act: run the loop -------------------------------------------------
+    def _delegate_spec(self) -> List[Dict]:
+        if not self.definitions:
+            return []
+        roster = "; ".join(f"{d.name}: {d.description}" for d in self.definitions.values())
         return [{
-            "step": "llm_generate",
-            "prompt": self._build_prompt(thought, []),
-            "model": self.model,
-            "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
+            "name": DELEGATE,
+            "description": f"Hand a self-contained task to a specialist sub-agent. Available: {roster}",
+            "parameters": {"properties": {"agent": {"type": "string"}, "task": {"type": "string"}},
+                           "required": ["agent", "task"]},
         }]
 
-    async def act(self, plan: List[Dict], **kwargs) -> Any:
-        logger.debug(f"[{self.name}] Acting...")
-
-        event = kwargs.get("event")
-        user_id = event.data.get("user_id") if event is not None else None
-        # Find the LLM step (there should be only one)
-        llm_step = next((s for s in plan if s.get("step") == "llm_generate"), None)
-        if not llm_step:
-            raise ValueError("No LLM generation step in plan")
-
-        # First LLM call: may request a tool
-        initial_response = await self.runtime.call_llm(
-            agent_id=self.agent_id,
-            prompt=llm_step["prompt"],
-            model=llm_step["model"],
-            temperature=llm_step["temperature"],
-            max_tokens=llm_step["max_tokens"],
+    async def _delegate(self, params: Dict[str, Any], user_id) -> str:
+        definition = self.definitions.get(str(params.get("agent", "")))
+        task = str(params.get("task", "")).strip()
+        if not definition:
+            return f"ERROR: unknown agent. Available: {', '.join(self.definitions)}"
+        if not task:
+            return "ERROR: 'task' is required"
+        allowed = definition.tools
+        tools = [t for t in self.available_tools if allowed is None or t["name"] in allowed]
+        sub = AgentLoop(  # fresh context, no delegate tool -> no recursion
+            self.runtime, self.agent_id, definition.prompt, tools,
+            LoopConfig(max_steps=definition.max_steps, max_tool_chars=self.loop_config.max_tool_chars,
+                       max_prompt_chars=self.loop_config.max_prompt_chars, tool_timeout=self.loop_config.tool_timeout),
+            model=definition.model or self.model,
+            temperature=definition.temperature if definition.temperature is not None else self.temperature,
+            max_tokens=self.max_tokens,
         )
+        result = await sub.run(task, user_id=user_id)
+        return clip(result.text, 2500)
 
-        # Extract the text from the response
-        if hasattr(initial_response, 'text'):
-            response_text = initial_response.text
-        elif isinstance(initial_response, dict) and 'text' in initial_response:
-            response_text = initial_response['text']
-        else:
-            response_text = str(initial_response)
+    async def act(self, plan: List[Dict], **kwargs) -> LoopResult:
+        thought = next(s["thought"] for s in plan if s.get("step") == "agent_loop")
+        user_id = thought["user_id"]
 
-        # Try to parse as JSON to detect a tool call
-        tool_call = None
-        try:
-            data = json.loads(response_text.strip())
-            if (
-                isinstance(data, dict)
-                and isinstance(data.get("tool"), str)
-                and ("params" in data or "arguments" in data)
-            ):
-                tool_call = data
-        except json.JSONDecodeError:
-            pass
+        async def delegate(params):
+            return await self._delegate(params, user_id)
 
-        final_response = response_text
+        loop = AgentLoop(
+            self.runtime, self.agent_id, self.system_prompt, self.available_tools, self.loop_config,
+            model=self.model, temperature=self.temperature, max_tokens=self.max_tokens,
+            extra_tools={DELEGATE: delegate} if self.definitions else None,
+            extra_specs=self._delegate_spec(),
+        )
+        result = await loop.run(thought["user_message"], thought["history"], thought["lessons"], user_id)
+        logger.info(f"[{self.name}] done: stopped={result.stopped} tool_calls={result.tool_calls}")
+        return result
 
-        if tool_call:
-            tool_name = tool_call["tool"]
-            params = tool_call.get("params") or tool_call.get("arguments") or {}
-            if not isinstance(params, dict):
-                params = {}
-
-            print(f"\n[TOOL SELECTED] {tool_name} with params: {params}")
-
-            # Execute the tool
-            try:
-                tool_result = await self.runtime.use_tool(
-                    self.agent_id,
-                    tool_name,
-                    user_id=user_id,
-                    **{key: value for key, value in params.items() if key != "user_id"},
-                )
-                print(f"[TOOL RESULT] {tool_result}")
-                logger.info(f"[{self.name}] Tool {tool_name} executed successfully.")
-            except Exception as e:
-                error_msg = str(e)
-                print(f"[TOOL ERROR] {error_msg}")
-                logger.error(f"[{self.name}] Tool {tool_name} failed: {e}")
-                tool_result = {"error": error_msg}
-
-            # Follow‑up prompt with tool result
-            follow_up_prompt = (
-                f"{llm_step['prompt']}\n\n"
-                f"System: The tool '{tool_name}' was called and returned:\n{tool_result}\n\n"
-                "Now, based on that information, provide your final answer to the user. "
-                "Include a brief note that you used the tool and what the result was."
-            )
-
-            final_llm_response = await self.runtime.call_llm(
-                agent_id=self.agent_id,
-                prompt=follow_up_prompt,
-                model=llm_step["model"],
-                temperature=llm_step["temperature"],
-                max_tokens=llm_step["max_tokens"],
-            )
-
-            if hasattr(final_llm_response, 'text'):
-                final_response = final_llm_response.text
-            elif isinstance(final_llm_response, dict) and 'text' in final_llm_response:
-                final_response = final_llm_response['text']
-            else:
-                final_response = str(final_llm_response)
-            if self._looks_like_tool_call(final_response):
-                final_response = (
-                    f"The {tool_name} returned: {self._tool_result_text(tool_result)}"
-                )
-        else:
-            print("\n[NO TOOL CALLED] Responding with plain text.")
-
-        return final_response
-
-    @staticmethod
-    def _looks_like_tool_call(value: str) -> bool:
-        try:
-            parsed = json.loads(value.strip())
-        except (TypeError, json.JSONDecodeError):
-            return False
-        return isinstance(parsed, dict) and isinstance(parsed.get("tool"), str)
-
-    @staticmethod
-    def _tool_result_text(result: Any) -> str:
-        content = getattr(result, "content", None)
-        if content:
-            return " ".join(
-                getattr(item, "text", str(item))
-                for item in content
-            )
-        return str(result)
-
-    async def reflect(self, result: Any, **kwargs) -> Dict:
-        logger.debug(f"[{self.name}] Reflecting...")
+    # ---- reflect: remember and learn --------------------------------------
+    async def reflect(self, result: LoopResult, **kwargs) -> Dict:
         event = kwargs.get("event")
         data = event.data
         conversation_id = data.get("conversation_id") or str(uuid.uuid4())
         user_message = data.get("message")
-        history = list(data.get("history") or [])
+        user_id = data.get("user_id")
+        response_text = result.text
 
-        response_text = result if isinstance(result, str) else str(result)
-
-        history.append({"role": "user", "content": user_message})
-        history.append({"role": "assistant", "content": response_text})
+        history = list(data.get("history") or self._conversation_histories.get(conversation_id, []))
+        history += [{"role": "user", "content": user_message}, {"role": "assistant", "content": response_text}]
+        history = history[-self.history_limit:]
         self._conversation_histories[conversation_id] = history
+
+        learned = await self.lessons.learn(user_id, conversation_id, user_message, result)
 
         await self.send_event(
             event_type="agent.response",
@@ -258,43 +192,11 @@ class ChatAgent(BaseAgent):
                 "response": response_text,
                 "original_message": user_message,
                 # Routing only: lets the stream deliver this to the requester alone.
-                "user_id": data.get("user_id"),
+                "user_id": user_id,
                 "run_id": data.get("run_id"),
             },
-            target_agent_ids=None
+            target_agent_ids=None,
         )
-
-        return {
-            "response": response_text,
-            "conversation_id": conversation_id,
-            "history_length": len(history)
-        }
-
-    def _build_prompt(self, thought: Dict, plans: List[Dict]) -> str:
-        """Build the prompt with system message, history, user message, and tool definitions."""
-        lines = [f"System: {self.system_prompt}"]
-
-        # Append tool definitions if any
-        if self.available_tools:
-            lines.append("\nAvailable tools (you may use them if appropriate):")
-            for tool in self.available_tools:
-                name = tool.get("name", "unknown")
-                desc = tool.get("description", "No description")
-                params = tool.get("parameters", {})
-                lines.append(f"- {name}: {desc}")
-                lines.append(f"  Parameters: {params}")
-            lines.append(
-                "\nIf you need to use a tool, respond with a JSON object like:\n"
-                '{"tool": "<tool_name>", "params": {"param1": "value1", ...}}\n'
-                "If you do not need a tool, respond with a plain text answer."
-            )
-        else:
-            lines.append("\nNo tools are available. Respond with plain text only.")
-
-        for entry in thought["history"]:
-            role = entry.get("role", "user")
-            content = entry.get("content", "")
-            lines.append(f"{role.capitalize()}: {content}")
-        lines.append(f"User: {thought['user_message']}")
-        lines.append("Assistant:")
-        return "\n".join(lines)
+        return {"response": response_text, "conversation_id": conversation_id,
+                "history_length": len(history), "tool_calls": result.tool_calls,
+                "stopped": result.stopped, "lessons_learned": learned}

@@ -145,7 +145,7 @@ llm:
     #   max_tokens: 4096
     - name: "local-llama"
       provider: "ollama"
-      model: "gemma4:e4b"
+      model: "ornith:9b" #"gemma4:e4b"
       base_url: "http://localhost:11434"
       temperature: 0.8
 
@@ -169,9 +169,18 @@ agents:
     class: ChatAgent
     enabled: true
     config:
-      system_prompt: "You are a friendly, helpful assistant."
+      system_prompt: "You are VIRA, a friendly, helpful assistant. For news, recent events, people, prices or anything you are not sure about, do not answer from memory: call web_search first, then web_browse on the best result, then answer from what you read and name your sources. If a tool fails, say exactly what failed."
       temperature: 0.7
       max_tokens: 1024
+      # --- agent loop (tuned for small local models) ---
+      max_steps: 6              # tool-call rounds before a forced final answer
+      max_prompt_chars: 12000   # ~3k tokens; raise if your model has a bigger context
+      max_tool_chars: 3000      # tool output shown to the model per call
+      tool_timeout: 90          # seconds per tool call (search tries several engines)
+      history_limit: 20         # messages kept per conversation
+      learn_lessons: true       # store/recall lessons from failed tool calls
+      delegation: true          # allow sub-agents from vira/agent/definitions/*.md
+      # definitions_dir: "~/.vira/agents"   # your own sub-agent .md files
 
   - name: AutonomousBehaviorAgent
     module: vira.agent.Agents.autonomus_agent
@@ -184,6 +193,7 @@ agents:
       consecutive_anomalies: 3
       decision_cooldown_seconds: 300
       learning_interval: 10
+      llm_triage: false         # true = local LLM adds severity/explanation to decisions
 
   # - name: "AGENT_1"
   #   module: "vira.agent.examples.AGENT_MONITOR"

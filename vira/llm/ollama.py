@@ -4,23 +4,45 @@ from typing import Dict, List, AsyncIterator
 import json
 from vira.llm.base import BaseLLMProvider, LLMResponse
 
+# Sampling/context settings must live under "options"; Ollama silently ignores
+# them at the top level of the request (which is where they used to be sent).
+_OPTION_KEYS = {"temperature", "top_p", "top_k", "seed", "num_ctx", "num_predict",
+                "repeat_penalty", "stop"}
+_TOP_LEVEL_KEYS = {"keep_alive", "think", "system", "template", "raw"}
+DEFAULT_NUM_CTX = 8192  # Ollama's own default (2k-4k) drops the start of long prompts
+
+
 class OllamaProvider(BaseLLMProvider):
     def __init__(self, model: str, base_url: str = "http://localhost:11434", **kwargs):
         self.model = model
         self.base_url = base_url
         self.default_params = kwargs
 
+    def _payload(self, prompt: str, stream: bool, overrides: Dict, **extra) -> Dict:
+        params = {**self.default_params, **overrides}
+        options = dict(params.pop("options", None) or {})
+        if "max_tokens" in params:
+            options.setdefault("num_predict", params.pop("max_tokens"))
+        for key in list(params):
+            if key in _OPTION_KEYS:
+                options[key] = params.pop(key)
+        options.setdefault("num_ctx", DEFAULT_NUM_CTX)
+        payload = {"model": self.model, "prompt": prompt, "stream": stream, **extra}
+        payload.update({k: v for k, v in params.items() if k in _TOP_LEVEL_KEYS})
+        payload["options"] = options
+        return payload
+
+    @staticmethod
+    def _check(data: Dict) -> Dict:
+        if "response" not in data:
+            raise RuntimeError(f"Ollama error: {data.get('error', data)}")
+        return data
+
     async def generate(self, prompt: str, **kwargs) -> LLMResponse:
-        params = {**self.default_params, **kwargs}
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            **params
-        }
+        payload = self._payload(prompt, False, kwargs)
         async with aiohttp.ClientSession() as session:
             async with session.post(f"{self.base_url}/api/generate", json=payload) as resp:
-                data = await resp.json()
+                data = self._check(await resp.json())
                 return LLMResponse(
                     text=data["response"],
                     model=self.model,
@@ -32,13 +54,7 @@ class OllamaProvider(BaseLLMProvider):
                 )
 
     async def stream(self, prompt: str, **kwargs) -> AsyncIterator[str]:
-        params = {**self.default_params, **kwargs}
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": True,
-            **params
-        }
+        payload = self._payload(prompt, True, kwargs)
         async with aiohttp.ClientSession() as session:
             async with session.post(f"{self.base_url}/api/generate", json=payload) as resp:
                 async for line in resp.content:
@@ -48,17 +64,10 @@ class OllamaProvider(BaseLLMProvider):
 
     async def generate_structured(self, prompt: str, schema: Dict, **kwargs) -> Dict:
         # Ollama can use format parameter
-        params = {**self.default_params, **kwargs}
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "format": schema,
-            "stream": False,
-            **params
-        }
+        payload = self._payload(prompt, False, kwargs, format=schema)
         async with aiohttp.ClientSession() as session:
             async with session.post(f"{self.base_url}/api/generate", json=payload) as resp:
-                data = await resp.json()
+                data = self._check(await resp.json())
                 return json.loads(data["response"])
 
     async def tool_call(self, prompt: str, tools: List[Dict], **kwargs) -> Dict:
