@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import resource
 import re
 import shutil
@@ -18,6 +19,38 @@ class BubblewrapBackend:
         self.root = Path(root).resolve()
         self.bwrap_binary = bwrap_binary
         self._sandboxes: dict[str, SandboxRef] = {}
+        self._preflight_ok = False
+
+    @staticmethod
+    def _task_count() -> int:
+        """Upper bound of tasks (processes+threads) already alive on this machine."""
+        try:
+            with open("/proc/loadavg") as handle:
+                return int(handle.read().split()[3].split("/")[1])
+        except (OSError, ValueError, IndexError):
+            return 4096
+
+    async def _preflight(self) -> None:
+        """Fail early, with the real bubblewrap error and a hint, if it cannot start."""
+        if self._preflight_ok:
+            return
+        try:
+            process = await asyncio.create_subprocess_exec(
+                self.bwrap_binary, "--ro-bind", "/", "/", "--unshare-pid", "--dev", "/dev", "true",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await asyncio.wait_for(process.communicate(), 20)
+        except (OSError, asyncio.TimeoutError) as exc:
+            raise RuntimeError(f"Bubblewrap could not be started: {exc}") from exc
+        if process.returncode != 0:
+            detail = stderr.decode(errors="replace").strip() or f"exit code {process.returncode}"
+            hint = ""
+            if any(word in detail.lower() for word in ("permission", "not permitted", "namespace", "uid map")):
+                hint = (" On Ubuntu 24.04+ AppArmor blocks unprivileged user namespaces; run "
+                        "'sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0' "
+                        "or add an AppArmor profile for bwrap.")
+            raise RuntimeError(f"Bubblewrap cannot create a sandbox: {detail}.{hint}")
+        self._preflight_ok = True
 
     def _require_bwrap(self) -> None:
         if shutil.which(self.bwrap_binary) is None:
@@ -44,6 +77,7 @@ class BubblewrapBackend:
         import uuid
 
         self._require_bwrap()
+        await self._preflight()
         policy = policy or SandboxPolicy()
         sandbox_id = sandbox_id or str(uuid.uuid4())
         workspace = self.root / sandbox_id / "workspace"
@@ -114,8 +148,12 @@ class BubblewrapBackend:
         return validated
 
     @staticmethod
-    def _apply_limits(policy: SandboxPolicy) -> None:
-        resource.setrlimit(resource.RLIMIT_NPROC, (policy.max_processes, policy.max_processes))
+    def _apply_limits(policy: SandboxPolicy, existing_tasks: int = 0) -> None:
+        # RLIMIT_NPROC counts every task of the *user*, not just this sandbox, so a
+        # fixed cap below the user's current count makes fork() fail with EAGAIN
+        # ("Resource temporarily unavailable").  Allow max_processes on top of them.
+        nproc = existing_tasks + policy.max_processes
+        resource.setrlimit(resource.RLIMIT_NPROC, (nproc, nproc))
         resource.setrlimit(resource.RLIMIT_CPU, (policy.cpu_seconds, policy.cpu_seconds))
         memory_bytes = policy.memory_mb * 1024 * 1024
         resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
@@ -137,12 +175,18 @@ class BubblewrapBackend:
         )
         if timeout <= 0 or timeout > effective_sandbox.policy.timeout_seconds:
             raise ValueError("timeout_seconds exceeds the sandbox policy")
+        await self._preflight()
         sandbox.status = SandboxStatus.RUNNING
-        process = await asyncio.create_subprocess_exec(
-            *self._command(effective_sandbox, command),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            preexec_fn=lambda: self._apply_limits(effective_sandbox.policy),
-        )
+        existing_tasks = self._task_count()
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *self._command(effective_sandbox, command),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                preexec_fn=lambda: self._apply_limits(effective_sandbox.policy, existing_tasks),
+            )
+        except OSError as exc:
+            sandbox.status = SandboxStatus.STOPPED
+            raise RuntimeError(f"Could not start the sandbox process: {exc}") from exc
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout)
         except asyncio.TimeoutError:

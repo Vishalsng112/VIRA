@@ -91,7 +91,7 @@ async def execute_shell(command: str) -> str:
     """
     max_output = 12_000
     allowed_commands = {
-        "date", "df", "free", "git", "id", "ls", "pwd", "uname", "uptime", "whoami",
+        "date", "df", "free", "git", "id", "ls", "pwd", "uname", "uptime", "whoami", "cat", "head", "tail", "wc", "stat", "find", "du", "env", "top", "ps",
     }
     blocked_tokens = {";", "&&", "||", "|", ">", ">>", "<", "$(", "`", "&"}
     try:

@@ -133,6 +133,8 @@ def render_tool(tool: Dict[str, Any]) -> str:
     args = []
     for pname, spec in (props or {}).items():
         ptype = spec.get("type", "any") if isinstance(spec, dict) else "any"
+        if isinstance(spec, dict) and isinstance(spec.get("enum"), list) and spec["enum"]:
+            ptype = "|".join(str(v) for v in spec["enum"])
         args.append(f"{pname}{'' if pname in required else '?'}: {ptype}")
     desc = " ".join(str(tool.get("description") or "").split())
     return f"- {tool.get('name', 'unknown')}({', '.join(args)}) - {trim(desc, 500)}"

@@ -128,3 +128,36 @@ def test_restore_rejects_path_traversal(tmp_path):
     backend = BubblewrapBackend(root=str(tmp_path), bwrap_binary="/bin/true")
     with unittest.TestCase().assertRaisesRegex(ValueError, "outside"):
         asyncio.run(backend.restore(str(archive), agent_id="agent-a"))
+
+
+def test_process_limit_leaves_headroom_for_existing_user_tasks():
+    import resource
+    from unittest import mock
+
+    seen = {}
+    with mock.patch.object(resource, "setrlimit", lambda kind, value: seen.setdefault(kind, value)):
+        BubblewrapBackend._apply_limits(SandboxPolicy(max_processes=128), existing_tasks=3000)
+    assert seen[resource.RLIMIT_NPROC] == (3128, 3128)
+
+
+class SandboxFileTests(unittest.IsolatedAsyncioTestCase):
+    async def test_write_read_run_alias_and_escape(self):
+        import tempfile
+        from vira.sandbox import SandboxManager
+        with tempfile.TemporaryDirectory() as root:
+            manager = SandboxManager(root=root, bwrap_binary="/bin/true")
+            tool = SandboxTool(manager)
+            wrote = await tool.execute("write", agent_id="a", user_id=1, path="max.py", content="print(1)")
+            first = json.loads(wrote.content[0].text)
+            self.assertEqual(first["path"], "max.py")
+            # the same user's next call reuses the sandbox; 'run' maps to execute
+            ran = await tool.execute("run", agent_id="a", user_id=1, command="python3 max.py")
+            self.assertEqual(json.loads(ran.content[0].text)["sandbox_id"], first["sandbox_id"])
+            read = await tool.execute("read", agent_id="a", user_id=1, path="/workspace/max.py")
+            self.assertEqual(json.loads(read.content[0].text)["content"], "print(1)")
+            other = await tool.execute("write", agent_id="a", user_id=2, path="x.py", content="")
+            self.assertNotEqual(json.loads(other.content[0].text)["sandbox_id"], first["sandbox_id"])
+            bad = await tool.execute("write", agent_id="a", user_id=1, path="../../etc/x", content="no")
+            self.assertTrue(getattr(bad, "isError", None) or getattr(bad, "is_error", False))
+            unknown = await tool.execute("frobnicate", agent_id="a", user_id=1)
+            self.assertIn("Valid operations", unknown.content[0].text)
