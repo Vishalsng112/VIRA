@@ -13,7 +13,9 @@ from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from vira.agent.toolcalls import clip, extract_tool_call, render_tool
+import time
+
+from vira.agent.toolcalls import clip, extract_tool_call, render_tool, split_reasoning
 
 try:
     from loguru import logger
@@ -22,6 +24,13 @@ except ImportError:  # keeps the module importable in minimal environments
     logger = logging.getLogger(__name__)
 
 ExtraTool = Callable[[Dict[str, Any]], Awaitable[str]]
+ProgressCallback = Callable[[Dict[str, Any]], None]
+
+
+def _preview_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Short, JSON-safe copy of tool params for display."""
+    return {str(k): clip(v if isinstance(v, str) else json.dumps(v, default=str, ensure_ascii=False), 300)
+            for k, v in list(params.items())[:8]}
 
 
 @dataclass
@@ -81,7 +90,12 @@ class AgentLoop:
         max_tokens: int = 1024,
         extra_tools: Optional[Dict[str, ExtraTool]] = None,
         extra_specs: Optional[List[Dict[str, Any]]] = None,
+        on_event: Optional[ProgressCallback] = None,
+        source: Optional[str] = None,
     ):
+        self.on_event = on_event
+        self.source = source  # e.g. a sub-agent name, shown next to its events
+        self._tool_seq = 0
         self.runtime = runtime
         self.agent_id = agent_id
         self.system_prompt = system_prompt
@@ -152,6 +166,18 @@ class AgentLoop:
         parts.append("Assistant:")
         return "\n".join(p for p in parts if p)
 
+    # ---- progress ---------------------------------------------------------
+    def _emit(self, type_: str, **fields: Any) -> None:
+        if not self.on_event:
+            return
+        event = {"type": type_, "ts": time.time(), **fields}
+        if self.source:
+            event["agent"] = self.source
+        try:
+            self.on_event(event)
+        except Exception as exc:  # progress must never break the run
+            logger.debug(f"progress callback failed: {exc}")
+
     # ---- execution --------------------------------------------------------
     async def _generate(self, prompt: str) -> str:
         resp = await self.runtime.call_llm(
@@ -171,6 +197,16 @@ class AgentLoop:
                 if dropped:
                     logger.info(f"[tool] {name}: dropped undeclared params {dropped}")
             ident = {}
+        self._tool_seq += 1
+        call_id = f"{self.source or 'main'}-{self._tool_seq}"
+        started = time.monotonic()
+        self._emit("tool_start", id=call_id, tool=name, params=_preview_params(params))
+        step = await self._run_tool_inner(name, params, ident, user_id)
+        self._emit("tool_end", id=call_id, tool=name, ok=step.ok,
+                   ms=int((time.monotonic() - started) * 1000), preview=clip(step.observation, 700))
+        return step
+
+    async def _run_tool_inner(self, name: str, params: Dict[str, Any], ident: Dict[str, Any], user_id) -> Step:
         try:
             if name in self.extra_tools:
                 coro = self.extra_tools[name](params)
@@ -196,12 +232,19 @@ class AgentLoop:
         lessons = lessons or []
         for n in range(self.cfg.max_steps):
             last = n == self.cfg.max_steps - 1
-            text = (await self._generate(self._prompt(user_message, history, lessons, steps, last))).strip()
-            call = extract_tool_call(text, self.tool_names) if self.specs else None
+            self._emit("status", label="Writing the final answer" if last else "Thinking", step=n + 1)
+            raw_text = (await self._generate(self._prompt(user_message, history, lessons, steps, last))).strip()
+            call = extract_tool_call(raw_text, self.tool_names) if self.specs else None
+            parts = split_reasoning(raw_text, has_call=bool(call))
+            if parts["thought"]:
+                self._emit("thought", text=clip(parts["thought"], 1500))
             if not call:
+                text = parts["answer"] or raw_text
                 if (self.specs and steps and not last and not nudged
                         and not any(x.kind == "tool" and x.ok for x in steps)):
                     nudged = True  # one retry before accepting "I could not do it"
+                    self._emit("check", level="warn",
+                               text="No tool has succeeded yet, so I'm trying again instead of giving up.")
                     steps.append(Step("nudge", "system", {}, "No tool call has succeeded yet. Do not give up: "
                                       "try different params or another tool (for web questions call web_search, "
                                       "then open a URL from its results).", ok=False))
@@ -209,11 +252,13 @@ class AgentLoop:
                 return LoopResult(text=text, steps=steps, stopped="final")
             name, params = call["tool"], call["params"]
             if call["unknown"]:
+                self._emit("check", level="warn", text=f"'{name}' is not an available tool; choosing a valid one.")
                 steps.append(Step("unknown_tool", name, params,
                                   f"ERROR: '{name}' is not a tool. Valid tools: {', '.join(self.tool_names)}", ok=False))
                 continue
             sig = (name, json.dumps(params, sort_keys=True, default=str))
             if sig in seen:
+                self._emit("check", level="warn", text=f"Skipped a repeated call to {name}; changing approach.")
                 steps.append(Step("repeat", name, params,
                                   "ERROR: identical call already made. If its result was an error, change the "
                                   "params/URL or use a different tool (for web questions: web_search first); "
@@ -222,7 +267,10 @@ class AgentLoop:
             seen.add(sig)
             steps.append(await self._run_tool(name, params, user_id))
         # budget exhausted while still calling tools: one last forced answer
+        self._emit("check", level="warn", text="Step limit reached; writing the best answer from what I found.")
         text = (await self._generate(self._prompt(user_message, history, lessons, steps, True))).strip()
+        if not extract_tool_call(text, self.tool_names):
+            text = split_reasoning(text)["answer"] or text
         if extract_tool_call(text, self.tool_names):
             good = [s for s in steps if s.kind == "tool" and s.ok]
             text = ("I ran out of steps before finishing. Last result: " + clip(good[-1].observation, 800)) if good \

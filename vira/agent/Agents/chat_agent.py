@@ -13,6 +13,7 @@ from vira.agent.base import BaseAgent
 from vira.agent.definitions import AgentDefinition, load_definitions
 from vira.agent.lessons import LessonStore
 from vira.agent.loop import AgentLoop, LoopConfig, LoopResult
+from vira.agent.progress import hub
 from vira.agent.toolcalls import clip
 from vira.agent_orchestration.registry import AgentCapability
 from vira.agent_runtime.runtime import AgentContext
@@ -113,6 +114,7 @@ class ChatAgent(BaseAgent):
             "user_message": message,
             "history": history,
             "user_id": user_id,
+            "run_id": event.data.get("run_id"),
             "lessons": await self.lessons.recall(user_id, message),
         }
 
@@ -132,7 +134,7 @@ class ChatAgent(BaseAgent):
                            "required": ["agent", "task"]},
         }]
 
-    async def _delegate(self, params: Dict[str, Any], user_id) -> str:
+    async def _delegate(self, params: Dict[str, Any], user_id, on_event=None) -> str:
         definition = self.definitions.get(str(params.get("agent", "")))
         task = str(params.get("task", "")).strip()
         if not definition:
@@ -147,7 +149,7 @@ class ChatAgent(BaseAgent):
                        max_prompt_chars=self.loop_config.max_prompt_chars, tool_timeout=self.loop_config.tool_timeout),
             model=definition.model or self.model,
             temperature=definition.temperature if definition.temperature is not None else self.temperature,
-            max_tokens=self.max_tokens,
+            max_tokens=self.max_tokens, on_event=on_event, source=definition.name,
         )
         result = await sub.run(task, user_id=user_id)
         return clip(result.text, 2500)
@@ -156,14 +158,19 @@ class ChatAgent(BaseAgent):
         thought = next(s["thought"] for s in plan if s.get("step") == "agent_loop")
         user_id = thought["user_id"]
 
+        run_id = thought.get("run_id")
+
+        def on_event(evt: Dict[str, Any]) -> None:
+            hub.emit(run_id, evt)
+
         async def delegate(params):
-            return await self._delegate(params, user_id)
+            return await self._delegate(params, user_id, on_event)
 
         loop = AgentLoop(
             self.runtime, self.agent_id, self.system_prompt, self.available_tools, self.loop_config,
             model=self.model, temperature=self.temperature, max_tokens=self.max_tokens,
             extra_tools={DELEGATE: delegate} if self.definitions else None,
-            extra_specs=self._delegate_spec(),
+            extra_specs=self._delegate_spec(), on_event=on_event,
         )
         result = await loop.run(thought["user_message"], thought["history"], thought["lessons"], user_id)
         logger.info(f"[{self.name}] done: stopped={result.stopped} tool_calls={result.tool_calls}")

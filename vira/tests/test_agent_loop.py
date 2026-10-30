@@ -177,3 +177,26 @@ class LessonAndDefinitionTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProgressEventTests(unittest.IsolatedAsyncioTestCase):
+    async def test_emits_thinking_tool_and_validation_events(self):
+        rt = FakeRuntime(['<think>need the page</think>Let me look.\n{"tool": "web_browse", "params": {"url": "u1"}}',
+                          '{"tool": "web_browse", "params": {"url": "u1"}}',
+                          "<think>done</think>The answer."])
+        events = []
+        res = await AgentLoop(rt, "a", "s", TOOLS, on_event=events.append).run("q", user_id=1)
+        kinds = [e["type"] for e in events]
+        self.assertEqual(res.text, "The answer.")
+        self.assertIn("thought", kinds)
+        self.assertEqual(kinds.count("tool_start"), 1)
+        self.assertEqual(kinds.count("tool_end"), 1)
+        self.assertIn("check", kinds)  # the repeated call was caught
+        self.assertTrue(next(e for e in events if e["type"] == "tool_end")["ok"])
+        self.assertIn("need the page", next(e for e in events if e["type"] == "thought")["text"])
+
+    async def test_broken_callback_does_not_break_run(self):
+        def boom(_):
+            raise RuntimeError("x")
+        res = await AgentLoop(FakeRuntime(["hi"]), "a", "s", TOOLS, on_event=boom).run("q")
+        self.assertEqual(res.text, "hi")

@@ -136,3 +136,27 @@ def render_tool(tool: Dict[str, Any]) -> str:
         args.append(f"{pname}{'' if pname in required else '?'}: {ptype}")
     desc = " ".join(str(tool.get("description") or "").split())
     return f"- {tool.get('name', 'unknown')}({', '.join(args)}) - {trim(desc, 500)}"
+
+
+_THINK = re.compile(r"<(think|thinking|reasoning)>(.*?)(?:</\1>|\Z)", re.S | re.I)
+_FENCE = re.compile(r"```[a-zA-Z]*")
+
+
+def split_reasoning(text: str, has_call: bool = False) -> Dict[str, str]:
+    """Separate a model reply into {"thought", "answer"}.
+
+    * <think>...</think> blocks (reasoning models) are the thought.
+    * When the reply is a tool call, any prose before the JSON is the thought
+      (the call itself is shown separately by the UI).
+    * Otherwise the remaining text is the final answer, free of think tags.
+    """
+    text = text or ""
+    thoughts = [m.group(2).strip() for m in _THINK.finditer(text)]
+    rest = _THINK.sub("", text).strip()
+    if has_call:
+        brace = rest.find("{")
+        prose = _FENCE.sub("", rest[:brace] if brace >= 0 else rest).strip()
+        if prose:
+            thoughts.append(prose)
+        rest = ""
+    return {"thought": "\n\n".join(t for t in thoughts if t), "answer": rest}

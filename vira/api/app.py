@@ -35,6 +35,7 @@ from vira.api.deps import (
     install_error_handling,
 )
 from vira.api.streams import EventStreamManager
+from vira.agent.progress import hub as progress_hub
 from vira.api.routes_admin import build_admin_router
 from vira.api.routes_devices import build_device_router
 
@@ -213,7 +214,7 @@ def create_app(kernel: Kernel) -> FastAPI:
     async def chat_page(request: Request):
         if not auth.resolve_principal(request.session.get("session_id")):
             return RedirectResponse(url="/login", status_code=302)
-        return FileResponse(str(static_dir / "chat.html"))
+        return FileResponse(str(static_dir / "chat.html"), headers={"Cache-Control": "no-cache"})
 
     @app.get("/forgot")
     async def forgot_page():
@@ -764,6 +765,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         http_request: Request,
         user: auth.Principal,
         conversation_id: Optional[str] = None,
+        progress_queue: Optional[asyncio.Queue] = None,
     ):
         kernel = get_kernel()
         orchestrator = getattr(kernel, "agent_orchestrator", None)
@@ -814,6 +816,8 @@ def create_app(kernel: Kernel) -> FastAPI:
         )
 
         response_future = Future()
+        progress_hub.begin(run_id, progress_queue)
+        trace: List[Dict[str, Any]] = []
 
         async def on_response(event: Event):
             data = event.data if isinstance(event.data, dict) else {}
@@ -847,6 +851,7 @@ def create_app(kernel: Kernel) -> FastAPI:
             await kernel.dispatcher.publish(event)
 
             result = await asyncio.wait_for(response_future, timeout=200)
+            trace = progress_hub.end(run_id)
             assistant_message = auth_database.append_message(
                 conversation_id,
                 user.user_id,
@@ -854,6 +859,7 @@ def create_app(kernel: Kernel) -> FastAPI:
                 result.get("response", ""),
                 correlation_id=correlation_id,
                 run_id=run_id,
+                metadata={"trace": trace} if trace else None,
                 created_by_device_id=None,
             )
             auth_database.update_run(run_id, "succeeded", result_message_id=assistant_message["id"])
@@ -872,12 +878,54 @@ def create_app(kernel: Kernel) -> FastAPI:
             auth_database.update_run(run_id, "failed", error=str(exc))
             raise
         finally:
+            progress_hub.end(run_id)  # no-op if already collected
             kernel.event_bus.unsubscribe_all(on_response)
 
     @app.post("/chat")
     async def chat_endpoint(request: ChatRequest, http_request: Request,
                             user: auth.Principal = Depends(get_current_user)):
         return await _submit_chat(request, http_request, user)
+
+    _stream_tasks: set = set()
+
+    @app.post("/chat/stream")
+    async def chat_stream_endpoint(request: ChatRequest, http_request: Request,
+                                   user: auth.Principal = Depends(get_current_user)):
+        """Same as /chat, but streams the agent's activity as NDJSON lines.
+
+        Lines: {"type": "status|thought|tool_start|tool_end|check", ...} while the
+        agent works, then one {"type": "done", ...result} or {"type": "error", ...}.
+        """
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def runner():
+            try:
+                result = await _submit_chat(request, http_request, user, progress_queue=queue)
+                await queue.put({"type": "done", **result})
+            except HTTPException as exc:
+                await queue.put({"type": "error", "status": exc.status_code, "detail": str(exc.detail)})
+            except Exception as exc:
+                logger.exception("chat stream failed")
+                await queue.put({"type": "error", "status": 500, "detail": str(exc) or "Chat failed"})
+            finally:
+                await queue.put(None)
+
+        # Keep a reference and let the run finish (and be saved) even if the tab closes.
+        task = asyncio.create_task(runner())
+        _stream_tasks.add(task)
+        task.add_done_callback(_stream_tasks.discard)
+
+        async def lines():
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield json.dumps(item, default=str) + "\n"
+
+        return StreamingResponse(
+            lines(), media_type="application/x-ndjson",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.post("/api/v1/conversations/{conversation_id}/messages")
     async def submit_message(conversation_id: str, request: ChatRequest, http_request: Request,
