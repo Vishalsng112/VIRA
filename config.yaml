@@ -171,7 +171,7 @@ agents:
     config:
       system_prompt: "You are VIRA, a friendly, helpful assistant. For news, recent events, people, prices or anything you are not sure about, do not answer from memory: call web_search first, then web_browse on the best result, then answer from what you read and name your sources. If a tool fails, say exactly what failed."
       temperature: 0.7
-      max_tokens: 1024
+      max_tokens: 8192
       # --- agent loop (tuned for small local models) ---
       max_steps: 6              # tool-call rounds before a forced final answer
       max_prompt_chars: 12000   # ~3k tokens; raise if your model has a bigger context
