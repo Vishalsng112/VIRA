@@ -130,7 +130,7 @@ sensors:
 
 
 llm:
-  default_model: "devstral:24b"
+  default_model: "gemma4:12b"
   models:
     # - name: "gpt-4"
     #   provider: "openai"
@@ -145,7 +145,7 @@ llm:
     #   max_tokens: 4096
     - name: "local-llama"
       provider: "ollama"
-      model: "devstral:24b" #"ornith:9b" #"gemma4:e4b"
+      model: "gemma4:12b" #"ornith:9b" #"gemma4:e4b"
       base_url: "http://localhost:11434"
       temperature: 0.8
 
@@ -165,6 +165,10 @@ mission:
   call_timeout: 240             # seconds per LLM call
   max_replies: 8                # max unsolicited answers per agent (stops endless chatter)
   max_minutes: 90
+  verify_rounds: 2              # build->run->report->fix loops after the build (0 = off)
+  execute_checks: true          # really run flutter/dart/npm/pytest inside the project folder (needs the tools installed; false = static checks only)
+  check_timeout: 300            # seconds per verification command
+  revision_calls: 60            # extra LLM-call budget each time you ask for a change after the mission finished
 
 # agents:
 #   - name: "AGENT_1"

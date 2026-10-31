@@ -68,6 +68,9 @@ class MockLLM:
             return json.dumps(self.PLAN)
         if "### REVIEW" in p:
             return '{"issues":[]}'
+        if "### REVISE" in p:
+            return json.dumps({"reply": "Change accepted.", "tasks": [{"owner": "backend_dev", "title": "Apply change",
+                               "files": ["app/core.py"], "description": "Apply the requested change."}]})
         if "### README" in p:
             return "# Demo app\n\nRun `python -m app.ui`. Tests: `pytest`.\n\nGenerated offline by the mock model for pipeline testing.\n"
         if "### REPLY" in p:

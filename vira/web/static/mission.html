@@ -64,7 +64,7 @@ const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"']/g,c=>
 const color=n=>{let h=0;for(const c of String(n))h=(h*31+c.charCodeAt(0))%360;return `hsl(${h} 70% 62%)`};
 const api=(p,o)=>fetch("/api/mission"+p,o).then(async r=>{if(!r.ok){let m=r.statusText;try{m=(await r.json()).detail||m}catch{}throw new Error(m)}return r});
 const time=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});
-let mid=null,last=0,events=[],S={},tab="chat",openFile=null,fileSig="";
+let pt=null,mid=null,last=0,events=[],S={},tab="chat",openFile=null,fileSig="";
 
 async function list(sel){const d=await(await api("/list")).json();const el=$("#sel");const cur=sel||mid||el.value;
   el.innerHTML='<option value="">— missions —</option>'+d.missions.map(m=>`<option value="${m.id}">${esc(m.status)} · ${esc(m.brief.slice(0,50))}</option>`).join("");el.value=cur||""}
@@ -76,15 +76,15 @@ $("#go").onclick=async()=>{$("#err").textContent="";try{
   await list(r.id);pick(r.id)}catch(e){$("#err").textContent=e.message}};
 $("#stop").onclick=()=>mid&&api(`/${mid}/stop`,{method:"POST"});
 $("#dl").onclick=()=>mid&&(location.href=`/api/mission/${mid}/download`);
-$("#say").onsubmit=async e=>{e.preventDefault();const t=$("#txt").value.trim();if(!t||!mid)return;try{await api(`/${mid}/say`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,to:$("#to").value})});$("#txt").value=""}catch(x){$("#err").textContent=x.message}};
+$("#say").onsubmit=async e=>{e.preventDefault();const t=$("#txt").value.trim();if(!t||!mid)return;try{await api(`/${mid}/say`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,to:$("#to").value})});$("#txt").value="";$("#err").textContent=S.live===false?"Sent - the team is re-opening the mission to apply your change.":"";S.live=true;poll()}catch(x){$("#err").textContent=x.message}};
 $("#tabs").onclick=e=>{const b=e.target.closest("button");if(!b)return;tab=b.dataset.t;document.querySelectorAll("#tabs button").forEach(x=>x.classList.toggle("on",x===b));drawFeed(true)};
 
-async function poll(){if(!mid)return;const id=mid;
+async function poll(){clearTimeout(pt);if(!mid)return;const id=mid;
   try{const s=await(await api(`/${id}/state?since=${last}`)).json();if(id!==mid)return;S=s;
     for(const e of s.events||[])if(e.seq>last){last=e.seq;events.push(e)}
     draw();
     const sig=(s.files||[]).map(f=>f.path+f.version+f.bytes).join("|");if(sig!==fileSig){fileSig=sig;drawFiles();if(openFile)showFile(openFile,true)}}catch(e){$("#err").textContent=e.message}
-  setTimeout(poll,s_live()?1500:5000)}
+  pt=setTimeout(poll,s_live()?1500:5000)}
 const s_live=()=>S.live!==false;
 
 function draw(){const s=S,tasks=s.tasks||[],done=tasks.filter(t=>["done","partial","failed"].includes(t.status)).length;

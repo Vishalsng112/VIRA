@@ -22,6 +22,7 @@ from loguru import logger
 from vira.agent.toolcalls import extract_json
 from vira.swarm.hub import SwarmHub
 
+from . import verify
 from .plan import make_plan
 from .workspace import Workspace, WorkspaceError
 
@@ -34,6 +35,10 @@ DEFAULTS: Dict[str, Any] = {
     "review_rounds": 1, "llm_concurrency": 1, "max_llm_calls": 120, "max_tokens": 4096,
     "temperature": 0.4, "call_timeout": 240, "max_replies": 8, "max_attempts": 2,
     "ctx_chars": 12000, "max_minutes": 90, "allow_parallel_missions": False,
+    # verification loop: run the project's own tooling, send errors back to the author, repeat
+    "verify_rounds": 2, "execute_checks": True, "check_timeout": 300,
+    # extra LLM-call budget granted every time the user asks for a change after the mission finished
+    "revision_calls": 60,
 }
 
 COMM = ("COMMUNICATION: plain professional English, no roleplay, greetings or small talk. Max ~100 words per message. "
@@ -86,6 +91,16 @@ def parse_output(text: str) -> Dict[str, Any]:
     return {"files": files, "messages": [((to or "all").strip(), b.strip()) for to, b in _MSG.findall(body) if b.strip()],
             "notes": [n.strip() for n in _NOTE.findall(body) if n.strip()],
             "status": (st[-1].strip().lower() if st else "done")}
+
+
+class Runner:
+    """Built-in 'Build & Test Runner': no LLM, it executes the project's checks and reports failures to the authors."""
+    key, title = "runner", "Build & Test Runner"
+    persona = "Runs the project's real tooling (pub get, analyze, test, npm, pytest) and reports exact errors to the owner."
+    owns = "build / run / test verification"
+
+    def __init__(self):
+        self.sent = 0
 
 
 # --------------------------------------------------------------------------- agent
@@ -299,6 +314,10 @@ class Mission:
         self.finished = asyncio.Event()
         self._main: Optional[asyncio.Task] = None
         self._bg: List[asyncio.Task] = []
+        self.rev = 0                                        # number of user-requested revisions so far
+        self.verification = ""                              # last verification summary (goes into MISSION_REPORT.md)
+        self.runner = Runner()
+        self.gate: Optional[Callable[[], None]] = None      # set by the manager: raises if another mission is running
 
     # -- LLM with budget + shared concurrency
     async def ask(self, prompt: str, **kw) -> str:
@@ -407,44 +426,72 @@ class Mission:
         self.hub.emit("phase", "master", "Master Agent", phase=phase)
         self.save()
 
+    def _make_master(self) -> CrewAgent:
+        master = CrewAgent(self, "master", "Master Agent",
+                           "Engineering manager. Plans the team, resolves conflicts, reviews integration, owns delivery.",
+                           "plan, coordination, final review", is_master=True)
+        self.agents["master"] = master
+        self.hub.emit("join", "master", master.title, persona=master.persona, owns=master.owns, tasks=[])
+        return master
+
+    def _runner_card(self, activity: str) -> None:
+        r = self.runner
+        self.hub.update_agent(r.key, {"id": r.key, "name": r.title, "key": r.key, "title": r.title, "persona": r.persona,
+                                      "owns": r.owns, "is_master": False, "alive": not self.finished.is_set(),
+                                      "activity": activity, "current": None, "tasks_total": 0, "tasks_done": 0, "files": 0,
+                                      "notes": [], "knowledge_count": 0, "generation": 0, "sent": r.sent, "received": 0,
+                                      "replies": 0, "errors": 0})
+
     async def run(self) -> None:
         self.started, self.status = time.time(), "running"
         self.hub.emit("system", "master", "Master Agent", text=f"mission {self.id} started: {self.brief[:200]}")
         self._bg = [asyncio.create_task(self._beat())]
-        try:
-            self._phase("planning")
-            master = CrewAgent(self, "master", "Master Agent",
-                               "Engineering manager. Plans the team, resolves conflicts, reviews integration, owns delivery.",
-                               "plan, coordination, final review", is_master=True)
-            self.agents["master"] = master
-            self.hub.emit("join", "master", master.title, persona=master.persona, owns=master.owns, tasks=[])
-            master.set_activity("planning the team")
-            self.plan = await make_plan(self.ask, self.brief, self.cfg["min_agents"], self.cfg["max_agents"], self.cfg["max_tasks"])
-            self.tasks = {t["id"]: t for t in self.plan["tasks"]}
-            self.hub.emit("plan", "master", "Master Agent", project=self.plan["project"], summary=self.plan["summary"],
-                          stack=self.plan["stack"], roles=self.plan["roles"], fallback=bool(self.plan.get("fallback")),
-                          tasks=[{k: t[k] for k in ("id", "title", "owner", "depends_on", "deliverables")} for t in self.plan["tasks"]])
-            self._phase("staffing")
-            for r in self.plan["roles"]:
+        await self._guard(self._run_new)
+
+    async def _run_new(self) -> None:
+        self._phase("planning")
+        master = self._make_master()
+        master.set_activity("planning the team")
+        self.plan = await make_plan(self.ask, self.brief, self.cfg["min_agents"], self.cfg["max_agents"], self.cfg["max_tasks"])
+        self.tasks = {t["id"]: t for t in self.plan["tasks"]}
+        self.hub.emit("plan", "master", "Master Agent", project=self.plan["project"], summary=self.plan["summary"],
+                      stack=self.plan["stack"], roles=self.plan["roles"], fallback=bool(self.plan.get("fallback")),
+                      tasks=[{k: t[k] for k in ("id", "title", "owner", "depends_on", "deliverables")} for t in self.plan["tasks"]])
+        self._phase("staffing")
+        self._staff_cards()
+        self.send(master, "all", f"[DECISION] Project '{self.plan['project']}': {self.plan['summary']} Stack: {self.plan['stack']}. "
+                                 "Follow the architecture. Ask the owning role directly; post [DECISION] for contract changes.", system=True)
+        self._start_agents()
+        self._phase("building")
+        await self._wait_tasks()
+        for rnd in range(self.cfg["review_rounds"]):
+            if self.finished.is_set():
+                break
+            self._phase(f"review {rnd + 1}")
+            if not await self._review(rnd):
+                break
+            await self._wait_tasks()
+        await self._verify()
+        self._phase("finalizing")
+        await self._finalize()
+        self.status = {"": "done"}.get(self.halt_reason, self.halt_reason)
+
+    def _staff_cards(self) -> None:
+        for r in self.plan["roles"]:
+            if r["key"] not in self.agents:
                 a = CrewAgent(self, r["key"], r["title"], r["persona"], r["owns"])
                 self.agents[a.key] = a
                 self.hub.emit("join", a.key, a.title, persona=a.persona, owns=a.owns,
                               tasks=[t["id"] for t in self.tasks.values() if t["owner"] == a.key])
-            self.send(master, "all", f"[DECISION] Project '{self.plan['project']}': {self.plan['summary']} Stack: {self.plan['stack']}. "
-                                     "Follow the architecture. Ask the owning role directly; post [DECISION] for contract changes.", system=True)
-            self._bg += [asyncio.create_task(a.run(), name=f"mission-{a.key}") for a in self.agents.values()]
-            self._phase("building")
-            await self._wait_tasks()
-            for rnd in range(self.cfg["review_rounds"]):
-                if self.finished.is_set():
-                    break
-                self._phase(f"review {rnd + 1}")
-                if not await self._review(rnd):
-                    break
-                await self._wait_tasks()
-            self._phase("finalizing")
-            await self._finalize()
-            self.status = {"": "done"}.get(self.halt_reason, self.halt_reason)
+
+    def _start_agents(self) -> None:
+        self._staff_cards()
+        self._bg += [asyncio.create_task(a.run(), name=f"mission-{a.key}") for a in self.agents.values()]
+
+    async def _guard(self, body) -> None:
+        """Run a mission body (first build or a revision) with uniform stop / budget / error handling and teardown."""
+        try:
+            await body()
         except asyncio.CancelledError:
             self.status = "stopped"
         except BudgetExceeded:
@@ -460,14 +507,67 @@ class Mission:
             for tsk in self._bg:
                 tsk.cancel()
             await asyncio.gather(*self._bg, return_exceptions=True)
+            self._bg = []
             for a in self.agents.values():
                 a.activity = "finished"
                 a.snapshot()
                 self.hub.remove_agent(a.key)
+            self._runner_card("idle")
+            self.hub.remove_agent(self.runner.key)
             self.phase = self.status
             self.hub.emit("mission_done", "master", "Master Agent", status=self.status, files=len(self.ws.files()),
                           calls=self.calls, error=self.error)
             self.save()
+
+    # -- verification loop: run it, read the errors, send them back to the author, repeat
+    def _default_owner(self) -> str:
+        keys = [r["key"] for r in self.plan["roles"]]
+        return next((k for k in keys if not any(x in k for x in ("qa", "review", "test"))), keys[0])
+
+    def _add_fix_tasks(self, items: List[Dict[str, Any]], prefix: str, note: str) -> None:
+        for i, it in enumerate(items):
+            owner = it.get("owner")
+            owner = owner if owner in self.agents and owner != "master" else self._default_owner()
+            t = {"id": f"{prefix}-{i + 1}", "title": str(it.get("title") or "Fix")[:80], "owner": owner, "depends_on": [],
+                 "deliverables": [str(f) for f in (it.get("files") or [])][:6], "description": str(it.get("description") or "")[:2600],
+                 "status": "pending", "attempts": 0}
+            self.tasks[t["id"]] = t
+            self.set_task(t, "pending", note=note)
+        self.wake_all()
+
+    async def _verify(self) -> None:
+        rounds = int(self.cfg["verify_rounds"])
+        r, mtitle = self.runner, "Build & Test Runner"
+        for rnd in range(rounds + 1):
+            if self.finished.is_set():
+                return
+            self._phase("verifying" if rnd == 0 else f"re-verifying {rnd}")
+            self._runner_card("static checks (yaml, imports, syntax)")
+            issues = verify.static_issues(self.ws)
+            results: List[verify.CmdResult] = []
+            if not issues:                                  # cheap structural errors first - they make tool output noisy
+                self._runner_card("running project tooling")
+                results, issues = await verify.run_checks(self.ws, int(self.cfg["check_timeout"]), bool(self.cfg["execute_checks"]))
+            self.verification = verify.summarize(results, issues)
+            for res in results:
+                self.hub.emit("system", r.key, mtitle,
+                              text=f"$ {res.label} -> " + (f"skipped ({res.skipped})" if res.skipped else "ok" if res.ok else
+                                                           "timeout" if res.timed_out else f"exit {res.code}"))
+            if not issues:
+                self.hub.emit("system", r.key, mtitle, text="verification passed" + (" (some tools were not installed - see report)"
+                                                                                   if any(x.skipped for x in results) else ""))
+                self._runner_card("all checks passed")
+                return
+            self.hub.emit("system", r.key, mtitle, text=f"verification found {len(issues)} problem(s)")
+            if rnd >= rounds or self.finished.is_set():
+                self._runner_card("problems left - see report")
+                return
+            fixes = verify.route_issues(issues, self.ws, self.agents, self.plan["roles"])
+            for f in fixes:
+                self.send(r, f["owner"], f"[BLOCKER] {f['title']}: " + f["description"].split("\n", 3)[-1][:700], system=True)
+            self._add_fix_tasks(fixes, f"V{self.rev}-{rnd + 1}", "from verification")
+            self._runner_card(f"waiting for {len(fixes)} fix task(s)")
+            await self._wait_tasks()
 
     async def _beat(self) -> None:
         while True:
@@ -553,13 +653,75 @@ class Mission:
         return (f"# Mission report {self.id}\n\n**Brief:** {self.brief}\n\n**Status:** {self.status or self.halt_reason or 'done'}  \n"
                 f"**LLM calls:** {self.calls}/{self.cfg['max_llm_calls']}  \n**Stack:** {self.plan['stack']}\n\n## Team\n{team}\n\n"
                 f"## Tasks\n| id | title | owner | status |\n|---|---|---|---|\n{rows}\n\n## Decisions\n{dec}\n\n"
-                f"## Open problems\n{chr(10).join(left) or '- none detected by automatic checks'}\n")
+                f"## Open problems\n{chr(10).join(left) or '- none detected by automatic checks'}\n\n"
+                f"## Verification (last run)\n{self.verification or '- not run'}\n")
 
     # -- control / views
     async def say(self, text: str, to: str = "all") -> None:
+        """Talk to the team. While running it is a message; after the mission finished it starts a revision round."""
         if self.finished.is_set():
-            raise RuntimeError("mission is not running")
+            self.revise(text, to)
+            return
         self.send(None, to, text[:800])
+
+    def revise(self, text: str, to: str = "all") -> None:
+        """Re-open a finished mission: the Master turns the change request into tasks, the team builds, the runner verifies."""
+        if not self.plan.get("roles"):
+            raise RuntimeError("this mission never produced a team (it failed while planning) - start a new mission instead")
+        if self._main and not self._main.done():
+            raise RuntimeError("the mission is still shutting down - try again in a moment")
+        if self.gate:
+            self.gate()
+        self.rev += 1
+        self.finished = asyncio.Event()
+        self.halt_reason = self.error = ""
+        self.status, self.ended, self.started = "running", 0.0, time.time()
+        self.cfg["max_llm_calls"] = self.calls + int(self.cfg["revision_calls"])
+        self._bg = [asyncio.create_task(self._beat())]
+        self._main = asyncio.create_task(self._guard(lambda: self._run_revision(text.strip()[:2000], to)), name=f"mission-{self.id}-r{self.rev}")
+
+    async def _plan_revision(self, text: str, to: str) -> List[Dict[str, Any]]:
+        target = self.resolve(to)
+        prompt = (f"### REVISE\nYou are the MASTER AGENT. The product below is already built. The client now asks for a change.\n"
+                  f"CHANGE REQUEST: {text}\n" + (f"The client addressed it to: {target}\n" if target not in (None, "?") else "") +
+                  f"PROJECT: {self.plan['summary']}\nSTACK: {self.plan['stack']}\nARCHITECTURE:\n{self.plan['architecture']}\n"
+                  f"TEAM:\n{self.roster()}\nDECISIONS:\n{self.decisions_text(10)}\nFILES:\n{self.ws.tree_text()}\n\n"
+                  "Split the change into 1-5 tasks, each owned by ONE role key from the team, `files` = existing or new paths to "
+                  "create/modify (include every file that must change so the build stays consistent: pubspec, imports, tests). "
+                  'Reply ONLY JSON: {"reply":"one sentence to the client","tasks":[{"owner":"role key","title":"...","files":["path"],"description":"exact change"}]}')
+        items, reply = [], ""
+        try:
+            data = extract_json(await self.ask(prompt, max_tokens=1500, temperature=0.2)) or {}
+            reply = str(data.get("reply") or "")[:300]
+            items = [it for it in (data.get("tasks") or []) if isinstance(it, dict) and it.get("description")][:5]
+            for it in items:
+                it["owner"] = self.resolve(str(it.get("owner", "")))
+        except BudgetExceeded:
+            raise
+        except Exception as exc:
+            logger.debug("[mission] revise planning failed: {}", exc)
+        if not items:                                       # model gave nothing usable: hand the request to one engineer verbatim
+            owner = target if target not in (None, "?", "master") else self._default_owner()
+            items = [{"owner": owner, "title": "Apply requested change", "files": [], "description": text}]
+        self.send(self.agents["master"], "all", "[DECISION] Change request accepted: " + (reply or text[:200]), system=True)
+        return items
+
+    async def _run_revision(self, text: str, to: str) -> None:
+        self._phase("revising")
+        self.hub.emit("message", "human", "Human", to=to or "all", text=text, tag="", system=False)
+        if "master" not in self.agents:
+            self._make_master()
+        self.agents["master"].set_activity("planning the change")
+        items = await self._plan_revision(text, to)
+        self._staff_cards()
+        self._add_fix_tasks(items, f"R{self.rev}", "change request")
+        self._start_agents()
+        self._phase("building")
+        await self._wait_tasks()
+        await self._verify()
+        self._phase("finalizing")
+        await self._finalize()
+        self.status = {"": "done"}.get(self.halt_reason, self.halt_reason)
 
     def stop(self) -> None:
         if self._main and not self._main.done():
@@ -609,16 +771,52 @@ class MissionManager:
         cfg.update({k: v for k, v in over.items() if v is not None and k in DEFAULTS})
         if not cfg["allow_parallel_missions"] and self.running():
             raise RuntimeError("a mission is already running - stop it or wait")
-        if self._ask_factory is None:
-            from .llm import make_ask_factory
-            self._ask_factory = make_ask_factory(self.config_path)
-        m = Mission(brief[:4000], self._ask_factory(cfg.get("model")), root=cfg["data_dir"], cfg=cfg)
+        m = Mission(brief[:4000], self._ask_for(cfg), root=cfg["data_dir"], cfg=cfg)
+        m.gate = lambda m=m: self._check_free(m)
         self.missions[m.id] = m
         m._main = asyncio.create_task(m.run(), name=f"mission-{m.id}")
         return m
 
+    def _ask_for(self, cfg: Dict[str, Any]):
+        if self._ask_factory is None:
+            from .llm import make_ask_factory
+            self._ask_factory = make_ask_factory(self.config_path)
+        return self._ask_factory(cfg.get("model"))
+
+    def _check_free(self, me: Mission) -> None:
+        other = self.running()
+        if not self.config()["allow_parallel_missions"] and other and other is not me:
+            raise RuntimeError("another mission is running - stop it or wait before changing this one")
+
     def get(self, mid: str) -> Optional[Mission]:
         return self.missions.get(mid)
+
+    def resume(self, mid: str) -> Optional[Mission]:
+        """Re-create a finished mission from disk (e.g. after a server restart) so the user can keep asking for changes."""
+        if mid in self.missions:
+            return self.missions[mid]
+        saved = self.saved(mid) if re.fullmatch(r"[0-9a-zA-Z_-]{6,40}", mid or "") else None
+        if not saved or not (saved.get("plan") or {}).get("roles"):
+            return None
+        cfg = self.config()
+        m = Mission(saved.get("brief", ""), self._ask_for(cfg), root=cfg["data_dir"], cfg=cfg, mid=mid)
+        m.plan = {**m.plan, **saved["plan"]}
+        m.tasks = {t["id"]: t for t in saved.get("tasks", []) if "id" in t}
+        for t in m.tasks.values():                          # interrupted by the restart: keep the files, do not re-run the backlog
+            if t.get("status") not in TERMINAL:
+                t["status"] = "partial"
+        m.decisions = list(saved.get("decisions", []))
+        m.calls, m.status, m.phase = int(saved.get("calls", 0)), saved.get("status", "done"), saved.get("phase", "")
+        m.started, m.ended, m.error = saved.get("started", 0.0), saved.get("ended", 0.0), saved.get("error", "")
+        for f in saved.get("files", []):
+            m.ws.meta[f["path"]] = {"path": f["path"], "author": f.get("author", ""), "version": f.get("version", 1),
+                                    "check": f.get("check", ""), "bytes": f.get("bytes", 0), "lines": 0, "t": 0}
+        nums = [int(x) for t in m.tasks for x in re.findall(r"^[RV](\d+)", t)]
+        m.rev = max(nums, default=0)
+        m.finished.set()
+        m.gate = lambda m=m: self._check_free(m)
+        self.missions[mid] = m
+        return m
 
     def _disk_dirs(self) -> List[Path]:
         root = Path(self.config()["data_dir"])

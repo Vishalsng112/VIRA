@@ -85,8 +85,11 @@ def build_mission_router(auth_dep=None, manager: Optional[MissionManager] = None
     async def say(mid: str, body: SayRequest):
         if not body.text.strip():
             raise HTTPException(400, "text is empty")
+        m = mgr.get(mid) or mgr.resume(mid)           # finished / pre-restart missions are re-opened for a revision
+        if not m:
+            raise HTTPException(404, "unknown mission")
         try:
-            await live(mid).say(body.text.strip(), body.to)
+            await m.say(body.text.strip(), body.to)
         except RuntimeError as exc:
             raise HTTPException(409, str(exc))
         return {"ok": True}
