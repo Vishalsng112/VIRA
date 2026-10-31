@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VIRA Mission</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--panel2:#1c232c;--line:#2a323d;--txt:#e6edf3;--mut:#8b949e;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--acc:#58a6ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:18px;margin:0}.pill{padding:3px 10px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);font-size:12px;color:var(--mut)}.pill b{color:var(--txt)}
+input,select,textarea,button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit}button{cursor:pointer}button:hover{border-color:var(--acc)}button.go{background:var(--acc);color:#0d1117;border-color:var(--acc);font-weight:600}
+#start{display:grid;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line)}#start textarea{width:100%;min-height:70px;resize:vertical}#start .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}#start input[type=number]{width:70px}
+main{padding:14px 16px;display:grid;gap:14px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:14px}@media(max-width:1000px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.ph{padding:9px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}.ph h2{font-size:14px;margin:0}
+.tabs{display:flex;border-bottom:1px solid var(--line)}.tabs button{border:0;border-radius:0;background:none;color:var(--mut);padding:9px 13px}.tabs button.on{color:var(--txt);box-shadow:inset 0 -2px var(--acc)}
+#cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;padding:10px}
+.card{background:var(--panel2);border:1px solid var(--line);border-top:3px solid var(--c);border-radius:8px;padding:10px;font-size:12px}.card.dead{opacity:.5}.card h3{margin:0;font-size:14px}.sub{color:var(--mut);font-size:12px}
+.act{margin-top:6px;color:var(--acc)}.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}.chip{font-size:11px;padding:1px 7px;border-radius:99px;background:var(--panel);border:1px solid var(--line)}
+.feed{height:520px;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.msg{border-left:3px solid var(--c);padding:4px 10px;background:var(--panel2);border-radius:0 8px 8px 0;white-space:pre-wrap;word-break:break-word}.msg .who{font-size:12px;color:var(--mut)}.msg .who b{color:var(--c)}
+.tag{font-size:10px;padding:0 6px;border-radius:4px;background:var(--c);color:#0d1117;margin-right:6px}.sys{color:var(--mut);font-size:12px;text-align:center}
+.board{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px}.col h4{margin:0 0 6px;font-size:12px;color:var(--mut)}.t{background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--c);border-radius:6px;padding:6px 8px;margin-bottom:6px;font-size:12px}
+#files{max-height:210px;overflow:auto;padding:6px 10px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}#files div{padding:2px 6px;cursor:pointer;border-radius:4px;display:flex;justify-content:space-between;gap:8px}#files div:hover,#files div.on{background:var(--panel2)}
+pre{margin:0;padding:10px 12px;overflow:auto;max-height:340px;font-size:12px;background:#0a0e13;border-top:1px solid var(--line);white-space:pre}.bad{color:var(--bad)}.ok{color:var(--ok)}.warn{color:var(--warn)}
+#say{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--line)}#say input{flex:1}.empty{color:var(--mut);padding:24px;text-align:center}
+.bar{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden;min-width:90px}.bar i{display:block;height:100%;background:var(--ok)}
+</style></head><body>
+<header>
+  <h1>🛠 VIRA Mission</h1>
+  <select id="sel" title="past / running missions"></select>
+  <span class="pill">status <b id="st">idle</b></span><span class="pill">phase <b id="ph">-</b></span>
+  <span class="pill">agents <b id="na">0</b></span><span class="pill">tasks <b id="nt">0/0</b></span>
+  <span class="pill">files <b id="nf">0</b></span><span class="pill">LLM calls <b id="nc">0</b></span>
+  <div class="bar"><i id="prog" style="width:0"></i></div>
+  <span style="flex:1"></span>
+  <button id="stop" style="display:none">■ Stop</button>
+  <button id="dl" style="display:none">⬇ Download project (.zip)</button>
+</header>
+<section id="start">
+  <textarea id="brief" placeholder="Describe the product in a few sentences, e.g. &quot;Build a labour payment app in Flutter: workers, attendance, daily wages, advances, weekly payment sheets, PDF export.&quot; The Master agent decides which experts are needed."></textarea>
+  <div class="row">
+    <label class="sub">min agents <input id="minA" type="number" min="1" max="12" value="3"></label>
+    <label class="sub">max agents <input id="maxA" type="number" min="1" max="16" value="8"></label>
+    <label class="sub">LLM call budget <input id="calls" type="number" min="5" max="2000" value="120" style="width:90px"></label>
+    <button class="go" id="go">🚀 Start mission</button><span id="err" class="bad"></span>
+  </div>
+</section>
+<main>
+  <section class="panel"><div class="ph"><h2>Team <span class="sub" id="proj"></span></h2><span class="sub" id="stack"></span></div><div id="cards"><div class="empty">No mission yet.</div></div></section>
+  <div class="grid">
+    <div class="panel">
+      <div class="tabs" id="tabs"><button data-t="chat" class="on">💬 Team chat</button><button data-t="board">📋 Tasks</button><button data-t="log">⚙ Activity</button><button data-t="dec">📌 Decisions</button></div>
+      <div class="feed" id="feed"></div>
+      <form id="say"><select id="to"><option value="all">to everyone</option></select><input id="txt" placeholder="Steer the team: add a requirement, answer a question…" maxlength="700"><button>Send</button></form>
+    </div>
+    <div class="panel">
+      <div class="ph"><h2>📁 Project files</h2><span class="sub" id="fpath"></span></div>
+      <div id="files"></div><pre id="code">Select a file to view it.</pre>
+    </div>
+  </div>
+</main>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const color=n=>{let h=0;for(const c of String(n))h=(h*31+c.charCodeAt(0))%360;return `hsl(${h} 70% 62%)`};
+const api=(p,o)=>fetch("/api/mission"+p,o).then(async r=>{if(!r.ok){let m=r.statusText;try{m=(await r.json()).detail||m}catch{}throw new Error(m)}return r});
+const time=t=>new Date(t*1000).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+let mid=null,last=0,events=[],S={},tab="chat",openFile=null,fileSig="";
+
+async function list(sel){const d=await(await api("/list")).json();const el=$("#sel");const cur=sel||mid||el.value;
+  el.innerHTML='<option value="">— missions —</option>'+d.missions.map(m=>`<option value="${m.id}">${esc(m.status)} · ${esc(m.brief.slice(0,50))}</option>`).join("");el.value=cur||""}
+$("#sel").onchange=e=>pick(e.target.value);
+function pick(id){mid=id||null;last=0;events=[];S={};openFile=null;fileSig="";$("#code").textContent="Select a file to view it.";$("#files").innerHTML="";if(mid)poll()}
+
+$("#go").onclick=async()=>{$("#err").textContent="";try{
+  const r=await(await api("/start",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({brief:$("#brief").value,min_agents:+$("#minA").value,max_agents:+$("#maxA").value,max_llm_calls:+$("#calls").value})})).json();
+  await list(r.id);pick(r.id)}catch(e){$("#err").textContent=e.message}};
+$("#stop").onclick=()=>mid&&api(`/${mid}/stop`,{method:"POST"});
+$("#dl").onclick=()=>mid&&(location.href=`/api/mission/${mid}/download`);
+$("#say").onsubmit=async e=>{e.preventDefault();const t=$("#txt").value.trim();if(!t||!mid)return;try{await api(`/${mid}/say`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t,to:$("#to").value})});$("#txt").value=""}catch(x){$("#err").textContent=x.message}};
+$("#tabs").onclick=e=>{const b=e.target.closest("button");if(!b)return;tab=b.dataset.t;document.querySelectorAll("#tabs button").forEach(x=>x.classList.toggle("on",x===b));drawFeed(true)};
+
+async function poll(){if(!mid)return;const id=mid;
+  try{const s=await(await api(`/${id}/state?since=${last}`)).json();if(id!==mid)return;S=s;
+    for(const e of s.events||[])if(e.seq>last){last=e.seq;events.push(e)}
+    draw();
+    const sig=(s.files||[]).map(f=>f.path+f.version+f.bytes).join("|");if(sig!==fileSig){fileSig=sig;drawFiles();if(openFile)showFile(openFile,true)}}catch(e){$("#err").textContent=e.message}
+  setTimeout(poll,s_live()?1500:5000)}
+const s_live=()=>S.live!==false;
+
+function draw(){const s=S,tasks=s.tasks||[],done=tasks.filter(t=>["done","partial","failed"].includes(t.status)).length;
+  $("#st").textContent=s.status||"idle";$("#ph").textContent=s.phase||"-";$("#na").textContent=(s.agents||[]).length||(s.plan?.roles?.length+1)||0;
+  $("#nt").textContent=`${done}/${tasks.length}`;$("#nf").textContent=(s.files||[]).length;$("#nc").textContent=`${s.calls||0}/${s.max_calls||"-"}`;
+  $("#prog").style.width=(tasks.length?100*done/tasks.length:0)+"%";$("#stop").style.display=s.live?"":"none";$("#dl").style.display=(s.files||[]).length?"":"none";
+  $("#proj").textContent=s.plan?.project?"· "+s.plan.project:"";$("#stack").textContent=s.plan?.stack||"";
+  const ag=s.agents||[];$("#cards").innerHTML=ag.length?ag.map(a=>`<div class="card ${a.alive?"":"dead"}" style="--c:${color(a.key)}"><h3>${esc(a.title)}${a.is_master?" 👑":""}</h3><div class="sub">${esc(a.key)} · ${a.tasks_done}/${a.tasks_total} tasks · ${a.files} files</div><div class="sub">${esc((a.persona||"").slice(0,140))}</div><div class="act">${esc(a.activity||"")}</div><div class="chips">${(a.notes||[]).slice(-3).map(n=>`<span class="chip" title="${esc(n)}">📚 ${esc(n.slice(0,34))}</span>`).join("")}</div></div>`).join(""):`<div class="empty">${mid?"Master agent is planning the team…":"No mission yet."}</div>`;
+  const opts=['<option value="all">to everyone</option>'].concat(ag.map(a=>`<option value="${esc(a.key)}">${esc(a.title)}</option>`)).join("");if($("#to").dataset.n!=ag.length){const v=$("#to").value;$("#to").innerHTML=opts;$("#to").value=v||"all";$("#to").dataset.n=ag.length}
+  drawFeed()}
+
+function drawFeed(force){const f=$("#feed"),stick=force||f.scrollTop+f.clientHeight>f.scrollHeight-60;let h="";
+  if(tab==="chat")for(const e of events){if(e.kind==="message")h+=`<div class="msg" style="--c:${color(e.agent_id)}"><div class="who"><b>${esc(e.agent)}</b> → ${esc(e.to)} · ${time(e.ts)}</div>${e.tag?`<span class="tag">${esc(e.tag)}</span>`:""}${esc(e.text.replace(/^\s*\[[A-Z]+\]\s*/,""))}</div>`;else if(e.kind==="phase")h+=`<div class="sys">— ${esc(e.phase)} —</div>`}
+  else if(tab==="board"){const cols={pending:"⏳ Pending",running:"🔨 Running",done:"✅ Done",bad:"⚠ Partial / failed"};h='<div class="board" style="padding:0">'+Object.entries(cols).map(([k,l])=>{const ts=(S.tasks||[]).filter(t=>k==="bad"?["partial","failed"].includes(t.status):t.status===k);return `<div class="col"><h4>${l} (${ts.length})</h4>${ts.map(t=>`<div class="t" style="--c:${color(t.owner)}"><b>${esc(t.id)}</b> ${esc(t.title)}<div class="sub">${esc(t.owner)}${t.depends_on?.length?" · after "+esc(t.depends_on.join(",")):""}</div></div>`).join("")}</div>`}).join("")+"</div>"}
+  else if(tab==="log")for(const e of events){if(["task","file","learn","error","system","join","plan","mission_done"].includes(e.kind)){let t=e.kind;
+      if(e.kind==="task")t=`task ${e.id} → ${e.status}${e.note?" ("+e.note+")":""}`;else if(e.kind==="file")t=`wrote ${e.path} v${e.version} (${e.lines} lines)${e.check?` <span class="bad">${esc(e.check)}</span>`:""}`;else if(e.kind==="learn")t="noted: "+e.fact;else if(e.kind==="error")t=`<span class="bad">error: ${esc(e.error)}</span>`;else if(e.kind==="system")t=e.text;else if(e.kind==="join")t="joined the team";else if(e.kind==="plan")t=`plan ready: ${e.roles.length} experts, ${e.tasks.length} tasks${e.fallback?" (fallback plan)":""}`;else if(e.kind==="mission_done")t=`MISSION ${e.status}: ${e.files} files, ${e.calls} LLM calls`;
+      h+=`<div class="sys" style="text-align:left">${time(e.ts)} <b style="color:${color(e.agent_id)}">${esc(e.agent)}</b> ${e.kind==="error"||e.kind==="file"&&e.check?t:esc(t)}</div>`}}
+  else{h=(S.decisions||[]).map(d=>`<div class="msg" style="--c:${color(d.by)}"><div class="who"><b>${esc(d.by)}</b></div>${esc(d.text.replace(/^\s*\[[A-Z]+\]\s*/,""))}</div>`).join("")||'<div class="empty">No decisions yet.</div>'}
+  f.innerHTML=h||'<div class="empty">Nothing yet.</div>';if(stick)f.scrollTop=f.scrollHeight}
+
+function drawFiles(){$("#files").innerHTML=(S.files||[]).map(f=>`<div data-p="${esc(f.path)}" class="${f.path===openFile?"on":""}"><span>${esc(f.path)}</span><span class="sub">${f.author?esc(f.author)+" · ":""}v${f.version} ${f.check?'<span class="bad">⚠</span>':""}</span></div>`).join("")||'<div class="empty">No files yet.</div>'}
+$("#files").onclick=e=>{const d=e.target.closest("[data-p]");if(d)showFile(d.dataset.p)};
+async function showFile(p,quiet){openFile=p;$("#fpath").textContent=p;if(!quiet)drawFiles();try{const d=await(await api(`/${mid}/file?path=${encodeURIComponent(p)}`)).json();$("#code").textContent=d.content}catch(e){$("#code").textContent=e.message}}
+list().then(()=>{const first=$("#sel").options[1];if(first){$("#sel").value=first.value;pick(first.value)}});setInterval(()=>list(),10000);
+</script></body></html>

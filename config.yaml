@@ -130,7 +130,7 @@ sensors:
 
 
 llm:
-  default_model: "ornith:9b"
+  default_model: "devstral:24b"
   models:
     # - name: "gpt-4"
     #   provider: "openai"
@@ -145,9 +145,26 @@ llm:
     #   max_tokens: 4096
     - name: "local-llama"
       provider: "ollama"
-      model: "ornith:9b" #"gemma4:e4b"
+      model: "devstral:24b" #"ornith:9b" #"gemma4:e4b"
       base_url: "http://localhost:11434"
       temperature: 0.8
+
+# --- Missions: give a brief, a Master agent builds the team of experts (page: /mission) ---
+# Standalone:  python -m vira.mission "Build a labour payment app in Flutter"   (add --mock to try offline)
+mission:
+  data_dir: data/missions       # each mission -> <data_dir>/<id>/project (the product) + meta/ (events, plan)
+  model: null                   # logical name from llm.models; null = llm.default_model
+  min_agents: 3                 # the Master picks the team size between min and max
+  max_agents: 8
+  max_tasks: 24
+  review_rounds: 1              # integration review + fix-task rounds after the first build
+  llm_concurrency: 1            # parallel LLM calls (local model = 1; hosted API: 3-6)
+  max_llm_calls: 120            # hard budget for the whole mission - it stops gracefully when reached
+  max_tokens: 4096              # per call; files are written in full, so keep this high
+  temperature: 0.4
+  call_timeout: 240             # seconds per LLM call
+  max_replies: 8                # max unsolicited answers per agent (stops endless chatter)
+  max_minutes: 90
 
 # agents:
 #   - name: "AGENT_1"
@@ -182,18 +199,39 @@ agents:
       delegation: true          # allow sub-agents from vira/agent/definitions/*.md
       # definitions_dir: "~/.vira/agents"   # your own sub-agent .md files
 
-  - name: AutonomousBehaviorAgent
-    module: vira.agent.Agents.autonomus_agent
-    class: AutonomousAgent
+  # - name: AutonomousBehaviorAgent
+  #   module: vira.agent.Agents.autonomus_agent
+  #   class: AutonomousAgent
+  #   enabled: true
+  #   config:
+  #     window_size: 30
+  #     anomaly_sigma: 2.0
+  #     anomaly_minimum: 80.0
+  #     consecutive_anomalies: 3
+  #     decision_cooldown_seconds: 300
+  #     learning_interval: 10
+  #     llm_triage: false         # true = local LLM adds severity/explanation to decisions
+
+  # --- Autonomous persona swarm: ONE script -> N independent agents (dashboard: /swarm) ---
+  # Raise `count` for more agents (personas beyond the 3 listed come from vira/swarm/personas.py).
+  - name: Swarm
+    module: vira.agent.Agents.persona_agent
+    class: PersonaAgent
     enabled: true
+    swarm:
+      count: 2
+      personas: ['accounting_expert', 'dev_architect']   # + scientist, musician fill the other 2 slots
+      # personas: ['accounting_expert', 'dev_architect', 'dev_backend', 'dev_io', 'dev_platform', 'dev_qa', 'dev_ux', 'gst_expert', 'inventory_engineer', 'reports_engineer', 'tech_lead']   # + scientist, musician fill the other 2 slots
+      # personas: [politician, actor]   # + scientist, musician fill the other 2 slots
+      # personas: [dev_architect, dev_ux, dev_qa]
     config:
-      window_size: 30
-      anomaly_sigma: 2.0
-      anomaly_minimum: 80.0
-      consecutive_anomalies: 3
-      decision_cooldown_seconds: 300
-      learning_interval: 10
-      llm_triage: false         # true = local LLM adds severity/explanation to decisions
+      speak_interval: [20, 45]    # seconds between an agent's own turns (random jitter)
+      heartbeat_interval: 5       # how often each agent announces "I'm alive"
+      peer_ttl: 20                # a peer silent for this long is considered dead
+      reflect_every: 4            # evolve (reflect + adjust traits) every N own turns
+      llm_concurrency: 1          # parallel LLM calls shared by the swarm (local model = 1)
+      max_tokens: 400
+      temperature: 0.85
 
   # - name: "AGENT_1"
   #   module: "vira.agent.examples.AGENT_MONITOR"

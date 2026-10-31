@@ -210,6 +210,24 @@ def create_app(kernel: Kernel) -> FastAPI:
             return RedirectResponse(url="/chat", status_code=302)
         return FileResponse(str(static_dir / "dashboard.html"))
 
+    @app.get("/swarm")
+    async def swarm_page(request: Request):
+        principal = auth.resolve_principal(request.session.get("session_id"))
+        if not principal:
+            return RedirectResponse(url="/login", status_code=302)
+        if not principal.is_admin:
+            return RedirectResponse(url="/chat", status_code=302)
+        return FileResponse(str(static_dir / "swarm.html"), headers={"Cache-Control": "no-cache"})
+
+    @app.get("/mission")
+    async def mission_page(request: Request):
+        principal = auth.resolve_principal(request.session.get("session_id"))
+        if not principal:
+            return RedirectResponse(url="/login", status_code=302)
+        if not principal.is_admin:
+            return RedirectResponse(url="/chat", status_code=302)
+        return FileResponse(str(static_dir / "mission.html"), headers={"Cache-Control": "no-cache"})
+
     @app.get("/chat")
     async def chat_page(request: Request):
         if not auth.resolve_principal(request.session.get("session_id")):
@@ -948,4 +966,8 @@ def create_app(kernel: Kernel) -> FastAPI:
     # --- Device, admin and operations routers ---
     app.include_router(build_device_router(kernel, auth_deps, stream_manager))
     app.include_router(build_admin_router(kernel, auth_deps, stream_manager))
+    from .routes_swarm import build_swarm_router
+    app.include_router(build_swarm_router(require_admin))
+    from .routes_mission import build_mission_router
+    app.include_router(build_mission_router(require_admin))
     return app

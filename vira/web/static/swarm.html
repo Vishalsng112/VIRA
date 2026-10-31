@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VIRA Swarm</title>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--panel2:#1c232c;--line:#2a323d;--txt:#e6edf3;--mut:#8b949e;--ok:#3fb950;--bad:#f85149;--acc:#58a6ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+h1{font-size:18px;margin:0}.pill{padding:3px 10px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);font-size:12px;color:var(--mut)}
+.pill b{color:var(--txt)}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--bad);margin-right:6px}.dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.spacer{flex:1}form{display:flex;gap:6px}input,select,button{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit}
+input{width:min(340px,60vw)}button{cursor:pointer}button:hover{border-color:var(--acc)}
+main{padding:16px 18px;display:grid;gap:16px}
+#cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;border-top:3px solid var(--c)}
+.card.dead{opacity:.45}.card h3{margin:0 0 2px;font-size:15px;display:flex;justify-content:space-between;gap:8px}
+.sub{color:var(--mut);font-size:12px}.sum{font-size:12px;color:#c9d1d9;margin:8px 0;max-height:3.9em;overflow:hidden}
+.bar{display:grid;grid-template-columns:78px 1fr 34px;gap:6px;align-items:center;font-size:11px;color:var(--mut)}.bar i{display:block;height:6px;border-radius:3px;background:var(--panel2);overflow:hidden}.bar i s{display:block;height:100%;background:var(--c)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}.chip{font-size:11px;padding:1px 7px;border-radius:99px;background:var(--panel2);border:1px solid var(--line)}
+.cols{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px}@media(max-width:1000px){.cols{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column}
+.tabs{display:flex;border-bottom:1px solid var(--line)}.tabs button{border:0;border-radius:0;background:none;color:var(--mut);padding:10px 14px}.tabs button.on{color:var(--txt);box-shadow:inset 0 -2px var(--acc)}
+.feed{height:560px;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+.msg{border-left:3px solid var(--c);padding:4px 10px;background:var(--panel2);border-radius:0 8px 8px 0}.msg .who{font-size:12px;color:var(--mut)}.msg .who b{color:var(--c)}
+.msg .teach{font-size:12px;color:var(--mut);margin-top:3px;font-style:italic}.tag{font-size:10px;text-transform:uppercase;letter-spacing:.05em;padding:0 6px;border-radius:4px;background:var(--c);color:#0d1117;margin-right:6px}
+.sys{color:var(--mut);font-size:12px;text-align:center}.empty{color:var(--mut);padding:30px;text-align:center}
+.ph{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;justify-content:space-between}.ph h2{font-size:14px;margin:0}
+svg text{fill:var(--mut);font-size:10px}.legend{display:flex;flex-wrap:wrap;gap:10px;padding:0 14px 10px;font-size:11px;color:var(--mut)}.legend i{display:inline-block;width:10px;height:3px;margin-right:5px;vertical-align:middle}
+table{border-collapse:collapse;font-size:11px;margin:10px 14px 14px}td,th{padding:4px 8px;text-align:center}th{color:var(--mut);font-weight:500}.side{display:flex;flex-direction:column;gap:16px}
+</style></head><body>
+<header>
+  <h1>🧠 VIRA Swarm</h1>
+  <span class="pill"><span class="dot" id="conn"></span><span id="connTxt">connecting</span></span>
+  <span class="pill">alive <b id="alive">0</b>/<b id="total">0</b></span>
+  <span class="pill">messages <b id="nMsg">0</b></span><span class="pill">facts learned <b id="nLearn">0</b></span><span class="pill">evolutions <b id="nEvo">0</b></span>
+  <span class="spacer"></span>
+  <form id="inj"><input id="topic" placeholder="Drop a topic into the swarm…" maxlength="500"><button>Inject</button></form>
+</header>
+<main>
+  <section id="cards"></section>
+  <section class="cols">
+    <div class="panel">
+      <div class="tabs" id="tabs"><button data-t="message" class="on">💬 Conversation</button><button data-t="learn">📚 Learning</button><button data-t="evolve">🧬 Evolution</button><button data-t="sys">⚙ System</button></div>
+      <div class="feed" id="feed"></div>
+    </div>
+    <div class="side">
+      <div class="panel"><div class="ph"><h2>Personality trajectory</h2><span><select id="traitSel"></select></span></div><svg id="cTrait" viewBox="0 0 520 220" width="100%"></svg><div class="legend" id="lTrait"></div></div>
+      <div class="panel"><div class="ph"><h2>Knowledge growth</h2></div><svg id="cKnow" viewBox="0 0 520 200" width="100%"></svg><div class="legend" id="lKnow"></div></div>
+      <div class="panel"><div class="ph"><h2>Trust between agents</h2><span class="sub">row trusts column</span></div><div id="trust" style="overflow-x:auto"></div></div>
+    </div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s), TRAITS=["curiosity","openness","assertiveness","humor","empathy","skepticism"];
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const color=n=>{let h=0;for(const c of String(n))h=(h*31+c.charCodeAt(0))%360;return `hsl(${h} 70% 62%)`};
+let S={agents:[],history:{},alive:0,total:0}, events=[], lastSeq=0, tab="message", counts={message:0,learn:0,evolve:0};
+const time=t=>new Date(t*1000).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+TRAITS.forEach(t=>$("#traitSel").insertAdjacentHTML("beforeend",`<option>${t}</option>`));$("#traitSel").onchange=drawCharts;
+
+function addEvents(list){for(const e of list){if(e.seq<=lastSeq)continue;lastSeq=e.seq;events.push(e);if(counts[e.kind]!==undefined)counts[e.kind]++}
+  if(events.length>1500)events=events.slice(-1200);$("#nMsg").textContent=counts.message;$("#nLearn").textContent=counts.learn;$("#nEvo").textContent=counts.evolve;renderFeed()}
+function renderFeed(){const f=$("#feed"),atBottom=f.scrollTop+f.clientHeight>=f.scrollHeight-40;let h="";
+  for(const e of events){const c=color(e.agent);const st=`style="--c:${c}"`;
+    if(tab==="message"&&e.kind==="message")h+=`<div class="msg" ${st}><div class="who"><b>${esc(e.agent)}</b> → ${esc(e.to)} · ${time(e.ts)}${e.mood?" · "+esc(e.mood):""}</div>${esc(e.text)}${e.teach?`<div class="teach">💡 teaches: ${esc(e.teach)}</div>`:""}</div>`;
+    else if(tab==="learn"&&e.kind==="learn")h+=`<div class="msg" ${st}><div class="who"><b>${esc(e.agent)}</b> learned from <b style="color:${color(e.source)}">${esc(e.source)}</b> · conf ${esc(e.confidence)} · ${time(e.ts)}</div>${esc(e.fact)}</div>`;
+    else if(tab==="evolve"&&e.kind==="evolve"){const ch=Object.entries(e.changes||{}).map(([k,v])=>`${k} ${v>0?"▲":"▼"}${Math.abs(v).toFixed(3)}`).join(" · ")||"no trait change";
+      h+=`<div class="msg" ${st}><div class="who"><span class="tag">gen ${e.generation}</span><b>${esc(e.agent)}</b> · ${time(e.ts)}${e.llm?"":" · rule-based"}</div>${esc(e.summary)}<div class="teach">${esc(ch)}${e.skill?" · 🛠 new skill: "+esc(e.skill):""}</div></div>`}
+    else if(tab==="sys"&&["join","leave","peer","error"].includes(e.kind))h+=`<div class="sys" style="color:${e.kind==="error"?"var(--bad)":""}">${time(e.ts)} · ${esc(e.agent)} ${e.kind==="join"?"joined":e.kind==="leave"?"left":e.kind==="peer"?"discovered "+esc(e.peer)+" ("+e.alive+" alive)":"error: "+esc(e.error)}</div>`}
+  f.innerHTML=h||'<div class="empty">Nothing here yet — agents are warming up…</div>';if(atBottom)f.scrollTop=f.scrollHeight}
+document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#tabs button").forEach(x=>x.classList.remove("on"));b.classList.add("on");tab=b.dataset.t;renderFeed();$("#feed").scrollTop=1e9});
+
+function renderCards(){const el=$("#cards");el.innerHTML=S.agents.map(a=>{const c=color(a.name);
+  return `<div class="card ${a.alive?"":"dead"}" style="--c:${c}"><h3><span>${esc(a.name)}</span><span class="sub">gen ${a.generation}</span></h3>
+  <div class="sub"><span class="dot ${a.alive?"on":""}"></span>${esc(a.title)} · ${a.alive?esc(a.activity):"offline"} · mood ${esc(a.mood)}</div>
+  <div class="sum">${esc(a.self_summary)}</div>${TRAITS.map(t=>`<div class="bar"><span>${t}</span><i><s style="width:${(a.traits[t]||0)*100}%"></s></i><span>${(a.traits[t]||0).toFixed(2)}</span></div>`).join("")}
+  <div class="chips"><span class="chip">📚 ${a.knowledge_count} facts</span><span class="chip">💬 ${a.sent}↑ ${a.received}↓</span><span class="chip">👥 sees ${a.alive_known} alive</span>${(a.skills||[]).map(s=>`<span class="chip">🛠 ${esc(s)}</span>`).join("")}</div></div>`}).join("")||'<div class="empty">No agents yet.</div>';
+  $("#alive").textContent=S.alive;$("#total").textContent=S.total}
+
+function lineChart(svg,series,{ymin=0,ymax=1,fmt=v=>v.toFixed(2)}={}){const W=520,H=svg.viewBox.baseVal.height,L=34,R=8,T=8,B=18;let h="";
+  const pts=series.flatMap(s=>s.pts);if(!pts.length){svg.innerHTML='<text x="20" y="40">no data yet</text>';return}
+  const x0=Math.min(...pts.map(p=>p.x)),x1=Math.max(...pts.map(p=>p.x),x0+1);
+  let lo=ymin,hi=ymax;if(ymax==null){hi=Math.max(1,...pts.map(p=>p.y))*1.1;lo=0}
+  const X=x=>L+(x-x0)/(x1-x0)*(W-L-R),Y=y=>H-B-(y-lo)/(hi-lo||1)*(H-B-T);
+  for(let i=0;i<=4;i++){const v=lo+(hi-lo)*i/4;h+=`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2a323d"/><text x="2" y="${Y(v)+3}">${fmt(v)}</text>`}
+  h+=`<text x="${L}" y="${H-3}">${time(x0)}</text><text x="${W-R}" y="${H-3}" text-anchor="end">${time(x1)}</text>`;
+  for(const s of series)if(s.pts.length)h+=`<polyline fill="none" stroke="${s.color}" stroke-width="2" points="${s.pts.map(p=>X(p.x)+","+Y(p.y)).join(" ")}"/>`;
+  svg.innerHTML=h}
+function drawCharts(){const t=$("#traitSel").value||TRAITS[0],ags=S.agents;
+  const ser=ags.map(a=>({name:a.name,color:color(a.name),pts:(S.history[a.id]||[]).map(p=>({x:p.t,y:p[t]??0}))}));
+  lineChart($("#cTrait"),ser,{ymin:0,ymax:1});$("#lTrait").innerHTML=ser.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("");
+  const ks=ags.map(a=>({name:a.name,color:color(a.name),pts:(S.history[a.id]||[]).map(p=>({x:p.t,y:p.knowledge}))}));
+  lineChart($("#cKnow"),ks,{ymin:0,ymax:null,fmt:v=>Math.round(v)});$("#lKnow").innerHTML=$("#lTrait").innerHTML;
+  const names=ags.map(a=>a.name);let h="<table><tr><th></th>"+names.map(n=>`<th>${esc(n.split("-").pop())}</th>`).join("")+"</tr>";
+  for(const a of ags){h+=`<tr><th style="text-align:right">${esc(a.name.split("-").pop())}</th>`+names.map(n=>{if(n===a.name)return"<td>·</td>";const v=a.trust?.[n];return v==null?"<td>–</td>":`<td style="background:rgba(63,185,80,${Math.max(0,(v-.3))*1.4});border-radius:4px">${v.toFixed(2)}</td>`}).join("")+"</tr>"}
+  $("#trust").innerHTML=h+"</table>"}
+
+async function poll(){try{const r=await fetch("/api/swarm/state?since="+lastSeq);if(r.status===401||r.status===403){location.href="/login";return}
+  S=await r.json();if(!events.length)counts={message:0,learn:0,evolve:0};addEvents(S.events);renderCards();drawCharts()}catch(e){}}
+function connect(){const es=new EventSource("/api/swarm/stream");es.onopen=()=>{$("#conn").classList.add("on");$("#connTxt").textContent="live"};
+  es.onmessage=m=>{try{addEvents([JSON.parse(m.data)])}catch(e){}};es.onerror=()=>{$("#conn").classList.remove("on");$("#connTxt").textContent="reconnecting"}}
+$("#inj").onsubmit=async e=>{e.preventDefault();const t=$("#topic").value.trim();if(!t)return;$("#topic").value="";
+  await fetch("/api/swarm/inject",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:t})})};
+poll().then(()=>{connect();setInterval(poll,3000)});
+</script></body></html>
