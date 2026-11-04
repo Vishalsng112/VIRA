@@ -17,6 +17,7 @@
     events:    { title: "Events",          sub: "Live stream from the event bus." },
     modules:   { title: "Modules",         sub: "Kernel modules that are currently loaded." },
     developer: { title: "Developer tools", sub: "Test endpoints and inspect raw runtime data." },
+    configuration: { title: "Configuration", sub: "Update defaults and reload the VIRA runtime." },
   };
 
   const $ = (id) => document.getElementById(id);
@@ -147,6 +148,15 @@
     window.scrollTo(0, 0);
   }
   window.addEventListener("hashchange", showView);
+  document.querySelectorAll(".nav-link[data-view]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const view = link.dataset.view;
+      if (!VIEWS[view]) return;
+      event.preventDefault();
+      if (location.hash === `#${view}`) showView();
+      else location.hash = view;
+    });
+  });
 
   function openMenu() {
     document.body.classList.add("nav-open");
@@ -208,6 +218,9 @@
   async function loadConfig() {
     const r = await fetchJson("/config");
     setText("raw-config", r.ok ? pretty(redact(r.data)) : `Request failed (${r.status})`);
+    if (r.ok && $("config-editor") && document.activeElement !== $("config-editor")) {
+      $("config-editor").value = pretty(r.data);
+    }
   }
 
   async function loadOrchestration() {
@@ -625,6 +638,30 @@
       box.textContent = `Request failed: ${err.message}`;
       setResult(meta, "Request failed.", true);
     }
+  });
+
+  $("config-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const out = $("config-result");
+    let config;
+    try { config = JSON.parse($("config-editor").value); }
+    catch { setResult(out, "Configuration must be valid JSON.", true); return; }
+    setResult(out, "Saving and reloading runtime…");
+    try {
+      const r = await fetchJson("/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config }),
+      });
+      if (!r.ok) {
+        const detail = typeof r.data === "object" ? r.data?.detail : "";
+        setResult(out, `Reload failed (${r.status})${detail ? `: ${detail}` : ""}`, true);
+        return;
+      }
+      $("config-editor").value = pretty(r.data.config);
+      setResult(out, "Configuration saved and runtime reloaded.");
+      await refreshAll();
+    } catch (err) { setResult(out, `Reload error: ${err.message}`, true); }
   });
 
   document.querySelectorAll("button.chip[data-endpoint]").forEach((c) => c.addEventListener("click", () => {

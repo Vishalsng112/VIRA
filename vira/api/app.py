@@ -79,6 +79,9 @@ class ConfigUpdateRequest(BaseModel):
     value: Any
 
 
+class ConfigReplaceRequest(BaseModel):
+    config: Dict[str, Any]
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -208,7 +211,10 @@ def create_app(kernel: Kernel) -> FastAPI:
             return RedirectResponse(url="/login", status_code=302)
         if not principal.is_admin:
             return RedirectResponse(url="/chat", status_code=302)
-        return FileResponse(str(static_dir / "dashboard.html"))
+        return FileResponse(
+            str(static_dir / "dashboard.html"),
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
 
     @app.get("/swarm")
     async def swarm_page(request: Request):
@@ -218,15 +224,6 @@ def create_app(kernel: Kernel) -> FastAPI:
         if not principal.is_admin:
             return RedirectResponse(url="/chat", status_code=302)
         return FileResponse(str(static_dir / "swarm.html"), headers={"Cache-Control": "no-cache"})
-
-    @app.get("/mission")
-    async def mission_page(request: Request):
-        principal = auth.resolve_principal(request.session.get("session_id"))
-        if not principal:
-            return RedirectResponse(url="/login", status_code=302)
-        if not principal.is_admin:
-            return RedirectResponse(url="/chat", status_code=302)
-        return FileResponse(str(static_dir / "mission.html"), headers={"Cache-Control": "no-cache"})
 
     @app.get("/chat")
     async def chat_page(request: Request):
@@ -454,6 +451,26 @@ def create_app(kernel: Kernel) -> FastAPI:
     async def update_config(request: ConfigUpdateRequest, user: auth.Principal = Depends(require_admin)):
         kernel.config_manager.set(request.key, request.value)
         return {"status": "updated", "key": request.key, "value": request.value}
+
+    @app.put("/config")
+    async def replace_config(request: ConfigReplaceRequest, user: auth.Principal = Depends(require_admin)):
+        current = kernel.config_manager.get_all()
+        updated = request.config
+
+        def preserve_redacted_values(value: Any, existing: Any) -> Any:
+            if isinstance(value, dict) and isinstance(existing, dict):
+                return {
+                    key: preserve_redacted_values(item, existing.get(key))
+                    for key, item in value.items()
+                }
+            if value == "***" and existing is not None:
+                return existing
+            return value
+
+        updated = preserve_redacted_values(updated, current)
+        kernel.config_manager.save(updated)
+        await kernel.reload()
+        return {"status": "reloaded", "config": _redact(kernel.config_manager.get_all())}
 
     @app.get("/metrics")
     async def get_metrics(user: auth.Principal = Depends(require_admin)):
@@ -968,6 +985,4 @@ def create_app(kernel: Kernel) -> FastAPI:
     app.include_router(build_admin_router(kernel, auth_deps, stream_manager))
     from .routes_swarm import build_swarm_router
     app.include_router(build_swarm_router(require_admin))
-    from .routes_mission import build_mission_router
-    app.include_router(build_mission_router(require_admin))
     return app

@@ -467,6 +467,12 @@ batch/payload limits, rate limits and the event-type allow-list with per-class
 retention. Telemetry payloads (e.g. clipboard content) are not kept at rest by default.
 Existing `config.yaml` files without this section keep working with the defaults.
 
+Administrators can also open **Configuration** in the dashboard to edit the complete
+active configuration as JSON. Saving persists the values to `config.yaml` and
+restarts the kernel so changes to startup settings are applied immediately. Sensitive
+values remain masked in the editor and are preserved unless explicitly changed in
+the configuration file.
+
 ### Security notes
 
 - Set a random `auth.secret_key` and put VIRA behind **TLS** before exposing it to remote devices.

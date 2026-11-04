@@ -193,7 +193,9 @@ class Kernel:
             # print(event)
             # print("-----")
             # logger.debug("==================")
-        self.event_bus.subscribe_all(log_event)
+        if not getattr(self, "_log_event_subscription", False):
+            self.event_bus.subscribe_all(log_event)
+            self._log_event_subscription = True
 
         # 3. Initialize Service Registry (already done)
         self._state = "SERVICE_REGISTRY"
@@ -420,6 +422,17 @@ class Kernel:
         await self.event_bus.stop()
 
         logger.info("=== VIRA Kernel Shutdown Complete ===")
+
+    async def reload(self) -> None:
+        """Restart the kernel using the configuration currently on disk."""
+        await self.shutdown()
+        self._sensors.clear()
+        self.event_pipeline._normalizers.clear()
+        self.event_pipeline._enrichers.clear()
+        self.event_pipeline._classifiers.clear()
+        self.event_pipeline._prioritizers.clear()
+        self._state = "INIT"
+        await self.boot()
 
     def get_state(self) -> str:
         """Get current kernel state"""

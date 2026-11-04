@@ -128,6 +128,10 @@ types determine routing. Agent definitions are stored in SQLite and can be
 enabled, disabled, or unregistered through the authenticated `/agents` API.
 
 Agent modules must match `agent_policy.allowed_modules` in `config.yaml`.
+Only agents listed in the startup `agents:` configuration are loaded by default.
+Persisted agent definitions from the authenticated dashboard/database are ignored at boot unless
+`agent_policy.load_persisted_agents: true` is explicitly configured. This prevents a previously
+enabled Swarm or agent from restarting after it is removed or disabled in `config.yaml`.
 This allow-list is enforced before importing a configured agent module.
 
 Tool execution goes through `ToolExecutor`, which checks both the tool's

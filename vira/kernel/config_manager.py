@@ -1,6 +1,7 @@
 """Centralized configuration management"""
 import os
 import yaml
+import copy
 from loguru import logger
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -71,8 +72,18 @@ class ConfigManager:
 
     def get_all(self) -> Dict[str, Any]:
         """Get entire configuration"""
-        # TODO: it also containts secure info, we need to filter it before return
-        return self._config.copy()
+        return copy.deepcopy(self._config)
+
+    def save(self, config: Dict[str, Any]) -> None:
+        """Persist a complete configuration and make it the active configuration."""
+        path = Path(self._config_path or "config.yaml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = path.with_suffix(f"{path.suffix}.tmp")
+        with temporary_path.open("w", encoding="utf-8") as config_file:
+            yaml.safe_dump(config, config_file, sort_keys=False, default_flow_style=False)
+        temporary_path.replace(path)
+        self._config = copy.deepcopy(config)
+        logger.info("Saved config to {}", path)
 
     async def reload(self) -> None:
         """Reload configuration from file"""

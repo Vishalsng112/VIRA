@@ -204,7 +204,12 @@ class AgentOrchestratorModule(ViraModule):
 
             # Load agents from config (now tools are already registered)
             agents_cfg = self._config_manager.get("agents", []) or []
-            persisted_cfg = database.list_agent_definitions()
+            # SQLite definitions are durable UI state, but must not silently override
+            # the startup configuration. Opt in explicitly when they should be loaded.
+            load_persisted = bool(self._config_manager.get("agent_policy.load_persisted_agents", False))
+            persisted_cfg = database.list_agent_definitions() if load_persisted else []
+            if not load_persisted:
+                logger.info("Skipping persisted agent definitions; agent_policy.load_persisted_agents is false")
             persisted_by_identity = {}
             for item in sorted(
                 persisted_cfg,
@@ -247,7 +252,7 @@ class AgentOrchestratorModule(ViraModule):
                     "description": item["description"],
                     "config": item["config"],
                 })
-            agents_cfg = agents_cfg + persisted_agents
+            # agents_cfg = agents_cfg + persisted_agents #TODO: I will make it configurable in future
             # `swarm:` entries become N independent persona agents (one script, N agents)
             from vira.swarm.personas import expand_swarm_entries
             agents_cfg = expand_swarm_entries(agents_cfg)
