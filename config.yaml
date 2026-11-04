@@ -11,6 +11,9 @@ auth:
   secret_key: "change-this-to-a-random-secret-key-in-production"   # <-- generate a random string
   session_cookie_name: "vira_session"
   session_max_age: 86400  # 24 hours
+  # Local development uses http://127.0.0.1. Set this to true when TLS is
+  # enabled directly or terminated by a trusted reverse proxy.
+  https_only: false
   database_url: "sqlite:///data/vira.sqlite3"
 
 # --- Multi-user / multi-device platform -------------------------------------
@@ -54,6 +57,11 @@ sandbox:
   memory_mb: 2048
   allow_package_install: true
 
+# Core provider-neutral tools. Keep this inside a project directory or another
+# explicitly approved root; sandbox remains the option for untrusted code.
+tools:
+  workspace_root: .
+
 security:
   default_permissions:
     - "event.publish.*"
@@ -71,41 +79,31 @@ metrics:
   retention_minutes: 60
 
 sensors:
-  # - name: system_sensor
-  #   enabled: true
-  #   interval: 5.0
-
   - name: hardware_sensor
     enabled: true
-    interval: 3.0
+    interval: 30.0
 
-  # - name: network_sensor
-  #   enabled: true
-  #   interval: 5.0
+  - name: network_sensor
+    enabled: true
+    interval: 10.0
 
-  # - name: process_sensor
-  #   enabled: true
-  #   interval: 10.0
+  - name: process_sensor
+    enabled: true
+    interval: 15.0
 
-  # - name: workspace_sensor
-  #   enabled: true
-  #   interval: 2.0
+  - name: wayland_idle_sensor
+    enabled: true
+    interval: 5.0
+    idle_threshold_seconds: 60
 
-  # - name: activity_sensor
-  #   enabled: true
-  #   interval: 2.0
+  - name: user_activity_sensor
+    enabled: true
+    interval: 2.0
+    include_content: false
+    max_content_chars: 0
 
-  # - name: project_sensor
-  #   enabled: true
-  #   interval: 60.0
-
-  # - name: user_activity_sensor
-  #   enabled: true
-  #   interval: 5.0
-
-  # - name: context_sensor
-  #   enabled: true
-  #   interval: 5.0
+  # FileSystemSensor is event-driven; enable one instance per approved
+  # workspace instead of recursively watching the home directory.
 
 # sensors:
 #   - name: filesystem_sensor

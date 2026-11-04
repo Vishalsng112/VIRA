@@ -2,11 +2,8 @@ import asyncio
 from loguru import logger
 import time
 from pathlib import Path
-import platform
 import os
 import subprocess
-
-import pyperclip
 
 from vira.sensors.base_sensor import BaseSensor
 from vira.kernel import Event, EventPriority
@@ -16,8 +13,11 @@ from vira.kernel import Event, EventPriority
 
 class UserActivitySensor(BaseSensor):
     """
-    Sensor that monitors user activity, such as clipboard changes. Will add screenshot monitoring in the future. 
-    Currently, it only monitors clipboard changes and publishes events when the clipboard content changes.
+    Wayland-only clipboard change sensor.
+
+    Wayland does not provide a general clipboard-change subscription to
+    unrelated clients, so this is deliberately a low-rate poll. Clipboard
+    contents are not emitted unless explicitly enabled.
     """
 
     def __init__(
@@ -26,6 +26,8 @@ class UserActivitySensor(BaseSensor):
         event_bus=None,
         dispatcher=None,
         storage_dir: str = "data/user_activity",
+        include_content: bool = False,
+        max_content_chars: int = 0,
         **kwargs
     ):
         super().__init__("user_activity_sensor")
@@ -38,6 +40,10 @@ class UserActivitySensor(BaseSensor):
             raise ValueError("Either event_bus or dispatcher must be provided")
 
         self.storage_dir = Path(storage_dir)
+        self.include_content = include_content
+        self.max_content_chars = max_content_chars
+        if self.include_content and self.max_content_chars <= 0:
+            raise ValueError("max_content_chars must be positive when content is enabled")
 
         self._last_clipboard = None
         self._running = False
@@ -63,7 +69,10 @@ class UserActivitySensor(BaseSensor):
         logger.info("UserActivitySensor stopped")
 
     async def read(self):
-        return {"clipboard": self._last_clipboard}
+        return {
+            "has_clipboard": self._last_clipboard is not None,
+            "content_length": len(self._last_clipboard or ""),
+        }
 
     async def _run(self):
         while self._running:
@@ -73,69 +82,45 @@ class UserActivitySensor(BaseSensor):
                 if current != self._last_clipboard:
                     self._last_clipboard = current
                     if self._publisher:
+                        data = {
+                            "timestamp": int(time.time()),
+                            "changed": True,
+                            "content_length": len(current),
+                        }
+                        if self.include_content:
+                            data["content"] = current[:self.max_content_chars]
+
                         await self._publisher.publish(
                             Event(
                                 type="sensor.clipboard.changed",
-                                data={
-                                    "timestamp": int(time.time()),
-                                    "clipboard": current,
-                                },
+                                data=data,
                                 source=self.name,
                                 priority=EventPriority.LOW,
                             )
                         )
-                    logger.debug(f"Clipboard changed: {current[:50] if current else '<empty>'}")
+                        logger.debug("Clipboard changed (content suppressed)")
 
                 await asyncio.sleep(self.poll_interval)
 
             except asyncio.CancelledError:
                 break
-            except Exception as e:
+            except Exception:
                 logger.exception("Clipboard polling failed")
                 await asyncio.sleep(1.0)
 
     def _get_clipboard_text(self) -> str:
         try:
-            system = platform.system().lower()
-            if system == "linux":
-                session_type = os.environ.get("XDG_SESSION_TYPE", "").lower()
-                if session_type == "wayland":
-                    try:
-                        result = subprocess.run(
-                            ["wl-paste", "--no-newline"],
-                            capture_output=True,
-                            text=True,
-                            check=True,
-                            timeout=1.0,
-                        )
-                        return result.stdout
-                    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                        pass
-                else:
-                    try:
-                        result = subprocess.run(
-                            ["xclip", "-selection", "clipboard", "-o"],
-                            capture_output=True,
-                            text=True,
-                            check=True,
-                            timeout=1.0,
-                        )
-                        return result.stdout
-                    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                        try:
-                            result = subprocess.run(
-                                ["xsel", "--clipboard", "--output"],
-                                capture_output=True,
-                                text=True,
-                                check=True,
-                                timeout=1.0,
-                            )
-                            return result.stdout
-                        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-                            pass
-
-            return pyperclip.paste()
+            if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
+                raise RuntimeError("Clipboard sensor requires XDG_SESSION_TYPE=wayland")
+            result = subprocess.run(
+                ["wl-paste", "--no-newline"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=1.0,
+            )
+            return result.stdout
 
         except Exception as e:
             logger.exception("Failed to read clipboard")
-            return ""
+            raise RuntimeError("Wayland clipboard read failed") from e

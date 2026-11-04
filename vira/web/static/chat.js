@@ -466,6 +466,7 @@ async function sendMessage(event) {
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
+  localStorage.setItem("vira-theme", theme);
   localStorage.setItem("vira-chat-theme", theme);
   $("#theme-toggle").textContent = theme === "light" ? "☾" : "☼";
 }
@@ -542,5 +543,6 @@ $("#logout-button").addEventListener("click", async () => {
   }
 });
 
-applyTheme(localStorage.getItem("vira-chat-theme") || "dark");
+applyTheme(localStorage.getItem("vira-theme") || localStorage.getItem("vira-chat-theme") ||
+  (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 loadCurrentUser().then(() => loadConversations());

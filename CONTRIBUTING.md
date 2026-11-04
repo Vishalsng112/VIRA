@@ -47,12 +47,12 @@ These are the best places to start if you're new to the codebase. All are labell
 
 ### Agents
 - **`good first issue`** · Build a **CPU spike alert agent** — subscribes to `sensor.hardware.state`, fires an alert when CPU exceeds a configurable threshold. Reference: `vira/agent/examples/AGENT_MONITOR.py`.
-- **`good first issue`** · Build a **idle reminder agent** — detects when the user has been inactive for N minutes (via `sensor.system.state`) and sends a desktop notification.
-- **`good first issue`** · Build a **project context agent** — watches `sensor.workspace.state` events and maintains a summary of the active project in memory.
+- **`good first issue`** · Build a **idle reminder agent** — detects when the user has been inactive for N minutes (via `sensor.session.state`) and sends a desktop notification.
+- **`good first issue`** · Build a **project context agent** — watches scoped `file.*` events and maintains a summary of the active project in memory.
 
 ### Sensors
 - **`good first issue`** · Add a **battery sensor** — polls `psutil.sensors_battery()` and publishes `sensor.battery.state` events with charge level and plugged status.
-- **`good first issue`** · Add a **clipboard sensor** — watches clipboard changes and publishes `sensor.clipboard.changed` events (Linux: use `xclip` or `wl-paste`).
+- **`good first issue`** · Improve the **Wayland clipboard sensor** — watches clipboard changes and publishes privacy-preserving `sensor.clipboard.changed` events (Linux: `wl-paste` only).
 - **`good first issue`** · Add a **audio sensor** — detects microphone/speaker activity and publishes `sensor.audio.state`.
 
 ### Testing & Quality
@@ -68,7 +68,7 @@ These are the best places to start if you're new to the codebase. All are labell
 ### Improvements
 - **`enhancement`** · Make `WorkflowEngine._resolve_input` support `{{ context.key }}` and `{{ results.step_id }}` placeholder resolution (currently a stub).
 - **`enhancement`** · Add a `pending_events()` implementation to `EventBus` — currently returns 0 always (the internal queue attribute name is wrong).
-- **`enhancement`** · Add X11 support to `UserActivitySensor` (currently Wayland-only).
+- **`enhancement`** · Add compositor-specific opt-in adapters for Wayland focus metadata; do not add X11 support.
 
 ---
 
@@ -254,4 +254,3 @@ Before opening a pull request, confirm:
 - **Question about the codebase?** Open an issue with the `question` label. Include your Python version, OS, and relevant terminal log lines.
 - **Not sure if your idea fits?** Open an issue before writing code — happy to give early feedback.
 - **Found a bug?** Open an issue with the `bug` label and include steps to reproduce.
-

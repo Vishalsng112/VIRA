@@ -87,6 +87,9 @@ class AgentOrchestratorModule(ViraModule):
             # Create tool registry and executor
             self.tool_registry = ToolRegistry()
             self.tool_executor = ToolExecutor(self.tool_registry, self._security_manager)
+            tool_root = (self._config_manager.get("tools", {}) or {}).get("workspace_root", ".")
+            builtins = self.tool_registry.register_builtins(tool_root)
+            logger.info("Registered built-in tools: {}", builtins)
             self.tool_registry.register(ChatStatisticsTool())
             sandbox_config = self._config_manager.get("sandbox", {}) or {}
             sandbox_policy = {
@@ -358,6 +361,8 @@ class AgentOrchestratorModule(ViraModule):
             },
             "tools": {
                 "total": 0,
+                "names": [],
+                "metadata": [],
                 "mcp_connections": len(self._mcp_connections),
             }
         }
@@ -381,5 +386,7 @@ class AgentOrchestratorModule(ViraModule):
 
         if self.tool_registry:
             status["tools"]["total"] = len(self.tool_registry.list())
+            status["tools"]["names"] = self.tool_registry.list()
+            status["tools"]["metadata"] = self.tool_registry.metadata()
 
         return status

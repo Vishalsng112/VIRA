@@ -73,7 +73,19 @@ VIRA is not a single-purpose end product. It is a programmable foundation for bu
 - **Operations layer** — health, metrics, event streams, agent visibility, and runtime controls.
 - **Future creation engine** — describe a need in natural language and VIRA can eventually generate an agent, tool, workflow, or small application, then verify it before use.
 
+The built-in tool pack is provider-neutral and available to every agent through the
+same registry: `filesystem` (root-contained read/write/list/search), `shell`
+(approved read-only commands), `git` (read-only repository inspection), `utility`
+(UTC time and safe arithmetic), and `web` (search/browse/research using the
+existing SSRF-checked web implementation). Configure its root with
+`tools.workspace_root`; use `sandbox` for code execution or untrusted workloads.
+
 The current implementation is local-first and privacy-oriented. It uses local persistence and supports local LLM providers such as Ollama; external providers are optional and explicitly configured.
+
+For local HTTP development, keep `auth.https_only` set to `false`. Enable it
+before exposing VIRA through HTTPS or a trusted TLS-terminating reverse proxy;
+otherwise browsers will correctly withhold the Secure session cookie and
+authenticated page routes will redirect back to login.
 
 ### A framework, not just an assistant
 
@@ -350,10 +362,30 @@ Inside the running container:
 python run.py
 ```
 
-The dashboard will be available at:
+VIRA listens on `0.0.0.0:8000` as an internal HTTP service. For internet access,
+put it behind a TLS reverse proxy rather than exposing port 8000 directly. The
+default configuration marks authentication cookies as HTTPS-only and trusts
+forwarded HTTPS headers from a local proxy.
+
+For example, with [Caddy](https://caddyserver.com/), create a `Caddyfile`:
+
+```caddyfile
+vira.example.com {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+Replace `vira.example.com` with a DNS name pointing to the server, then start
+Caddy. It will obtain and renew a publicly trusted certificate automatically.
+Only expose ports 80 and 443 on the firewall; keep port 8000 private.
+
+For local development without a TLS proxy, set `auth.https_only` to `false` in
+`config.yaml`. Do not use that setting when exposing VIRA to a network.
+
+The dashboard will then be available at:
 
 ```
-http://localhost:8000
+https://vira.example.com
 ```
 
 `0.0.0.0` is the server bind address, not the address to use in a browser. Use

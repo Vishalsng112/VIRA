@@ -395,9 +395,16 @@
         </article>`;
     }).join("") : '<p class="empty">No agents are registered.</p>');
 
-    const names = Array.isArray(tools.names) ? tools.names : [];
+    const metadata = Array.isArray(tools.metadata) ? tools.metadata : [];
+    const names = metadata.length ? metadata : (Array.isArray(tools.names) ? tools.names : []);
     setText("tools-count", `${names.length} total`);
-    setHtml("tool-list", chips(names, "No tools are registered."));
+    setHtml("tool-list", names.length
+      ? names.map((tool) => {
+        if (typeof tool === "string") return `<span class="chip">${esc(tool)}</span>`;
+        const label = `${tool.name} · ${tool.provider || "local"}`;
+        return `<span class="chip" title="${esc(tool.qualified_name || tool.name)}">${esc(label)}</span>`;
+      }).join("")
+      : '<span class="empty">No tools are registered.</span>');
     setHtml("runtime-facts", kv({
       router_running: (o.router || {}).running,
       router_subscribed: (o.router || {}).subscribed,

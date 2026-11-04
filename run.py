@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from loguru import logger
 import sys
 import signal
+import os
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -38,7 +39,14 @@ async def main():
 
     app = create_app(kernel)
 
-    config = uvicorn.Config(app=app, host="0.0.0.0", port=8000, log_level="info")
+    config = uvicorn.Config(
+        app=app,
+        host=os.getenv("VIRA_HOST", "0.0.0.0"),
+        port=int(os.getenv("VIRA_PORT", "8000")),
+        log_level="info",
+        proxy_headers=True,
+        forwarded_allow_ips=os.getenv("VIRA_TRUSTED_PROXIES", "127.0.0.1"),
+    )
     server = SignalAwareServer(config)
     loop = asyncio.get_running_loop()
 

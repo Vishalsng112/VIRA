@@ -79,22 +79,14 @@ class Kernel:
     def _register_builtin_sensors(self):
         """Register all built-in sensor factories."""
         # Import sensor classes here to avoid circular imports
-        from vira.sensors.system_sensor import SystemSensor
         from vira.sensors.hardware_sensor import HardwareSensor
         from vira.sensors.process_sensor import ProcessSensor
         from vira.sensors.network_sensor import NetworkSensor
-        from vira.sensors.workspace_sensor import WorkspaceSensor
-        from vira.sensors.project_sensor import ProjectSensor
-        from vira.sensors.activity_sensor import ActivitySensor
         from vira.sensors.user_activity_sensor import UserActivitySensor
         from vira.sensors.filesystem_sensor import FileSystemSensor
+        from vira.sensors.wayland_idle_sensor import WaylandIdleSensor
 
         # Define factories that capture the required dependencies
-        self.register_sensor("system_sensor", lambda cfg, eb, disp, mm: SystemSensor(
-            interval=cfg.get("interval", 5.0),
-            event_bus=eb,
-            dispatcher=disp
-        ))
         self.register_sensor("hardware_sensor", lambda cfg, eb, disp, mm: HardwareSensor(
             interval=cfg.get("interval", 5.0),
             event_bus=eb,
@@ -110,25 +102,18 @@ class Kernel:
             event_bus=eb,
             dispatcher=disp
         ))
-        self.register_sensor("workspace_sensor", lambda cfg, eb, disp, mm: WorkspaceSensor(
-            interval=cfg.get("interval", 2.0),
-            event_bus=eb,
-            dispatcher=disp
-        ))
-        self.register_sensor("project_sensor", lambda cfg, eb, disp, mm: ProjectSensor(
-            interval=cfg.get("interval", 5.0),
-            event_bus=eb,
-            dispatcher=disp
-        ))
-        self.register_sensor("activity_sensor", lambda cfg, eb, disp, mm: ActivitySensor(
-            interval=cfg.get("interval", 5.0),
-            event_bus=eb,
-            dispatcher=disp
-        ))
         self.register_sensor("user_activity_sensor", lambda cfg, eb, disp, mm: UserActivitySensor(
             interval=cfg.get("interval", 10.0),
             event_bus=eb,
-            dispatcher=disp
+            dispatcher=disp,
+            include_content=cfg.get("include_content", False),
+            max_content_chars=cfg.get("max_content_chars", 0),
+        ))
+        self.register_sensor("wayland_idle_sensor", lambda cfg, eb, disp, mm: WaylandIdleSensor(
+            interval=cfg.get("interval", 5.0),
+            idle_threshold_seconds=cfg.get("idle_threshold_seconds", 60),
+            event_bus=eb,
+            dispatcher=disp,
         ))
         self.register_sensor("filesystem_sensor", lambda cfg, eb, disp, mm: FileSystemSensor(
             watch_path=cfg.get("watch_path"),

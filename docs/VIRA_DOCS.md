@@ -106,7 +106,7 @@ await dispatcher.publish(Event(
 ))
 
 # Convenience dict form
-await dispatcher.publish_dict("sensor.cpu.spike", {"cpu_pct": 92.4}, source="system_sensor")
+await dispatcher.publish_dict("sensor.cpu.spike", {"cpu_pct": 92.4}, source="hardware_sensor")
 ```
 
 Durable state changes set `durable=True`. The dispatcher records those events
@@ -477,9 +477,9 @@ metrics:
   retention_minutes: 60
 
 sensors:                               # list of sensor configs
-  - name: system_sensor                # must match a registered factory name
+  - name: wayland_idle_sensor          # must match a registered factory name
     enabled: true
-    interval: 1.0                      # polling interval in seconds
+    interval: 5.0                      # polling interval in seconds
 
 llm:
   default_model: "llama3.2:latest"

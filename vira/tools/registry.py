@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 from vira.tools.base import BaseTool, ToolPermission
 from vira.tools.connection import MCPServerConnection
 from vira.tools.mcp_tool import MCPTool
+from vira.tools.builtin import create_builtin_tools
 
 
 class ToolRegistry:
@@ -14,8 +15,15 @@ class ToolRegistry:
 
     def register(self, tool: BaseTool, qualified_name: Optional[str] = None) -> None:
         key = qualified_name or tool.name
+        previous = self._tools.get(key)
+        if previous is not None:
+            candidates = self._unqualified_index.get(previous.name, [])
+            if key in candidates:
+                candidates.remove(key)
         self._tools[key] = tool
-        self._unqualified_index.setdefault(tool.name, []).append(key)
+        candidates = self._unqualified_index.setdefault(tool.name, [])
+        if key not in candidates:
+            candidates.append(key)
 
     def get(self, name: str) -> Optional[BaseTool]:
         if name in self._tools:
@@ -28,6 +36,28 @@ class ToolRegistry:
 
     def list(self) -> List[str]:
         return list(self._tools.keys())
+
+    def metadata(self) -> List[Dict[str, object]]:
+        """Return display and execution identities without exposing tool internals."""
+        items = []
+        for qualified_name, tool in self._tools.items():
+            provider = getattr(tool, "server_name", None) or "local"
+            items.append({
+                "name": tool.name,
+                "qualified_name": qualified_name,
+                "provider": provider,
+                "kind": "mcp" if getattr(tool, "server_name", None) else "builtin",
+                "description": tool.description,
+            })
+        return items
+
+    def register_builtins(self, root: str = ".") -> List[str]:
+        """Register VIRA's safe, provider-neutral core tool pack."""
+        registered = []
+        for tool in create_builtin_tools(root):
+            self.register(tool)
+            registered.append(tool.name)
+        return registered
 
     async def register_mcp_server(
         self,

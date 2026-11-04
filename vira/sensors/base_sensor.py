@@ -23,3 +23,10 @@ class BaseSensor(ABC):
     async def read(self):
         """Read sensor data"""
         pass
+
+    def health(self) -> dict:
+        """Return the common health state exposed by the kernel APIs."""
+        return {
+            "name": self.name,
+            "running": self._running,
+        }

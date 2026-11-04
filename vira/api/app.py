@@ -152,7 +152,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         session_cookie="vira_session",
         max_age=kernel.config_manager.get("auth.session_max_age", 86400),
         same_site="lax",
-        https_only=False,
+        https_only=bool(kernel.config_manager.get("auth.https_only", True)),
     )
 
     # --- Static files ---
@@ -530,7 +530,7 @@ def create_app(kernel: Kernel) -> FastAPI:
                     "memory_manager": "not_available",
                     "llm_manager": "not_available",
                 },
-                "tools": {"total": 0, "names": [], "mcp_connections": 0},
+                "tools": {"total": 0, "names": [], "metadata": [], "mcp_connections": 0},
             }
 
         registry = getattr(orchestrator, "registry", None)
@@ -560,6 +560,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         router_instance = getattr(orchestrator, "router", None)
         tool_registry = getattr(orchestrator, "tool_registry", None)
         tool_names = tool_registry.list() if tool_registry else []
+        tool_metadata = tool_registry.metadata() if tool_registry else []
         runtime = getattr(orchestrator, "runtime", None)
 
         return {
@@ -582,6 +583,7 @@ def create_app(kernel: Kernel) -> FastAPI:
             "tools": {
                 "total": len(tool_names),
                 "names": tool_names,
+                "metadata": tool_metadata,
                 "mcp_connections": len(getattr(orchestrator, "_mcp_connections", [])),
             },
         }
@@ -766,7 +768,7 @@ def create_app(kernel: Kernel) -> FastAPI:
                 "recovery_codes": "bcrypt-hashed and never displayed",
                 "session_cookie": "vira_session",
                 "session_max_age_seconds": session_max_age,
-                "https_only": False,
+                "https_only": bool(kernel.config_manager.get("auth.https_only", True)),
                 "same_site": "lax",
             },
             "authorization": {
@@ -791,7 +793,7 @@ def create_app(kernel: Kernel) -> FastAPI:
             "visibility_limits": [
                 "Persistent authentication decisions are recorded in the auth_audit table.",
                 "Session revocation is currently performed by logout and password reset.",
-                "HTTPS is disabled in the current local-development configuration.",
+                "HTTPS is enforced for authentication cookies; terminate TLS at the configured reverse proxy.",
             ],
         }
 
