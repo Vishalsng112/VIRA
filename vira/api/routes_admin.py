@@ -8,6 +8,7 @@ from vira.auth import database
 from vira.auth.admin import UserAdminService
 from vira.auth.principals import UserPrincipal
 from vira.devices import store as device_store
+from vira.family import store as family_store
 from .deps import correlation_id_of
 
 
@@ -42,6 +43,12 @@ def build_admin_router(kernel, deps: dict, stream_manager) -> APIRouter:
         # New active admins own the server device.
         if kernel.local_device:
             kernel.local_device.sync_access()
+        # New household users join the administrator's first family by default.
+        # The admin can later change their household role through household APIs.
+        household = family_store.ensure_household(actor.user_id)
+        target = database.get_user_by_public_id(result["user_id"])
+        if target:
+            family_store.add_member(actor.user_id, household["id"], int(target["id"]), "adult")
         return result
 
     @router.get("/admin/users/{user_public_id}")

@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 
 # Let's use starlette's middleware:
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.cors import CORSMiddleware
 from pathlib import Path
 from loguru import logger
 
@@ -38,6 +39,8 @@ from vira.api.streams import EventStreamManager
 from vira.agent.progress import hub as progress_hub
 from vira.api.routes_admin import build_admin_router
 from vira.api.routes_devices import build_device_router
+from vira.api.routes_client import build_client_router
+from vira.family import store as family_store
 
 # logger = logging.getLogger(__name__)
 
@@ -154,6 +157,14 @@ def create_app(kernel: Kernel) -> FastAPI:
         same_site="lax",
         https_only=bool(kernel.config_manager.get("auth.https_only", True)),
     )
+    if not bool(kernel.config_manager.get("auth.https_only", True)):
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     # --- Static files ---
     static_dir = Path(__file__).parent.parent / "web" / "static"
@@ -162,6 +173,7 @@ def create_app(kernel: Kernel) -> FastAPI:
 
     # --- Database init ---
     database.init_db()
+    family_store.ensure_schema()
 
     # --- Subscribe to kernel events for SSE immediately ---
     async def event_forwarder(event: Event):
@@ -984,6 +996,7 @@ def create_app(kernel: Kernel) -> FastAPI:
 
     # --- Device, admin and operations routers ---
     app.include_router(build_device_router(kernel, auth_deps, stream_manager))
+    app.include_router(build_client_router(get_current_user, kernel))
     app.include_router(build_admin_router(kernel, auth_deps, stream_manager))
     from .routes_swarm import build_swarm_router
     app.include_router(build_swarm_router(require_admin))

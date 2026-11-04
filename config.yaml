@@ -91,16 +91,16 @@ sensors:
     enabled: true
     interval: 15.0
 
-  - name: wayland_idle_sensor
-    enabled: true
-    interval: 5.0
-    idle_threshold_seconds: 60
+  # - name: wayland_idle_sensor
+  #   enabled: true
+  #   interval: 5.0
+  #   idle_threshold_seconds: 60
 
-  - name: user_activity_sensor
-    enabled: true
-    interval: 2.0
-    include_content: false
-    max_content_chars: 0
+  # - name: user_activity_sensor
+  #   enabled: true
+  #   interval: 2.0
+  #   include_content: false
+  #   max_content_chars: 0
 
   # FileSystemSensor is event-driven; enable one instance per approved
   # workspace instead of recursively watching the home directory.
