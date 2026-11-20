@@ -5,6 +5,7 @@ import '../../app/app_scope.dart';
 import '../../app/widgets.dart';
 import '../../data/api/vira_api.dart';
 import '../../data/storage/outbox_store.dart';
+import '../shell/app_shell.dart';
 
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
@@ -19,6 +20,8 @@ class _AdminPageState extends State<AdminPage>
   late final TabController _tabs;
   bool _loading = true;
   String? _error;
+  bool _reachable = false;
+  Map<String, String> _sectionErrors = const {};
   Map<String, dynamic> _health = const {};
   Map<String, dynamic> _metrics = const {};
   Map<String, dynamic> _orchestration = const {};
@@ -50,92 +53,173 @@ class _AdminPageState extends State<AdminPage>
 
   Future<void> _load() async {
     final api = _controller.api;
-    if (api == null || !_controller.isAdmin) {
+    if (api == null) {
       setState(() {
         _loading = false;
-        _error = 'Administrator access is required.';
+        _reachable = false;
+        _error = 'This device is not connected to a VIRA server.';
       });
       return;
     }
     setState(() {
       _loading = true;
       _error = null;
+      _sectionErrors = const {};
     });
-    try {
-      final health = await api.health();
-      final metrics = await api.metrics();
-      final orchestration = await api.orchestration();
-      final agents = await api.agents();
-      final users = await api.adminUsers();
-      final devicesResponse = await api.adminDevices();
-      final audit = await api.auditLog();
-      final sensors = await api.sensors();
-      final eventLag = await api.eventLag();
-      final insightFleet = await api.insightFleet();
-      final jobsResponse = await api.adminJobs();
-      final backupsResponse = await api.adminBackups();
-      final alertsResponse = await api.alerts();
-      if (!mounted) return;
-      setState(() {
-        _health = health;
-        _metrics = metrics;
-        _orchestration = orchestration;
-        _agents = agents;
-        _users = users;
-        _devices = ((devicesResponse['devices'] as List?) ?? const [])
+
+    // Re-check the account first. A cached role can be stale after the server
+    // changes an account, and that used to make the whole panel look "dead".
+    if (!_controller.isAdmin) {
+      try {
+        await _controller.refreshIdentity();
+      } on ViraApiException catch (error) {
+        setState(() {
+          _loading = false;
+          _reachable = false;
+          _error = _explain(error);
+        });
+        return;
+      } on Object catch (error) {
+        setState(() {
+          _loading = false;
+          _reachable = false;
+          _error = error.toString();
+        });
+        return;
+      }
+      if (!_controller.isAdmin) {
+        setState(() {
+          _loading = false;
+          _reachable = false;
+          _error = 'This account is not an administrator. Sign in with an admin account to manage the server.';
+        });
+        return;
+      }
+    }
+
+    final errors = <String, String>{};
+    var reachable = false;
+    var authFailures = 0;
+
+    Future<void> run<T>(
+      String label,
+      Future<T> future,
+      void Function(T value) apply,
+    ) async {
+      try {
+        apply(await future);
+        reachable = true;
+      } on ViraApiException catch (error) {
+        errors[label] = _explain(error);
+        if (error.isTransport) return;
+        if (error.isAuthFailure) authFailures += 1;
+        // The server answered, so it is reachable even if this one section
+        // is not available to this build.
+        reachable = true;
+      } on Object catch (error) {
+        errors[label] = error.toString();
+      }
+    }
+
+    await Future.wait<void>([
+      run('Server health', api.health(), (value) => _health = value),
+      run('Metrics', api.metrics(), (value) => _metrics = value),
+      run('Agents', api.orchestration(), (value) => _orchestration = value),
+      run('Agent list', api.agents(), (value) => _agents = value),
+      run('Users', api.adminUsers(), (value) => _users = value),
+      run('Devices', api.adminDevices(), (value) {
+        _devices = ((value['devices'] as List?) ?? const [])
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .toList();
-        _audit = ((audit['audit'] as List?) ?? const [])
+      }),
+      run('Audit log', api.auditLog(), (value) {
+        _audit = ((value['audit'] as List?) ?? const [])
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .toList();
-        _sensors = ((sensors['sensors'] as List?) ?? const [])
+      }),
+      run('Sensors', api.sensors(), (value) {
+        _sensors = ((value['sensors'] as List?) ?? const [])
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .toList();
-        _eventLag = eventLag;
-        _insightFleet = insightFleet;
-        _jobStats = jobsResponse['stats'] is Map
-            ? Map<String, dynamic>.from(jobsResponse['stats'] as Map)
+      }),
+      run('Event pipeline', api.eventLag(), (value) => _eventLag = value),
+      run(
+        'Fleet insights',
+        api.insightFleet(),
+        (value) => _insightFleet = value,
+      ),
+      run('Background jobs', api.adminJobs(), (value) {
+        _jobStats = value['stats'] is Map
+            ? Map<String, dynamic>.from(value['stats'] as Map)
             : const {};
-        _jobs = ((jobsResponse['jobs'] as List?) ?? const [])
+        _jobs = ((value['jobs'] as List?) ?? const [])
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .toList();
-        _backups = ((backupsResponse['backups'] as List?) ?? const [])
+      }),
+      run('Backups', api.adminBackups(), (value) {
+        _backups = ((value['backups'] as List?) ?? const [])
             .map((item) => item.toString())
             .toList();
-        _alerts = ((alertsResponse['alerts'] as List?) ?? const [])
+      }),
+      run('Alerts', api.alerts(), (value) {
+        _alerts = ((value['alerts'] as List?) ?? const [])
             .whereType<Map>()
             .map((item) => Map<String, dynamic>.from(item))
             .toList();
-        _loading = false;
-      });
-    } on ViraApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = error.message;
-      });
-    } on Object catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = error.toString();
-      });
+      }),
+    ]);
+
+    if (!mounted) return;
+    final hardFailure = errors.length == 13;
+    final signedOut = errors.isNotEmpty && authFailures == errors.length;
+    setState(() {
+      _loading = false;
+      _reachable = reachable;
+      _sectionErrors = errors;
+      if (hardFailure) {
+        _error =
+            'We could not reach your VIRA server. Make sure it is running at '
+            '${_controller.serverUrl}, then try again.';
+      } else if (signedOut) {
+        _error = 'Your VIRA session has expired. Sign in again from Settings, then reload the admin panel.';
+      } else {
+        _error = null;
+      }
+    });
+  }
+
+  String _explain(ViraApiException error) {
+    if (error.statusCode == 401) {
+      return 'Your session expired. Sign in again from Settings.';
     }
+    if (error.statusCode == 403) {
+      return 'Administrator permission is required.';
+    }
+    if (error.isTransport) {
+      return 'Cannot reach the server. Check that it is running and that this device has network access.';
+    }
+    return error.message;
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
     if (!controller.isAdmin) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.admin_panel_settings_outlined,
-        title: 'Administrator only',
+        title: 'Administrator access needed',
         message:
-            'Sign in with an administrator account to see server, agent, user and fleet controls.',
+            'This account can use VIRA, but it cannot see server settings. '
+            'Sign in with an administrator account to manage the server.',
+        action: FilledButton.tonalIcon(
+          onPressed: _loading ? null : _load,
+          icon: const Icon(Icons.refresh_rounded, size: 18),
+          label: Text(_loading ? 'Checking…' : 'Check access again'),
+        ),
       );
     }
     final theme = Theme.of(context);
@@ -159,22 +243,42 @@ class _AdminPageState extends State<AdminPage>
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      controller.serverUrl,
+                      _loading
+                          ? 'Contacting ${controller.serverUrl}…'
+                          : _reachable
+                          ? 'Connected to ${controller.serverUrl}'
+                          : 'Cannot reach ${controller.serverUrl}',
                       style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                        color: _reachable || _loading
+                            ? theme.colorScheme.onSurfaceVariant
+                            : theme.colorScheme.error,
                       ),
                     ),
                   ],
                 ),
               ),
               StatusPill(
-                label: _loading ? 'Loading' : healthy ? 'Healthy' : 'Attention',
+                label: _loading
+                    ? 'Connecting'
+                    : !_reachable
+                    ? 'Offline'
+                    : healthy
+                    ? 'Healthy'
+                    : 'Attention',
                 tone: _loading
                     ? StatusTone.info
+                    : !_reachable
+                    ? StatusTone.error
                     : healthy
                     ? StatusTone.success
                     : StatusTone.warning,
-                icon: healthy ? Icons.check_circle : Icons.monitor_heart,
+                icon: _loading
+                    ? Icons.sync
+                    : !_reachable
+                    ? Icons.cloud_off
+                    : healthy
+                    ? Icons.check_circle
+                    : Icons.monitor_heart,
               ),
               const SizedBox(width: 8),
               IconButton(
@@ -203,10 +307,67 @@ class _AdminPageState extends State<AdminPage>
                     Expanded(
                       child: Text(
                         _error!,
-                        style: TextStyle(color: theme.colorScheme.onErrorContainer),
+                        style: TextStyle(
+                          color: theme.colorScheme.onErrorContainer,
+                        ),
                       ),
                     ),
                     TextButton(onPressed: _load, child: const Text('Retry')),
+                    IconButton(
+                      tooltip: 'Connection settings',
+                      onPressed: () =>
+                          ShellNavigation.maybeOf(context)
+                              ?.openModule('settings'),
+                      icon: const Icon(Icons.settings_outlined, size: 20),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        if (_error == null && _sectionErrors.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+            child: Card(
+              color: theme.colorScheme.tertiaryContainer.withValues(alpha: 0.5),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 18,
+                          color: theme.colorScheme.onTertiaryContainer,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Connected, but some sections could not load',
+                            style: TextStyle(
+                              color: theme.colorScheme.onTertiaryContainer,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: _load,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                    for (final entry in _sectionErrors.entries.take(4))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '${entry.key}: ${entry.value}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onTertiaryContainer,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -279,7 +440,8 @@ class _AdminPageState extends State<AdminPage>
         icon: Icons.build_outlined,
         label: 'Tools',
         value: '${(tools['total'] as num?)?.toInt() ?? 0}',
-        caption: '${(tools['mcp_connections'] as num?)?.toInt() ?? 0} MCP connections',
+        caption:
+            '${(tools['mcp_connections'] as num?)?.toInt() ?? 0} MCP connections',
       ),
       StatCard(
         icon: Icons.devices_other_outlined,
@@ -297,7 +459,9 @@ class _AdminPageState extends State<AdminPage>
         icon: Icons.route_outlined,
         label: 'Event router',
         value: routerInfo['running'] == true ? 'Running' : 'Stopped',
-        caption: routerInfo['subscribed'] == true ? 'Subscribed' : 'Not subscribed',
+        caption: routerInfo['subscribed'] == true
+            ? 'Subscribed'
+            : 'Not subscribed',
       ),
     ];
     return ListView(
@@ -357,7 +521,8 @@ class _AdminPageState extends State<AdminPage>
               ),
               InfoRow(
                 label: 'Utilization',
-                value: '${((_eventLag['utilization'] as num?)?.toDouble() ?? 0) * 100 ~/ 1}%',
+                value:
+                    '${((_eventLag['utilization'] as num?)?.toDouble() ?? 0) * 100 ~/ 1}%',
                 icon: Icons.speed,
               ),
               InfoRow(
@@ -400,10 +565,13 @@ class _AdminPageState extends State<AdminPage>
                       '${job['status']} · attempts ${job['attempts']}'
                       '${job['last_error'] == null ? '' : ' · ${job['last_error']}'}',
                     ),
-                    trailing: job['status'] == 'dead' || job['status'] == 'failed'
+                    trailing:
+                        job['status'] == 'dead' || job['status'] == 'failed'
                         ? TextButton(
                             onPressed: () async {
-                              await _controller.api?.retryJob((job['id'] ?? '').toString());
+                              await _controller.api?.retryJob(
+                                (job['id'] ?? '').toString(),
+                              );
                               await _load();
                             },
                             child: const Text('Retry'),
@@ -449,7 +617,9 @@ class _AdminPageState extends State<AdminPage>
                     for (final sensor in _sensors)
                       InfoRow(
                         label: (sensor['name'] ?? 'sensor').toString(),
-                        value: (sensor['status'] ?? sensor['running'] ?? 'unknown').toString(),
+                        value:
+                            (sensor['status'] ?? sensor['running'] ?? 'unknown')
+                                .toString(),
                         icon: Icons.sensors,
                       ),
                   ],
@@ -472,7 +642,8 @@ class _AdminPageState extends State<AdminPage>
             Expanded(
               child: SectionCard(
                 title: 'Registered agents',
-                subtitle: '${rows.length} agent(s), ${loaded.length} loaded now.',
+                subtitle:
+                    '${rows.length} agent(s), ${loaded.length} loaded now.',
                 child: const SizedBox.shrink(),
               ),
             ),
@@ -553,7 +724,9 @@ class _AdminPageState extends State<AdminPage>
                   children: [
                     for (final capability in capabilities.whereType<Map>())
                       Chip(
-                        label: Text((capability['name'] ?? 'capability').toString()),
+                        label: Text(
+                          (capability['name'] ?? 'capability').toString(),
+                        ),
                         visualDensity: VisualDensity.compact,
                       ),
                   ],
@@ -591,12 +764,19 @@ class _AdminPageState extends State<AdminPage>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Unregister agent?'),
-        content: const Text('The agent definition and runtime instance are removed.'),
+        content: const Text(
+          'The agent definition and runtime instance are removed.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             child: const Text('Unregister'),
           ),
         ],
@@ -645,8 +825,8 @@ class _AdminPageState extends State<AdminPage>
           leading: CircleAvatar(
             child: Text(
               ((user['username'] ?? '?').toString().isEmpty
-                      ? '?'
-                      : (user['username'] as String)[0].toUpperCase()),
+                  ? '?'
+                  : (user['username'] as String)[0].toUpperCase()),
             ),
           ),
           title: Text((user['username'] ?? 'Unknown').toString()),
@@ -666,16 +846,28 @@ class _AdminPageState extends State<AdminPage>
             },
             itemBuilder: (context) => [
               if (role != 'admin')
-                const PopupMenuItem(value: 'promote', child: Text('Make administrator')),
+                const PopupMenuItem(
+                  value: 'promote',
+                  child: Text('Make administrator'),
+                ),
               if (role != 'user')
                 const PopupMenuItem(value: 'demote', child: Text('Make user')),
               if (status != 'active')
-                const PopupMenuItem(value: 'enable', child: Text('Enable account')),
+                const PopupMenuItem(
+                  value: 'enable',
+                  child: Text('Enable account'),
+                ),
               if (status == 'active')
-                const PopupMenuItem(value: 'disable', child: Text('Disable account')),
+                const PopupMenuItem(
+                  value: 'disable',
+                  child: Text('Disable account'),
+                ),
               PopupMenuItem(
                 value: 'delete',
-                child: Text('Delete account', style: TextStyle(color: theme.colorScheme.error)),
+                child: Text(
+                  'Delete account',
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
               ),
             ],
           ),
@@ -711,9 +903,13 @@ class _AdminPageState extends State<AdminPage>
                     decoration: const InputDecoration(labelText: 'Role'),
                     items: const [
                       DropdownMenuItem(value: 'user', child: Text('User')),
-                      DropdownMenuItem(value: 'admin', child: Text('Administrator')),
+                      DropdownMenuItem(
+                        value: 'admin',
+                        child: Text('Administrator'),
+                      ),
                     ],
-                    onChanged: (value) => setDialogState(() => role = value ?? 'user'),
+                    onChanged: (value) =>
+                        setDialogState(() => role = value ?? 'user'),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -721,12 +917,18 @@ class _AdminPageState extends State<AdminPage>
                     obscureText: true,
                     decoration: const InputDecoration(
                       labelText: 'Password (optional)',
-                      helperText: 'Leave empty to generate a temporary password.',
+                      helperText:
+                          'Leave empty to generate a temporary password.',
                     ),
                   ),
                   if (error != null) ...[
                     const SizedBox(height: 12),
-                    Text(error!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error)),
+                    Text(
+                      error!,
+                      style: TextStyle(
+                        color: Theme.of(dialogContext).colorScheme.error,
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -795,24 +997,37 @@ class _AdminPageState extends State<AdminPage>
               if (temp != null) ...[
                 const SizedBox(height: 12),
                 const Text('Temporary password (shown once):'),
-                SelectableText(temp.toString(), style: const TextStyle(fontWeight: FontWeight.w600)),
+                SelectableText(
+                  temp.toString(),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ],
               if (recovery != null) ...[
                 const SizedBox(height: 12),
                 const Text('Recovery code (shown once):'),
-                SelectableText(recovery.toString(), style: const TextStyle(fontWeight: FontWeight.w600)),
+                SelectableText(
+                  recovery.toString(),
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
               ],
             ],
           ),
         ),
         actions: [
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
         ],
       ),
     );
   }
 
-  Future<void> _updateUser(Map<String, dynamic> user, {String? role, String? status}) async {
+  Future<void> _updateUser(
+    Map<String, dynamic> user, {
+    String? role,
+    String? status,
+  }) async {
     try {
       await _controller.api?.updateAdminUser(
         (user['user_id'] ?? '').toString(),
@@ -834,10 +1049,15 @@ class _AdminPageState extends State<AdminPage>
           'The account is soft-deleted and its sessions are revoked. This cannot be undone from this panel.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: Theme.of(context).colorScheme.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             child: const Text('Delete'),
           ),
         ],
@@ -845,7 +1065,9 @@ class _AdminPageState extends State<AdminPage>
     );
     if (confirmed != true) return;
     try {
-      await _controller.api?.deleteAdminUser((user['user_id'] ?? '').toString());
+      await _controller.api?.deleteAdminUser(
+        (user['user_id'] ?? '').toString(),
+      );
       await _load();
     } on ViraApiException catch (error) {
       _snack(error.message);
@@ -856,12 +1078,17 @@ class _AdminPageState extends State<AdminPage>
     final batteryByDevice = <String, Map<String, dynamic>>{};
     final fleet = (_insightFleet['devices'] as List?) ?? const [];
     for (final item in fleet.whereType<Map>()) {
-      batteryByDevice[item['id']?.toString() ?? ''] = Map<String, dynamic>.from(item);
+      batteryByDevice[item['id']?.toString() ?? ''] = Map<String, dynamic>.from(
+        item,
+      );
     }
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Text('${_devices.length} device(s) in the fleet', style: theme.textTheme.titleMedium),
+        Text(
+          '${_devices.length} device(s) in the fleet',
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: 12),
         if (_devices.isEmpty)
           const EmptyState(
@@ -871,12 +1098,20 @@ class _AdminPageState extends State<AdminPage>
           )
         else
           for (final device in _devices)
-            _deviceCard(theme, device, batteryByDevice[(device['device_id'] ?? '').toString()]),
+            _deviceCard(
+              theme,
+              device,
+              batteryByDevice[(device['device_id'] ?? '').toString()],
+            ),
       ],
     );
   }
 
-  Widget _deviceCard(ThemeData theme, Map<String, dynamic> device, Map<String, dynamic>? insight) {
+  Widget _deviceCard(
+    ThemeData theme,
+    Map<String, dynamic> device,
+    Map<String, dynamic>? insight,
+  ) {
     final status = (device['status'] ?? 'unknown').toString();
     final health = (device['health'] as Map?) ?? const {};
     return Padding(
@@ -892,7 +1127,9 @@ class _AdminPageState extends State<AdminPage>
                   Expanded(
                     child: Text(
                       (device['display_name'] ?? 'Device').toString(),
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   StatusPill(
@@ -909,7 +1146,9 @@ class _AdminPageState extends State<AdminPage>
               Text(
                 '${device['platform'] ?? ''} · ${device['device_type'] ?? ''}'
                 '${device['is_server_local'] == true ? ' · server-local' : ''}',
-                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -918,7 +1157,12 @@ class _AdminPageState extends State<AdminPage>
                 children: [
                   _metric('Last seen', _when(device['last_seen_at'])),
                   _metric('Queue', '${health['queue_backlog'] ?? 0}'),
-                  _metric('Events', health['last_event_at'] == null ? '—' : _when(health['last_event_at'])),
+                  _metric(
+                    'Events',
+                    health['last_event_at'] == null
+                        ? '—'
+                        : _when(health['last_event_at']),
+                  ),
                   if (insight?['battery_level'] != null)
                     _metric(
                       'Battery',
@@ -936,7 +1180,10 @@ class _AdminPageState extends State<AdminPage>
   Widget _auditTab(ThemeData theme) => ListView(
     padding: const EdgeInsets.all(20),
     children: [
-      Text('Recent security and admin activity', style: theme.textTheme.titleMedium),
+      Text(
+        'Recent security and admin activity',
+        style: theme.textTheme.titleMedium,
+      ),
       const SizedBox(height: 12),
       if (_audit.isEmpty)
         const EmptyState(
@@ -983,7 +1230,9 @@ class _AdminPageState extends State<AdminPage>
       return Wrap(
         spacing: spacing,
         runSpacing: spacing,
-        children: [for (final card in cards) SizedBox(width: width, child: card)],
+        children: [
+          for (final card in cards) SizedBox(width: width, child: card),
+        ],
       );
     },
   );
@@ -991,12 +1240,16 @@ class _AdminPageState extends State<AdminPage>
   Widget _metric(String label, String value) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
-      )),
-      Text(value, style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-        fontWeight: FontWeight.w600,
-      )),
+      Text(
+        label,
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      ),
+      Text(
+        value,
+        style: Theme.of(context).textTheme.bodyMedium
+            ?.copyWith(fontWeight: FontWeight.w600),
+      ),
     ],
   );
 
@@ -1030,6 +1283,7 @@ class _AdminPageState extends State<AdminPage>
 
   void _snack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 }

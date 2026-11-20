@@ -130,15 +130,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
                         error = null;
                       });
                       try {
-                        final code = await AppScope.of(
-                          dialogContext,
-                          listen: false,
-                        ).setupServer(
-                          server: _server.text,
-                          username: username.text,
-                          password: password.text,
-                          confirmation: confirmation.text,
-                        );
+                        final code =
+                            await AppScope.of(
+                              dialogContext,
+                              listen: false,
+                            ).setupServer(
+                              server: _server.text,
+                              username: username.text,
+                              password: password.text,
+                              confirmation: confirmation.text,
+                            );
                         setDialogState(() {
                           recovery = code;
                           busy = false;
@@ -242,136 +243,131 @@ class _OnboardingPageState extends State<OnboardingPage> {
       const _FeatureLine(
         icon: Icons.wifi_off_outlined,
         title: 'Works offline',
-        text:
-            'Events are stored on this device and sent when the server is reachable.',
+        text: 'Events are stored on this device and sent when the server is reachable.',
       ),
       const _FeatureLine(
         icon: Icons.shield_outlined,
         title: 'Scoped credentials',
-        text:
-            'Each device gets its own revocable credential, separate from your account.',
+        text: 'Each device gets its own revocable credential, separate from your account.',
       ),
       const _FeatureLine(
         icon: Icons.tune_outlined,
         title: 'Modular capture',
-        text:
-            'Enable only the signals you want to share. Every collector can be turned off.',
+        text: 'Enable only the signals you want to share. Every collector can be turned off.',
       ),
     ],
   );
 
-  Widget _formCard(ThemeData theme, bool busy, String? error) => Card(
-    child: Padding(
-      padding: const EdgeInsets.all(28),
-      child: Form(
-        key: _form,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Connect this device',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+  Widget _formCard(ThemeData theme, bool busy, String? error) => GlassCard(
+    padding: const EdgeInsets.all(28),
+    child: Form(
+      key: _form,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Connect this device',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w600,
             ),
-            const SizedBox(height: 6),
-            Text(
-              'Sign in with your VIRA account. This app will enroll the device and keep it linked.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Sign in with your VIRA account. This app will enroll the device and keep it linked.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
-            const SizedBox(height: 24),
-            TextFormField(
-              controller: _server,
-              keyboardType: TextInputType.url,
-              textInputAction: TextInputAction.next,
-              decoration: const InputDecoration(
-                labelText: 'Server URL',
-                hintText: 'http://192.168.1.20:8000',
-                prefixIcon: Icon(Icons.dns_outlined),
-              ),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Enter a server URL'
-                  : null,
+          ),
+          const SizedBox(height: 24),
+          TextFormField(
+            controller: _server,
+            keyboardType: TextInputType.url,
+            textInputAction: TextInputAction.next,
+            decoration: const InputDecoration(
+              labelText: 'Server URL',
+              hintText: 'http://192.168.1.20:8000',
+              prefixIcon: Icon(Icons.dns_outlined),
             ),
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: _username,
-              textInputAction: TextInputAction.next,
-              autofillHints: const [AutofillHints.username],
-              decoration: const InputDecoration(
-                labelText: 'Username',
-                prefixIcon: Icon(Icons.person_outline),
-              ),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Enter your username'
-                  : null,
+            validator: (value) => value == null || value.trim().isEmpty
+                ? 'Enter a server URL'
+                : null,
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _username,
+            textInputAction: TextInputAction.next,
+            autofillHints: const [AutofillHints.username],
+            decoration: const InputDecoration(
+              labelText: 'Username',
+              prefixIcon: Icon(Icons.person_outline),
             ),
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: _password,
-              obscureText: true,
-              autofillHints: const [AutofillHints.password],
-              onFieldSubmitted: (_) {
-                if (!busy) _connect();
-              },
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                prefixIcon: Icon(Icons.lock_outline),
-              ),
-              validator: (value) =>
-                  value == null || value.isEmpty ? 'Enter your password' : null,
+            validator: (value) => value == null || value.trim().isEmpty
+                ? 'Enter your username'
+                : null,
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _password,
+            obscureText: true,
+            autofillHints: const [AutofillHints.password],
+            onFieldSubmitted: (_) {
+              if (!busy) _connect();
+            },
+            decoration: const InputDecoration(
+              labelText: 'Password',
+              prefixIcon: Icon(Icons.lock_outline),
             ),
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: _deviceName,
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (_) {
-                if (!busy) _connect();
-              },
-              decoration: const InputDecoration(
-                labelText: 'Device name',
-                helperText: 'Shown in the VIRA server dashboard',
-                prefixIcon: Icon(Icons.devices_other_outlined),
-              ),
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Name this device'
-                  : null,
+            validator: (value) =>
+                value == null || value.isEmpty ? 'Enter your password' : null,
+          ),
+          const SizedBox(height: 14),
+          TextFormField(
+            controller: _deviceName,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) {
+              if (!busy) _connect();
+            },
+            decoration: const InputDecoration(
+              labelText: 'Device name',
+              helperText: 'Shown in the VIRA server dashboard',
+              prefixIcon: Icon(Icons.devices_other_outlined),
             ),
-            if (error != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  error,
-                  style: TextStyle(color: theme.colorScheme.onErrorContainer),
-                ),
+            validator: (value) => value == null || value.trim().isEmpty
+                ? 'Name this device'
+                : null,
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(12),
               ),
-            ],
-            const SizedBox(height: 22),
-            FilledButton.icon(
-              onPressed: busy ? null : _connect,
-              icon: busy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.link),
-              label: Text(busy ? 'Connecting…' : 'Connect this device'),
-            ),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: busy ? null : _showSetupServer,
-              child: const Text('Set up a new VIRA server'),
+              child: Text(
+                error,
+                style: TextStyle(color: theme.colorScheme.onErrorContainer),
+              ),
             ),
           ],
-        ),
+          const SizedBox(height: 22),
+          FilledButton.icon(
+            onPressed: busy ? null : _connect,
+            icon: busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.link),
+            label: Text(busy ? 'Connecting…' : 'Connect this device'),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: busy ? null : _showSetupServer,
+            child: const Text('Set up a new VIRA server'),
+          ),
+        ],
       ),
     ),
   );

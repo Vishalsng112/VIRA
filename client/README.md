@@ -8,6 +8,7 @@ web PWA, Linux AppImage and Windows desktop executable.
 ## What it does
 
 - Signs in with a normal VIRA user account.
+- **Chats with the server's Chatbot agent** from the **Chat** tab: streaming answers, live tool activity, conversation history, search and delete.
 - Enrolls this device through `POST /api/v1/devices` and stores the one-time
   device credential in the platform keystore/keychain.
 - Captures device telemetry through modular collectors.
@@ -93,10 +94,12 @@ lib/
     sync/              heartbeat, batch send, backoff
   features/
     onboarding/        connect + enroll
-    dashboard/         status, capture modules, sync controls
+    dashboard/         friendly overview, status and capture toggles
+    chat/              streaming assistant for the server's Chatbot agent
     insights/          local app-usage summary and categories
     activity/          queued and delivered event log
     devices/           account devices, rename, revoke
+    admin/             live server, agent, user, fleet and audit controls
     settings/          sync, capture, lifecycle
 ```
 
@@ -140,6 +143,11 @@ in `lib/services/capture/capture_service.dart`.
 | Revoke device | `POST /api/v1/devices/{id}/revoke` |
 | Heartbeat | `POST /api/v1/devices/{id}/heartbeat` |
 | Send events | `POST /api/v1/devices/{id}/events:batch` |
+| List chats | `GET /api/v1/conversations` |
+| Create chat | `POST /api/v1/conversations` |
+| Chat history | `GET /api/v1/conversations/{id}/messages` |
+| Stream a chat | `POST /chat/stream` (`Idempotency-Key` required) |
+| Workspace agents | `GET /api/v1/workspace` |
 
 The event allow-list is controlled by the server in `config.yaml`
 (`devices.event_policy.types`).

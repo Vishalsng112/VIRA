@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import 'app_controller.dart';
 import 'app_scope.dart';
 import 'theme.dart';
+import 'widgets.dart';
 import '../core/config/app_config.dart';
 import '../features/shell/app_shell.dart';
 
@@ -15,8 +16,7 @@ class ViraLinkApp extends StatefulWidget {
   State<ViraLinkApp> createState() => _ViraLinkAppState();
 }
 
-class _ViraLinkAppState extends State<ViraLinkApp>
-    with WidgetsBindingObserver {
+class _ViraLinkAppState extends State<ViraLinkApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
@@ -46,7 +46,7 @@ class _ViraLinkAppState extends State<ViraLinkApp>
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: ThemeMode.system,
-      home: const AppShell(),
+      home: const AppBackground(child: AppShell()),
     ),
   );
 }

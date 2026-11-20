@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../features/activity/activity_page.dart';
 import '../features/admin/admin_page.dart';
+import '../features/chat/chat_page.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../features/devices/devices_page.dart';
 import '../features/insights/insights_page.dart';
@@ -39,6 +40,13 @@ const _insightsModule = AppModule(
   selectedIcon: Icons.insights,
   builder: _insights,
 );
+const _chatModule = AppModule(
+  id: 'chat',
+  label: 'Chat',
+  icon: Icons.auto_awesome_outlined,
+  selectedIcon: Icons.auto_awesome,
+  builder: _chat,
+);
 const _activityModule = AppModule(
   id: 'activity',
   label: 'Activity',
@@ -70,6 +78,7 @@ const _settingsModule = AppModule(
 
 List<AppModule> appModulesFor({required bool isAdmin}) => [
   _dashboardModule,
+  _chatModule,
   _insightsModule,
   _activityModule,
   _devicesModule,
@@ -78,6 +87,7 @@ List<AppModule> appModulesFor({required bool isAdmin}) => [
 ];
 
 Widget _dashboard(BuildContext context) => const DashboardPage();
+Widget _chat(BuildContext context) => const ChatPage();
 Widget _insights(BuildContext context) => const InsightsPage();
 Widget _activity(BuildContext context) => const ActivityPage();
 Widget _devices(BuildContext context) => const DevicesPage();

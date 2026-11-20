@@ -461,6 +461,7 @@ textarea { resize: vertical; min-height: 4rem; }
 .btn-ghost { background: var(--surface-2); color: var(--muted); border-color: transparent; box-shadow: none; }
 .btn-ghost:hover { background: var(--surface-3); color: var(--text); }
 .btn:disabled { opacity: 0.55; cursor: wait; }
+.topbar-chat { padding: 0.5rem 0.8rem; }
 .result { font-size: var(--text-sm); color: var(--muted); min-height: 1.25rem; overflow-wrap: anywhere; }
 .result.error { color: var(--bad); }
 .result.success { color: var(--ok); }
@@ -574,6 +575,8 @@ textarea { resize: vertical; min-height: 4rem; }
   .topbar { padding-block: 0.8rem; }
   .icon-btn.menu-btn { order: 0; }
   .topbar-actions { order: 0; flex: 1; justify-content: flex-end; }
+  .topbar-chat span { display: none; }
+  .topbar-chat { padding: 0.5rem; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .card { border-radius: var(--radius); padding: 1rem 1.05rem 1.1rem; }
 

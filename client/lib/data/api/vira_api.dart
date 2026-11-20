@@ -4,15 +4,12 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../core/models/captured_event.dart';
+import '../../core/models/chat_models.dart';
 import '../../core/models/device_info.dart';
+import '../../core/utils/ids.dart';
 
 class ViraApiException implements Exception {
-  ViraApiException(
-    this.statusCode,
-    this.code,
-    this.message, {
-    this.retryAfter,
-  });
+  ViraApiException(this.statusCode, this.code, this.message, {this.retryAfter});
 
   final int statusCode;
   final String code;
@@ -22,7 +19,10 @@ class ViraApiException implements Exception {
   bool get isAuthFailure => statusCode == 401 || code == 'device_revoked';
   bool get isTransport => statusCode == 0;
   bool get isRetryable =>
-      isTransport || statusCode == 408 || statusCode == 429 || statusCode >= 500;
+      isTransport ||
+      statusCode == 408 ||
+      statusCode == 429 ||
+      statusCode >= 500;
 
   @override
   String toString() => message;
@@ -41,12 +41,9 @@ class BatchResult {
 }
 
 class ViraApi {
-  ViraApi(
-    String baseUrl, {
-    http.Client? client,
-    this.clientVersion = '1.0.0',
-  }) : baseUrl = normalizeBaseUrl(baseUrl),
-       _client = client ?? http.Client();
+  ViraApi(String baseUrl, {http.Client? client, this.clientVersion = '1.0.0'})
+    : baseUrl = normalizeBaseUrl(baseUrl),
+      _client = client ?? http.Client();
 
   static const protocolVersion = 1;
 
@@ -99,7 +96,9 @@ class ViraApi {
     throw ViraApiException(
       response.statusCode,
       code ?? _fallbackCode(response.statusCode),
-      detail?.isNotEmpty == true ? detail! : _fallbackMessage(response.statusCode),
+      detail?.isNotEmpty == true
+          ? detail!
+          : _fallbackMessage(response.statusCode),
       retryAfter: retryAfter == null ? null : Duration(seconds: retryAfter),
     );
   }
@@ -179,6 +178,157 @@ class ViraApi {
   Future<Map<String, dynamic>> clientConfig() async =>
       _decode(await _send('GET', '/api/v1/client-config'));
 
+  /// Safe workspace status available to every signed-in user.
+  Future<Map<String, dynamic>> workspace() async =>
+      _decode(await _send('GET', '/api/v1/workspace', user: true));
+
+  // ---------------------------------------------------------------------------
+  // Chat (the server's Chatbot agent)
+  // ---------------------------------------------------------------------------
+
+  Future<List<ChatConversation>> conversations({int limit = 50}) async {
+    final body = await _decode(
+      await _send('GET', '/api/v1/conversations?limit=$limit', user: true),
+    );
+    return ((body['conversations'] as List?) ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => ChatConversation.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .where((item) => item.id.isNotEmpty)
+        .toList();
+  }
+
+  Future<ChatConversation> createConversation({
+    String title = 'New chat',
+    bool incognito = false,
+  }) async {
+    final body = await _decode(
+      await _send(
+        'POST',
+        '/api/v1/conversations',
+        user: true,
+        body: {'title': title, 'incognito': incognito},
+      ),
+    );
+    return ChatConversation.fromJson(body);
+  }
+
+  Future<List<ChatMessage>> conversationMessages(
+    String conversationId, {
+    int limit = 100,
+  }) async {
+    final body = await _decode(
+      await _send(
+        'GET',
+        '/api/v1/conversations/$conversationId/messages?limit=$limit',
+        user: true,
+      ),
+    );
+    return ((body['messages'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => ChatMessage.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<void> renameConversation(String id, String title) async {
+    await _decode(
+      await _send(
+        'PATCH',
+        '/api/v1/conversations/$id',
+        user: true,
+        body: {'title': title},
+      ),
+    );
+  }
+
+  Future<void> deleteConversation(String id) async {
+    await _decode(
+      await _send('DELETE', '/api/v1/conversations/$id', user: true),
+    );
+  }
+
+  /// Streams the agent's progress as NDJSON events.
+  ///
+  /// Every event is a [ChatStreamEvent]; the final one is `type == 'done'`
+  /// (with the answer) or `type == 'error'`. The server requires an
+  /// `Idempotency-Key`, so retries never duplicate a message.
+  Stream<ChatStreamEvent> streamChat({
+    required String message,
+    String? conversationId,
+    String? agentId,
+    String? idempotencyKey,
+  }) async* {
+    final request = http.Request('POST', _uri('/chat/stream'))
+      ..headers.addAll({
+        ..._headers(user: true),
+        'Accept': 'application/x-ndjson',
+        'Idempotency-Key': idempotencyKey ?? newUuidV4(),
+      });
+    request.body = jsonEncode({
+      'message': message,
+      'conversation_id': ?conversationId,
+      'agent_id': ?agentId,
+    });
+
+    http.StreamedResponse response;
+    try {
+      response = await _client
+          .send(request)
+          .timeout(const Duration(seconds: 45));
+    } on TimeoutException {
+      throw ViraApiException(
+        0,
+        'timeout',
+        'The VIRA server did not respond in time.',
+      );
+    } on Object {
+      throw ViraApiException(
+        0,
+        'network_error',
+        'Cannot reach the VIRA server. Check the address and network.',
+      );
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final raw = await response.stream.bytesToString();
+      Map<String, dynamic> body = const {};
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) body = Map<String, dynamic>.from(decoded);
+      } on FormatException {
+        // Fall back to the status code below.
+      }
+      final error = body['error'];
+      final code = error is Map ? error['code']?.toString() : null;
+      final detail = body['detail']?.toString() ?? error?.toString();
+      throw ViraApiException(
+        response.statusCode,
+        code ?? _fallbackCode(response.statusCode),
+        detail?.isNotEmpty == true
+            ? detail!
+            : _fallbackMessage(response.statusCode),
+      );
+    }
+
+    final lines = response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+    await for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      Map<String, dynamic> data;
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is! Map) continue;
+        data = Map<String, dynamic>.from(decoded);
+      } on FormatException {
+        continue;
+      }
+      yield ChatStreamEvent((data['type'] ?? 'status').toString(), data);
+    }
+  }
+
   Future<(DeviceInfo, String)> registerDevice({
     required String displayName,
     required DeviceProfile profile,
@@ -250,7 +400,8 @@ class ViraApi {
     final body = await _decode(response);
     final statuses = <String, EventDeliveryState>{};
     final errors = <String, String>{};
-    for (final item in (body['results'] as List? ?? const []).whereType<Map>()) {
+    for (final item
+        in (body['results'] as List? ?? const []).whereType<Map>()) {
       final id = item['event_id']?.toString();
       if (id == null) continue;
       final status = item['status']?.toString();
@@ -271,7 +422,9 @@ class ViraApi {
   }
 
   Future<List<DeviceInfo>> devices() async {
-    final body = await _decode(await _send('GET', '/api/v1/devices', user: true));
+    final body = await _decode(
+      await _send('GET', '/api/v1/devices', user: true),
+    );
     return ((body['devices'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => DeviceInfo.fromJson(Map<String, dynamic>.from(item)))
@@ -290,11 +443,15 @@ class ViraApi {
   }
 
   Future<void> revokeDevice(String id) async {
-    await _decode(await _send('POST', '/api/v1/devices/$id/revoke', user: true));
+    await _decode(
+      await _send('POST', '/api/v1/devices/$id/revoke', user: true),
+    );
   }
 
   Future<void> retireDevice(String id) async {
-    await _decode(await _send('POST', '/api/v1/devices/$id/retire', user: true));
+    await _decode(
+      await _send('POST', '/api/v1/devices/$id/retire', user: true),
+    );
   }
 
   Future<Map<String, dynamic>> deviceState(String id) async =>
@@ -400,17 +557,12 @@ class ViraApi {
       'PATCH',
       '/api/v1/admin/users/$id',
       user: true,
-      body: {
-        'role': ?role,
-        'status': ?status,
-      },
+      body: {'role': ?role, 'status': ?status},
     ),
   );
 
   Future<void> deleteAdminUser(String id) async {
-    await _decode(
-      await _send('DELETE', '/api/v1/admin/users/$id', user: true),
-    );
+    await _decode(await _send('DELETE', '/api/v1/admin/users/$id', user: true));
   }
 
   Future<Map<String, dynamic>> adminDevices() async =>
@@ -431,14 +583,13 @@ class ViraApi {
   Future<Map<String, dynamic>> modules() async =>
       _decode(await _send('GET', '/modules', user: true));
 
-  Future<Map<String, dynamic>> adminJobs({String? status}) async =>
-      _decode(
-        await _send(
-          'GET',
-          '/api/v1/admin/jobs${status == null ? '' : '?status=$status'}',
-          user: true,
-        ),
-      );
+  Future<Map<String, dynamic>> adminJobs({String? status}) async => _decode(
+    await _send(
+      'GET',
+      '/api/v1/admin/jobs${status == null ? '' : '?status=$status'}',
+      user: true,
+    ),
+  );
 
   Future<void> retryJob(String id) async {
     await _decode(

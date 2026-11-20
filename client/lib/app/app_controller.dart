@@ -92,7 +92,8 @@ class AppController extends ChangeNotifier {
 
   List<CollectorState> get collectors => _capture?.states ?? const [];
 
-  bool get captureEnabled => _capture?.captureEnabled ?? settings.captureEnabled;
+  bool get captureEnabled =>
+      _capture?.captureEnabled ?? settings.captureEnabled;
   bool get autoSync => settings.autoSync;
 
   String get suggestedDeviceName {
@@ -117,7 +118,7 @@ class AppController extends ChangeNotifier {
         await _startServices();
         _state = AppConnectionState.connected;
         unawaited(refreshDevices());
-        unawaited(_refreshIdentity());
+        unawaited(refreshIdentity().catchError((_) => _isAdmin));
       } else {
         _state = AppConnectionState.disconnected;
       }
@@ -128,13 +129,11 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  ViraApi _buildApi(StoredCredentials stored) => ViraApi(
-    stored.serverUrl ?? settings.serverUrl,
-    clientVersion: appVersion,
-  )
-    ..sessionId = stored.sessionId
-    ..deviceId = stored.deviceId
-    ..deviceToken = stored.deviceToken;
+  ViraApi _buildApi(StoredCredentials stored) =>
+      ViraApi(stored.serverUrl ?? settings.serverUrl, clientVersion: appVersion)
+        ..sessionId = stored.sessionId
+        ..deviceId = stored.deviceId
+        ..deviceToken = stored.deviceToken;
 
   Future<void> _startServices() async {
     final api = _api;
@@ -178,39 +177,42 @@ class AppController extends ChangeNotifier {
     return roles is List && roles.contains('admin');
   }
 
-  Future<void> _refreshIdentity() async {
+  Future<bool> refreshIdentity() async {
     final api = _api;
-    if (api == null || !_stored.hasSession) return;
+    if (api == null || !_stored.hasSession) return _isAdmin;
     try {
       final me = await api.me();
       final roles = me['roles'];
       final isAdmin = roles is List && roles.contains('admin');
-      if (isAdmin == _isAdmin) return;
-      _isAdmin = isAdmin;
-      if (_stored.hasDevice) {
-        await credentials.save(
-          serverUrl: _stored.serverUrl!,
-          username: _stored.username ?? '',
-          sessionId: _stored.sessionId!,
-          deviceId: _stored.deviceId!,
-          deviceToken: _stored.deviceToken!,
-          isAdmin: isAdmin,
-        );
-        _stored = StoredCredentials(
-          serverUrl: _stored.serverUrl,
-          username: _stored.username,
-          sessionId: _stored.sessionId,
-          deviceId: _stored.deviceId,
-          deviceToken: _stored.deviceToken,
-          isAdmin: isAdmin,
-        );
+      if (isAdmin != _isAdmin) {
+        _isAdmin = isAdmin;
+        if (_stored.hasDevice) {
+          await credentials.save(
+            serverUrl: _stored.serverUrl!,
+            username: _stored.username ?? '',
+            sessionId: _stored.sessionId!,
+            deviceId: _stored.deviceId!,
+            deviceToken: _stored.deviceToken!,
+            isAdmin: isAdmin,
+          );
+          _stored = StoredCredentials(
+            serverUrl: _stored.serverUrl,
+            username: _stored.username,
+            sessionId: _stored.sessionId,
+            deviceId: _stored.deviceId,
+            deviceToken: _stored.deviceToken,
+            isAdmin: isAdmin,
+          );
+        }
+        notifyListeners();
       }
-      notifyListeners();
+      return isAdmin;
     } on ViraApiException catch (error) {
       if (error.isAuthFailure && _isAdmin) {
         _isAdmin = false;
         notifyListeners();
       }
+      rethrow;
     }
   }
 
@@ -296,7 +298,10 @@ class AppController extends ChangeNotifier {
     final server = _stored.serverUrl;
     final deviceId = _stored.deviceId;
     final deviceToken = _stored.deviceToken;
-    if (api == null || server == null || deviceId == null || deviceToken == null) {
+    if (api == null ||
+        server == null ||
+        deviceId == null ||
+        deviceToken == null) {
       return 'This device is not connected.';
     }
     try {
@@ -434,10 +439,7 @@ class AppController extends ChangeNotifier {
   Future<List<FocusSession>> recentFocus({int days = 7}) =>
       focusLedger.recent(days: days);
 
-  Future<void> startFocus({
-    String label = 'Focus',
-    int minutes = 25,
-  }) async {
+  Future<void> startFocus({String label = 'Focus', int minutes = 25}) async {
     if (await focusLedger.active() != null) return;
     await focusLedger.start(
       FocusSession(

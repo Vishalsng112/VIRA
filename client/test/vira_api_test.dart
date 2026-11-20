@@ -36,7 +36,10 @@ void main() {
             'device_type': 'desktop',
             'status': 'pending',
             'capabilities': ['device_status'],
-            'credential': {'token': 'vdc_token', 'scopes': ['events:write']},
+            'credential': {
+              'token': 'vdc_token',
+              'scopes': ['events:write'],
+            },
           }),
           201,
         );
@@ -84,7 +87,8 @@ void main() {
       installationId: 'install-abc',
     );
     expect(
-      (jsonDecode(seen['POST /api/v1/devices']!.body) as Map)['installation_id'],
+      (jsonDecode(seen['POST /api/v1/devices']!.body)
+          as Map)['installation_id'],
       'install-abc',
     );
     expect(device.deviceId, 'device-1');
@@ -146,4 +150,121 @@ void main() {
     expect(result.statuses['evt-1'], EventDeliveryState.rejected);
     expect(result.errors['evt-1'], contains('type_not_allowed'));
   });
+
+  test('chat conversations and streaming follow the server contract', () async {
+    final seen = <String, http.Request>{};
+    final client = MockClient((request) async {
+      seen['${request.method} ${request.url.path}'] = request;
+      if (request.url.path == '/api/v1/conversations' &&
+          request.method == 'GET') {
+        return http.Response(
+          jsonEncode({
+            'conversations': [
+              {
+                'id': 'conv-1',
+                'title': 'Hello',
+                'updated_at': '2026-01-01T10:00:00Z',
+                'incognito': false,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      if (request.url.path == '/api/v1/conversations' &&
+          request.method == 'POST') {
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'id': 'conv-2',
+            'title': body['title'],
+            'incognito': body['incognito'],
+          }),
+          200,
+        );
+      }
+      if (request.url.path.endsWith('/messages')) {
+        return http.Response(
+          jsonEncode({
+            'messages': [
+              {'id': 'm1', 'role': 'user', 'content': 'Hi'},
+              {'id': 'm2', 'role': 'assistant', 'content': 'Hello!'},
+            ],
+          }),
+          200,
+        );
+      }
+      if (request.url.path == '/chat/stream') {
+        return http.Response(
+          [
+            '{"type":"status","message":"Thinking"}',
+            '{"type":"tool_start","tool":"web_search"}',
+            '{"type":"done","response":"Hello!","status":"succeeded"}',
+            '',
+          ].join('\n'),
+          200,
+        );
+      }
+      return http.Response('{}', 404);
+    });
+
+    final api = ViraApi('http://localhost:8000', client: client)
+      ..sessionId = 'session-123';
+
+    final conversations = await api.conversations();
+    expect(conversations.single.id, 'conv-1');
+    expect(
+      seen['GET /api/v1/conversations']!.headers['Authorization'],
+      'Bearer session-123',
+    );
+
+    final created = await api.createConversation(title: 'New chat');
+    expect(created.id, 'conv-2');
+
+    final messages = await api.conversationMessages('conv-1');
+    expect(messages.length, 2);
+    expect(messages.last.content, 'Hello!');
+
+    final events = await api
+        .streamChat(message: 'Hi', conversationId: 'conv-1')
+        .toList();
+    expect(events.map((event) => event.type), ['status', 'tool_start', 'done']);
+    expect(events.last.response, 'Hello!');
+    final request = seen['POST /chat/stream']!;
+    expect(request.headers['Idempotency-Key'], isNotEmpty);
+    expect(jsonDecode(request.body)['conversation_id'], 'conv-1');
+  });
+
+  test(
+    'chat stream surfaces server errors and keeps the message code',
+    () async {
+      final client = MockClient(
+        (request) async => http.Response(
+          jsonEncode({
+            'detail': 'No chat agent is available.',
+            'error': {
+              'code': 'unavailable',
+              'message': 'No chat agent is available.',
+            },
+          }),
+          503,
+        ),
+      );
+      final api = ViraApi('http://localhost:8000', client: client)
+        ..sessionId = 'session-123';
+
+      await expectLater(
+        api.streamChat(message: 'Hi').toList(),
+        throwsA(
+          isA<ViraApiException>()
+              .having((error) => error.statusCode, 'statusCode', 503)
+              .having(
+                (error) => error.message,
+                'message',
+                contains('No chat agent'),
+              ),
+        ),
+      );
+    },
+  );
 }
