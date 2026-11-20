@@ -79,6 +79,8 @@ class ChatAgent(BaseAgent):
             max_tool_chars=int(merged.get("max_tool_chars", 3000)),
             max_prompt_chars=int(merged.get("max_prompt_chars", 12000)),
             tool_timeout=float(merged.get("tool_timeout", 90)),
+            max_total_tool_chars=int(merged.get("max_total_tool_chars", 30000)),
+            max_seconds=float(merged.get("max_seconds", 240)),
         )
         self.lessons = LessonStore(
             runtime, self.agent_id,

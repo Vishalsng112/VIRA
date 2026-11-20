@@ -41,6 +41,7 @@ from vira.ratelimit import RateLimitMiddleware
 from vira.agent.progress import hub as progress_hub
 from vira.llm import catalog as model_catalog
 from vira.llm import guidance as model_guidance
+from vira.security.redaction import redact as redact_secrets
 from vira.api.routes_account import build_account_router
 from vira.api.routes_admin import build_admin_router
 from vira.api.routes_notifications import build_notification_router
@@ -53,6 +54,7 @@ from vira.api.routes_storage import build_storage_router
 from vira.api.routes_usage import build_usage_router
 from vira.api.routes_updates import build_update_router
 from vira.api.routes_approvals import build_approval_router
+from vira.api.routes_generated import build_generated_router
 from vira.api.routes_devices import build_device_router
 from vira.api.routes_client import build_client_router
 from vira.family import store as family_store
@@ -127,6 +129,12 @@ class ConversationUpdateRequest(BaseModel):
     archived: Optional[bool] = None
 
 
+class MemoryFeedbackRequest(BaseModel):
+    useful: bool = True
+    note: Optional[str] = None
+    muted: Optional[bool] = None
+
+
 class MemoryCreateRequest(BaseModel):
     content: str
     agent_id: Optional[str] = None
@@ -143,6 +151,23 @@ class AgentStateRequest(BaseModel):
 
 class ModelSelectRequest(BaseModel):
     model: str
+
+
+class DiagnosticReportRequest(BaseModel):
+    app: Optional[str] = None
+    app_version: Optional[str] = None
+    protocol_version: Optional[int] = None
+    platform: Optional[str] = None
+    device_type: Optional[str] = None
+    os_version: Optional[str] = None
+    generated_at: Optional[str] = None
+    capture_enabled: Optional[bool] = None
+    auto_sync: Optional[bool] = None
+    pending_events: Optional[int] = None
+    sync_state: Optional[str] = None
+    last_sync_error: Optional[str] = None
+    collectors: List[Dict[str, Any]] = []
+    events: List[Dict[str, Any]] = []
 
 
 stream_manager = EventStreamManager()
@@ -247,6 +272,9 @@ def create_app(kernel: Kernel) -> FastAPI:
 
     # --- Database init ---
     database.init_db()
+    interrupted = database.mark_interrupted_runs()
+    if interrupted:
+        logger.warning("Marked {} interrupted agent run(s) as failed and resumable", interrupted)
     family_store.ensure_schema()
 
     # --- Subscribe to kernel events for SSE immediately ---
@@ -381,6 +409,24 @@ def create_app(kernel: Kernel) -> FastAPI:
             "roles": list(principal.roles),
             "session_id": principal.session_id,
         }
+
+    @app.post("/api/v1/diagnostics")
+    async def submit_client_diagnostics(
+        report: DiagnosticReportRequest,
+        principal: auth.Principal = Depends(get_current_user),
+    ):
+        """Store an opt-in, already-redacted client diagnostic report."""
+        payload = redact_secrets(report.model_dump())
+        database.record_auth_audit(
+            "client_diagnostic",
+            "diagnostics.submit",
+            True,
+            user_id=principal.user_id,
+            resource=payload.get("platform"),
+            details=json.dumps(payload, default=str)[:8000],
+            target=str(payload.get("app_version") or "")[:100],
+        )
+        return {"status": "recorded"}
 
     app.add_api_route("/api/v1/auth/bootstrap", setup_admin, methods=["POST"])
 
@@ -883,12 +929,43 @@ def create_app(kernel: Kernel) -> FastAPI:
             raise HTTPException(status_code=404, detail="Conversation not found")
         return {"messages": auth_database.list_messages(conversation_id, user.user_id, limit, offset)}
 
+    @app.get("/runs")
+    async def list_runs(status: Optional[str] = None, limit: int = 50,
+                        user: auth.Principal = Depends(get_current_user)):
+        return {"runs": auth_database.list_runs(user.user_id, status, limit)}
+
     @app.get("/runs/{run_id}")
     async def get_run(run_id: str, user: auth.Principal = Depends(get_current_user)):
         run = auth_database.get_run(run_id, user.user_id)
         if not run:
             raise HTTPException(status_code=404, detail="Run not found")
         return run
+
+    @app.post("/runs/{run_id}/resume")
+    async def resume_run(run_id: str, http_request: Request,
+                         user: auth.Principal = Depends(get_current_user)):
+        """Resume a failed/interrupted run with its original user message."""
+        run = auth_database.get_run(run_id, user.user_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+        if run.get("status") not in ("failed", "queued"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Only failed or queued runs can be resumed (current: {run.get('status')})",
+            )
+        if not run.get("input_message_id"):
+            raise HTTPException(status_code=409, detail="Run has no original message")
+        request = ChatRequest(
+            message="",
+            conversation_id=run["conversation_id"],
+            retry_run_id=run_id,
+        )
+        result = await _submit_chat(
+            request, http_request, user,
+            conversation_id=run["conversation_id"],
+            idempotency_key_override=str(uuid.uuid4()),
+        )
+        return {**result, "resumed_from": run_id}
 
     @app.get("/runs/{run_id}/events")
     async def get_run_events(run_id: str, after: int = 0, limit: int = 500,
@@ -897,6 +974,23 @@ def create_app(kernel: Kernel) -> FastAPI:
             raise HTTPException(status_code=404, detail="Run not found")
         from vira.agent_runtime.run_store import list_events
         return {"events": list_events(run_id, after, limit)}
+
+    @app.get("/runs/{run_id}/timeline")
+    async def get_run_timeline(run_id: str, user: auth.Principal = Depends(get_current_user)):
+        run = auth_database.get_run(run_id, user.user_id)
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+        from vira.agent_runtime.run_store import timeline
+        return {
+            "run": {
+                "id": run.get("id"),
+                "status": run.get("status"),
+                "error": run.get("error"),
+                "created_at": run.get("created_at"),
+                "updated_at": run.get("updated_at"),
+            },
+            "timeline": timeline(run_id),
+        }
 
     @app.post("/memories")
     async def create_memory(
@@ -932,6 +1026,24 @@ def create_app(kernel: Kernel) -> FastAPI:
             "memories": auth_database.search_memories(
                 user.user_id, query, limit, agent_id, conversation_id, memory_type
             )
+        }
+
+    @app.post("/memories/{memory_id}/feedback")
+    async def memory_feedback(memory_id: str, request: MemoryFeedbackRequest,
+                              user: auth.Principal = Depends(get_current_user)):
+        if request.muted is not None:
+            updated = auth_database.set_memory_muted(
+                memory_id, user.user_id, request.muted)
+        else:
+            updated = auth_database.record_memory_feedback(
+                memory_id, user.user_id, request.useful, request.note)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Memory not found")
+        return {
+            "status": "updated",
+            "memory_id": memory_id,
+            "muted": request.muted,
+            "useful": request.useful if request.muted is None else None,
         }
 
     @app.delete("/memories/{memory_id}")
@@ -1012,6 +1124,7 @@ def create_app(kernel: Kernel) -> FastAPI:
         user: auth.Principal,
         conversation_id: Optional[str] = None,
         progress_queue: Optional[asyncio.Queue] = None,
+        idempotency_key_override: Optional[str] = None,
     ):
         kernel = get_kernel()
         orchestrator = getattr(kernel, "agent_orchestrator", None)
@@ -1029,7 +1142,7 @@ def create_app(kernel: Kernel) -> FastAPI:
                 ],
             )
         correlation_id = correlation_id_of(http_request)
-        idempotency_key = http_request.headers.get("Idempotency-Key")
+        idempotency_key = idempotency_key_override or http_request.headers.get("Idempotency-Key")
         if not idempotency_key and not request.retry_run_id:
             raise _chat_http_error(
                 400, "Idempotency-Key header is required", stage="request",
@@ -1268,11 +1381,15 @@ def create_app(kernel: Kernel) -> FastAPI:
     app.add_api_route("/api/v1/conversations/{conversation_id}", update_conversation, methods=["PATCH"])
     app.add_api_route("/api/v1/conversations/{conversation_id}", delete_conversation, methods=["DELETE"])
     app.add_api_route("/api/v1/conversations/{conversation_id}/messages", list_messages, methods=["GET"])
+    app.add_api_route("/api/v1/runs", list_runs, methods=["GET"])
     app.add_api_route("/api/v1/runs/{run_id}", get_run, methods=["GET"])
     app.add_api_route("/api/v1/runs/{run_id}/events", get_run_events, methods=["GET"])
+    app.add_api_route("/api/v1/runs/{run_id}/timeline", get_run_timeline, methods=["GET"])
+    app.add_api_route("/api/v1/runs/{run_id}/resume", resume_run, methods=["POST"])
     app.add_api_route("/api/v1/memories", create_memory, methods=["POST"])
     app.add_api_route("/api/v1/memories", search_memories, methods=["GET"])
     app.add_api_route("/api/v1/memories/{memory_id}", delete_memory, methods=["DELETE"])
+    app.add_api_route("/api/v1/memories/{memory_id}/feedback", memory_feedback, methods=["POST"])
 
     # --- Device, admin and operations routers ---
     app.include_router(build_device_router(kernel, auth_deps, stream_manager))
@@ -1289,6 +1406,7 @@ def create_app(kernel: Kernel) -> FastAPI:
     app.include_router(build_usage_router(auth_deps["require_admin"], get_current_user))
     app.include_router(build_update_router(auth_deps["require_admin"], get_current_user))
     app.include_router(build_approval_router(get_current_user, auth_deps["require_admin"]))
+    app.include_router(build_generated_router(kernel, get_current_user, auth_deps["require_admin"]))
     plugin_manager = getattr(kernel, "plugin_manager", None)
     for plugin_id, plugin_router in (plugin_manager.collect_routers() if plugin_manager else []):
         app.include_router(plugin_router, prefix=f"/api/v1/ext/{plugin_id}")

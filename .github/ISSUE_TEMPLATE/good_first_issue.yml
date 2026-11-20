@@ -1,0 +1,51 @@
+name: Good first issue proposal
+description: Propose a small, well-scoped task for a new contributor.
+title: "good first issue: "
+labels: ["good first issue", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A good first issue has one clear outcome, one or two files to touch, a
+        runnable acceptance check and no secrets or production data.
+  - type: input
+    id: outcome
+    attributes:
+      label: One-sentence outcome
+      placeholder: "Add a battery sensor that publishes sensor.battery.state."
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Suggested files / area
+      placeholder: "vira/sensors/, vira/tests/test_battery_sensor.py"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance check
+      description: A command or observable result that proves it works.
+      placeholder: "python3 -m unittest vira.tests.test_battery_sensor -v"
+    validations:
+      required: true
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Estimated effort
+      options:
+        - "1–2 hours"
+        - "Half a day"
+        - "One day"
+    validations:
+      required: true
+  - type: checkboxes
+    id: ready
+    attributes:
+      label: Ready to curate
+      options:
+        - label: This task does not require secrets, paid APIs or private data.
+          required: true
+        - label: I can answer questions and review a PR.
+          required: true

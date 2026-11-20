@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/config/app_config.dart';
@@ -15,6 +17,10 @@ class SettingsStore {
   static const _collectorKey = 'settings.collector';
   static const _installationKey = 'settings.installation_id';
   static const _themeKey = 'settings.theme_mode';
+  static const _diagnosticsKey = 'settings.diagnostics_enabled';
+  static const _remindersKey = 'settings.break_reminders';
+  static const _diagnosticEventsKey = 'settings.diagnostic_events';
+  static const maxDiagnosticEvents = 12;
 
   static const defaultServerUrl = 'http://localhost:8000';
   static const defaultCaptureIntervalSeconds = 10;
@@ -69,4 +75,48 @@ class SettingsStore {
       _prefs.getBool('$_collectorKey.$id') ?? fallback;
   Future<void> setCollectorEnabled(String id, bool value) =>
       _prefs.setBool('$_collectorKey.$id', value);
+
+  /// Opt-in, privacy-preserving diagnostics. Off by default.
+  bool get diagnosticsEnabled => _prefs.getBool(_diagnosticsKey) ?? false;
+  Future<void> setDiagnosticsEnabled(bool value) =>
+      _prefs.setBool(_diagnosticsKey, value);
+
+  /// In-app wellbeing break reminders. OS notification scheduling is not part
+  /// of this build; see the Notifications card in Settings.
+  bool get breakRemindersEnabled => _prefs.getBool(_remindersKey) ?? true;
+  Future<void> setBreakRemindersEnabled(bool value) =>
+      _prefs.setBool(_remindersKey, value);
+
+  List<Map<String, dynamic>> diagnosticEvents() {
+    final raw = _prefs.getString(_diagnosticEventsKey);
+    if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return [
+          for (final item in decoded)
+            if (item is Map) Map<String, dynamic>.from(item),
+        ];
+      }
+    } on FormatException {
+      // Corrupt local diagnostics must never break app startup.
+    }
+    return <Map<String, dynamic>>[];
+  }
+
+  Future<void> recordDiagnostic(Map<String, dynamic> event) async {
+    if (!diagnosticsEnabled) return;
+    final events = diagnosticEvents();
+    events.insert(0, {
+      ...event,
+      'captured_at': DateTime.now().toUtc().toIso8601String(),
+    });
+    if (events.length > maxDiagnosticEvents) {
+      events.removeRange(maxDiagnosticEvents, events.length);
+    }
+    await _prefs.setString(_diagnosticEventsKey, jsonEncode(events));
+  }
+
+  Future<void> clearDiagnosticHistory() =>
+      _prefs.remove(_diagnosticEventsKey);
 }

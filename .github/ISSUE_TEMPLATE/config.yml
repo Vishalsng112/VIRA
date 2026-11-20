@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Vishalsng112/VIRA/security/advisories/new
+    about: Please report security issues privately, not in a public issue.
+  - name: Documentation
+    url: https://vishalsng112.github.io/VIRA/
+    about: Install guides, demo, security overview and API reference.
+  - name: Questions and ideas
+    url: https://github.com/Vishalsng112/VIRA/discussions
+    about: Ask a question or discuss an idea before opening an issue.

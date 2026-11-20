@@ -98,6 +98,14 @@ def build_admin_router(kernel, deps: dict, stream_manager) -> APIRouter:
                     actor: UserPrincipal = Depends(admin)):
         return {"audit": database.list_audit(limit, before_id)}
 
+    @router.get("/admin/diagnostics")
+    async def diagnostics(limit: int = 100, actor: UserPrincipal = Depends(admin)):
+        """Opt-in client diagnostic reports, redacted at ingestion."""
+        rows = database.list_audit_by_type("client_diagnostic", limit)
+        for row in rows:
+            row["details"] = redact(row.get("details"))
+        return {"diagnostics": rows}
+
     @router.get("/admin/audit/export")
     async def export_audit(format: str = "json", kind: str = "all",
                            limit: int = 1000, since: Optional[str] = None,

@@ -3,7 +3,7 @@
 VIRA Link is the Flutter device companion for a VIRA server. It enrolls a device,
 captures only the signals the user enables, stores every event in a local outbox,
 and syncs to the server when it is reachable. It runs as an Android APK, iOS app,
-web PWA, Linux AppImage and Windows desktop executable.
+web PWA, Linux AppImage, Windows desktop executable and macOS (Apple Silicon) app.
 
 ## What it does
 
@@ -34,6 +34,7 @@ cd client
 flutter pub get
 flutter run -d chrome       # web
 flutter run -d linux        # Linux desktop
+flutter run -d macos        # macOS desktop (Apple Silicon)
 flutter run                 # connected Android/iOS device
 ```
 
@@ -49,6 +50,7 @@ flutter build apk --release
 flutter build web --release
 flutter build linux --release
 flutter build windows --release   # run on Windows
+flutter build macos --release     # run on macOS
 ./packaging/build_appimage.sh     # Linux AppImage (needs GTK 3 + appimagetool)
 ```
 
@@ -62,13 +64,22 @@ workflow builds and uploads:
 - Web PWA zip
 - Linux x86_64 AppImage
 - Windows x64 zip
+- macOS arm64 zip
 
 It also runs `flutter analyze` and `flutter test` first. Set `create_release` to
-publish all builds and a checksum file in one GitHub Release.
+publish all builds, release notes and a checksum file in one GitHub Release.
 
-The iOS artifact is unsigned because signing certificates and provisioning
-profiles are not part of the repository. Sign it in Xcode or with your own CI
-secrets before distributing to devices.
+The iOS and macOS artifacts are unsigned because signing certificates,
+notarization credentials and provisioning profiles are not part of the repository.
+Sign them in Xcode or with your own CI secrets before distributing to devices.
+Intel Macs can use the web/PWA build.
+
+Each release includes `checksums.txt`:
+
+```bash
+sha256sum -c checksums.txt        # Linux
+shasum -a 256 -c checksums.txt    # macOS
+```
 
 For a signed Android release, add these repository secrets:
 

@@ -172,9 +172,14 @@ CREATE TABLE IF NOT EXISTS memories (
     importance DOUBLE PRECISION NOT NULL DEFAULT 0,
     expires_at TEXT,
     created_at TEXT NOT NULL,
-    device_id TEXT
+    device_id TEXT,
+    last_used_at TEXT,
+    use_count INTEGER NOT NULL DEFAULT 0,
+    feedback TEXT,
+    feedback_note TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(user_id, agent_id, conversation_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_memories_feedback ON memories(user_id, feedback, created_at);
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY,
     name TEXT NOT NULL,
@@ -446,6 +451,27 @@ CREATE INDEX IF NOT EXISTS idx_approvals_user_status
 CREATE INDEX IF NOT EXISTS idx_approvals_match
     ON agent_approvals(user_id, tool_name, fingerprint, status);
 CREATE INDEX IF NOT EXISTS idx_approvals_run ON agent_approvals(run_id);
+CREATE TABLE IF NOT EXISTS generated_artifacts (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('tool', 'agent')),
+    name TEXT NOT NULL,
+    version TEXT NOT NULL DEFAULT '1.0.0',
+    description TEXT NOT NULL DEFAULT '',
+    spec TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'approved', 'rejected', 'enabled', 'disabled')),
+    checksum TEXT NOT NULL,
+    created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    approved_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    approved_at TEXT,
+    enabled_at TEXT,
+    rejection_reason TEXT,
+    UNIQUE(kind, name, version)
+);
+CREATE INDEX IF NOT EXISTS idx_generated_status
+    ON generated_artifacts(kind, status, updated_at);
 CREATE TABLE IF NOT EXISTS workflows (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

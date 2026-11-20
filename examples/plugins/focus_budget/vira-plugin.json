@@ -1,0 +1,19 @@
+{
+  "id": "example.focus-budget",
+  "name": "Focus Budget",
+  "version": "1.0.0",
+  "api_version": "1",
+  "description": "Example plugin: daily focus budget with a tool, event subscription, scheduled cleanup and an HTTP summary.",
+  "author": "VIRA contributors",
+  "license": "MIT",
+  "entrypoint": "plugin.py:FocusBudgetPlugin",
+  "permissions": [
+    "tools.register",
+    "http.routes",
+    "events.read",
+    "jobs.schedule",
+    "storage"
+  ],
+  "categories": ["example", "focus", "wellbeing"],
+  "config": {"daily_target_minutes": 120}
+}

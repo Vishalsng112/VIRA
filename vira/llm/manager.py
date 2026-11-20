@@ -33,7 +33,7 @@ class LLMManager:
         agent_id = kwargs.pop("agent_id", None)
         organization_id = kwargs.pop("organization_id", None)
         from vira.llm import usage
-        usage.check_quota(user_id, organization_id)
+        usage.check_quota(user_id, organization_id, agent_id)
 
         if model and model in self._routing_config:
             providers = self._routing_config[model]

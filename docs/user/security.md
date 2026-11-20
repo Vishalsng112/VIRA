@@ -178,6 +178,26 @@ Current drill evidence: [backup and restore drill](../dev/runbooks/backup-restor
 - Plugins/MCP servers are third-party code. Review the manifest and permissions
   before installing.
 
+## Generated tools and agents
+
+Generated artifacts follow **draft → approved → enabled** and can only be
+approved/enabled by an administrator. A draft or disabled artifact is never
+registered and is re-checked at invocation time, so it cannot execute just
+because a model asked for it. Generated tools are restricted to one HTTPS GET
+with an explicit host allow-list, no custom headers or secrets, SSRF checks and
+bounded, optionally JSON-validated output. Generated agents run with an
+allow-listed tool set and a step budget. Every transition is audited in
+**Agents → Generated tools and agents**.
+
+## Client diagnostics
+
+VIRA Link diagnostics are **off by default**. When enabled, errors are stored
+locally with a bounded history and are uploaded only when the user chooses **Send
+diagnostic report**. The client removes credentials, URLs, token-shaped text,
+device identifiers, usernames and chat/event content before storage; the server
+applies a second redaction pass and stores the report in the administrator audit
+view. See the [platform matrix](platforms.md#diagnostics).
+
 ## Network exposure
 
 - By default, Compose publishes port 8000 on `0.0.0.0`. To restrict it to the local

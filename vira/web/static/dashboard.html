@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="VIRA control center — runtime, agents, extensions, security and usage.">
   <title>Overview · VIRA</title>
-  <link rel="stylesheet" href="/static/style.css?v=apple-2">
+  <link rel="stylesheet" href="/static/style.css?v=apple-3">
   <script>
     (() => {
       let saved = null;
@@ -255,6 +255,18 @@
             <dl id="runtime-facts" class="kv"></dl>
           </section>
         </div>
+
+        <section class="card">
+          <header class="card-head"><h2>Generated tools and agents</h2><span class="card-note" id="generated-count"></span></header>
+          <ul id="generated-list" class="list-body"><li class="empty">Loading…</li></ul>
+          <p class="card-note">Drafts never execute. An administrator must approve, then enable, an artifact before its tool or agent can run. Create drafts with <span class="mono">POST /api/v1/generated</span>.</p>
+        </section>
+
+        <section class="card">
+          <header class="card-head"><h2>Recent agent runs</h2><span class="card-note" id="run-count"></span></header>
+          <ul id="run-list" class="list-body"><li class="empty">Loading…</li></ul>
+          <p class="card-note">Failed or interrupted runs can be resumed from their original message. Tool inputs and results are redacted in the stored timeline.</p>
+        </section>
       </section>
 
       <!-- ===== Automations ===== -->
@@ -414,8 +426,8 @@
             <header class="card-head"><h2>Quotas</h2><span class="card-note" id="quota-count"></span></header>
             <ul id="usage-quotas" class="policy-list"><li class="empty">Loading…</li></ul>
             <form id="quota-form" class="form-inline" style="margin-top:1rem;flex-wrap:wrap">
-              <select id="quota-scope" aria-label="Quota scope"><option value="user">user</option><option value="org">org</option><option value="global">global</option></select>
-              <input id="quota-subject" type="text" placeholder="User or org ID" aria-label="Quota subject">
+              <select id="quota-scope" aria-label="Quota scope"><option value="user">user</option><option value="agent">agent</option><option value="org">org</option><option value="global">global</option></select>
+              <input id="quota-subject" type="text" placeholder="User, agent or org ID" aria-label="Quota subject">
               <select id="quota-period" aria-label="Quota period"><option value="month">month</option><option value="day">day</option></select>
               <input id="quota-tokens" type="number" min="0" placeholder="Token limit" aria-label="Token limit">
               <button class="btn" type="submit">Set quota</button>
@@ -741,6 +753,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=apple-3"></script>
+<script src="/static/app.js?v=apple-4"></script>
 </body>
 </html>

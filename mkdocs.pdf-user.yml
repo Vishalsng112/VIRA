@@ -21,6 +21,7 @@ nav:
   - One-command install: user/install/one-command.md
   - Docker and deployment: user/install/docker.md
   - VIRA Link client: user/client.md
+  - Platform capability matrix: user/platforms.md
   - Five-minute proof: user/demo.md
   - Choose a local model: user/models.md
   - Security overview: user/security.md

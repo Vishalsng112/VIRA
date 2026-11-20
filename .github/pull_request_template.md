@@ -1,6 +1,4 @@
-# Documentation
-
-## What does this PR change?
+## What does this change?
 
 <!-- One or two sentences. Link the issue if there is one. -->
 
@@ -11,17 +9,21 @@
 - [ ] Refactor / internal change
 - [ ] Documentation only
 - [ ] Build / CI / packaging
+- [ ] Example plugin or MCP server
 
 ## Checklist
 
-- [ ] I have run the relevant tests locally.
-- [ ] I have updated `docs/` for any change to public behaviour, configuration,
-      an API route, an event, or an extension point (plugin SDK, agent or sensor).
-- [ ] New or moved pages are added to `nav` in `mkdocs.yml`, and I ran
+- [ ] I ran the relevant tests locally and pasted the result.
+- [ ] I added or updated a focused test for behaviour changes.
+- [ ] I updated `docs/` for public behaviour, configuration, an API route, an
+      event or an extension point (plugin SDK, agent, sensor).
+- [ ] New or moved docs pages are in `nav` in `mkdocs.yml`, and I ran
       `mkdocs build --strict` locally.
-- [ ] I did not add loose Markdown or session transcripts to the repository root.
-- [ ] I did not commit generated files (`site/`, `site-pdf/`,
-      `docs/reference/openapi.json`).
+- [ ] I updated `CHANGELOG.md` under `Unreleased` for user-visible changes.
+- [ ] Architecture/product decisions link a `docs/dev/decision-log.md` entry or
+      proposal.
+- [ ] No loose Markdown, session transcripts, secrets or real device data.
+- [ ] No generated files (`site/`, `site-pdf/`, `docs/reference/openapi.json`).
 
 ## Screenshots / notes
 

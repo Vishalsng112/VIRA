@@ -12,7 +12,7 @@ workspace, memory, durable workflows and specialist agents.
 | Piece | What it is | Where it runs |
 |---|---|---|
 | **VIRA Server** | API, dashboard, chat, agents, tools, memory, database, scheduler, admin | Docker container (Linux, macOS, Windows) |
-| **VIRA Link** | Device companion: collectors, offline ledgers, sync, command polling | Android, iOS, web/PWA, Linux and Windows. No native macOS client yet; use the web/PWA build there. |
+| **VIRA Link** | Device companion: collectors, offline ledgers, sync, command polling | Android, iOS (unsigned), web/PWA, Linux, Windows and macOS (Apple Silicon). Intel Macs use the web/PWA build. |
 
 The browser dashboard and chat are served by VIRA Server and need no separate
 install. VIRA Link is only needed on devices whose signals you want to collect.

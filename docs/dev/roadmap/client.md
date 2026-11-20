@@ -35,12 +35,12 @@ Legend: **Done** · **Now** · **Next** · **Later**
 |---|---|---|---|
 | Platform, OS, device type, hostname | Correct interpretation of all other data | Low | **Done** |
 | App/client version, protocol | Compatibility and rollout health | Low | **Done** |
-| Hardware: CPU, memory, uptime | Device health, performance warnings | Low | **Done** (Linux) |
+| Hardware: CPU, memory, uptime | Device health, performance warnings | Low | **Done** (Linux/Windows; macOS storage) |
 | Battery level, charging, power source | Energy advice, quiet-hours logic | Low | **Done** (Android/Linux) |
 | Network type, interface availability | Offline/online context, sync scheduling | Low | **Done** (basic) |
 | Screen on/off, unlock count | Screen time, rest reminders | Medium | **Done** (Android) |
 | Idle/focus state | Focus sessions, interruption detection | Medium | **Done** (desktop idle + focus sessions) |
-| Crash/error events | Reliability and support | Low | **Later** |
+| Crash/error events | Reliability and support | Low | **Done** (opt-in, redacted, local or explicit upload) |
 
 ### 2.2 Application and activity context
 
@@ -208,7 +208,7 @@ device.battery.state             battery level, charging, temperature
 - [x] **Low-battery-aware automatic sync** (manual sync still works)
 - [x] **Local data export** and per-collector/local-history clearing
 - [x] Research-grade event payloads for server-side modelling
-- [x] CI workflow for Android, iOS, web, Linux and Windows builds
+- [x] CI workflow for Android, iOS, web, Linux, Windows and macOS builds with checksums
 
 ---
 
@@ -294,11 +294,11 @@ device.battery.state             battery level, charging, temperature
 - [ ] Encrypted local outbox/ledger (needs key migration)
 - [ ] QR/one-tap device pairing
 - [ ] Multi-user account switching on one device (sign out/unlink exists)
-- [ ] Notification permission and quiet-hours support
+- [ ] Notification permission and quiet-hours support (in-app reminders and an honest permission state exist; OS scheduling is deferred)
 - [x] Admin control panel in VIRA Link: server health, agents, users, fleet, audit
-- [x] Signed Android releases via optional CI secrets (iOS signing still needs Apple credentials)
-- [ ] iOS signing, store metadata and submission automation
-- [ ] Crash reporting with opt-in and redaction
+- [x] Signed Android releases via optional CI secrets (iOS/macOS signing still needs Apple credentials)
+- [ ] iOS/macOS signing, notarization, store metadata and submission automation
+- [x] Crash reporting with opt-in and redaction
 - [ ] Accessibility and localization pass
 - [x] Manual end-to-end verification against a live VIRA server
 
@@ -333,17 +333,19 @@ signal is available.
 
 ## 8. Platform capability matrix
 
-| Capability | Android | iOS | Linux | Windows | Web |
-|---|---|---|---|---|---|
-| Device/app status | Yes | Yes | Yes | Yes | Yes |
-| Network | Yes | Yes | Yes | Yes | Limited |
-| Hardware metrics | Limited | No | Yes | Next | No |
-| App usage | Yes (Usage Access) | No (sandbox) | Yes (active window) | Yes (foreground window) | No |
-| Screen on/off | Yes | No | Next | Next | Limited |
-| Battery | Yes | Next | Yes | Next | API-dependent |
-| Notifications | Opt-in later | No | No | No | No |
-| Calendar | Opt-in later | Opt-in later | Opt-in later | Opt-in later | No |
-| Location | Opt-in later | Opt-in later | Opt-in later | Opt-in later | Opt-in later |
+| Capability | Android | iOS | Linux | Windows | macOS | Web |
+|---|---|---|---|---|---|---|
+| Device/app status | Yes | Yes | Yes | Yes | Yes | Yes |
+| Network | Yes | Yes | Yes | Yes | Yes | Limited |
+| Hardware metrics | Limited | No | Yes | Partial | Partial (storage) | No |
+| App usage | Yes (Usage Access) | No (sandbox) | Yes (active window) | Yes (foreground window) | Yes (frontmost app) | No |
+| Screen on/off | Yes | No | Partial | Partial | No | Limited |
+| Battery | Yes | No | Yes | Partial | No | API-dependent |
+| Focus / idle | Yes | No | Yes | Yes | Yes | No |
+| Notifications | In-app only | In-app only | In-app only | In-app only | In-app only | In-app only |
+| Crash diagnostics | Opt-in | Opt-in | Opt-in | Opt-in | Opt-in | Opt-in |
+| Calendar | Opt-in later | Opt-in later | Opt-in later | Opt-in later | Opt-in later | No |
+| Location | Opt-in later | Opt-in later | Opt-in later | Opt-in later | Opt-in later | Opt-in later |
 
 Platform limitations are product constraints, not bugs. The client must report
 them honestly through `permission_denied` and `unavailable` states.

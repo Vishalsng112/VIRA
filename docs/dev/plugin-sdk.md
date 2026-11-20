@@ -241,10 +241,23 @@ plugins:
 `VIRA_PLUGIN_PATH` adds colon-separated directories. Packages can also expose a
 `vira.plugins` entry point.
 
-## Reference plugin
+## Reference plugins and MCP example
 
-See `examples/plugins/hello_world/`. It registers a read-only tool, an HTTP
-route and persisted state.
+The repository maintains three complete plugin examples and one MCP server
+example, all covered by `vira/tests/test_examples.py`:
+
+| Example | Demonstrates |
+|---|---|
+| `examples/plugins/hello_world` | read-only tool, HTTP route, persisted state |
+| `examples/plugins/reading_list` | read/write tools, route, state, prompt specialist |
+| `examples/plugins/focus_budget` | event subscription, scheduled job, tool, route |
+| `examples/mcp/notes_server.py` | real MCP stdio server with tools and a resource |
+
+Run them with:
+
+```bash
+python3 -m unittest vira.tests.test_examples -v
+```
 
 ## Versioning and compatibility
 

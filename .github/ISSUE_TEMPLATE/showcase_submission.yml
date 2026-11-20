@@ -1,0 +1,52 @@
+name: Showcase submission
+description: Share a real VIRA deployment or demo.
+title: "showcase: "
+labels: ["showcase", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Only submit deployments you are allowed to describe publicly. Do not
+        include private hostnames, IPs, tokens or personal data.
+  - type: input
+    id: title
+    attributes:
+      label: Deployment title
+      placeholder: "Family NAS assistant in Pune"
+    validations:
+      required: true
+  - type: dropdown
+    id: setup
+    attributes:
+      label: Setup
+      options:
+        - Docker on a home server / NAS
+        - Docker on a laptop/desktop
+        - Source install for development
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: story
+    attributes:
+      label: What it does
+      description: The problem, the setup and the outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: stack
+    attributes:
+      label: Hardware, models and integrations
+      description: Model tier, GPU/CPU, MCP servers, plugins and devices used.
+  - type: input
+    id: link
+    attributes:
+      label: Public link or screenshot URL
+      description: Optional and permission-safe.
+  - type: checkboxes
+    id: permission
+    attributes:
+      label: Permission
+      options:
+        - label: I have permission to publish this deployment and removed private data.
+          required: true

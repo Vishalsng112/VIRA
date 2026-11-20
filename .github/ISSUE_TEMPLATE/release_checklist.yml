@@ -1,0 +1,38 @@
+name: Monthly release checklist
+description: Maintainer checklist for the monthly release.
+title: "release: v"
+labels: ["release", "maintainer"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Release cadence is documented in `docs/dev/releases.md`. Use this
+        checklist for every release tag.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: CHANGELOG.md has an Unreleased section and a section for this version.
+          required: true
+        - label: vira.__version__ matches the tag.
+          required: true
+        - label: "`python3 scripts/release_tools.py check vX.Y.Z` passes."
+          required: true
+        - label: Release-critical tests pass.
+          required: true
+        - label: Evaluation report is regenerated and linked.
+          required: true
+        - label: Client builds publish checksums for every advertised platform.
+          required: true
+        - label: Security page, platform matrix and roadmap are current.
+          required: true
+        - label: Release notes describe breaking changes and migration steps.
+          required: true

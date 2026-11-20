@@ -42,6 +42,8 @@ class LoopConfig:
     old_obs_chars: int = 300         # observations older than the last two
     max_prompt_chars: int = 16000    # ~4k tokens; keep below your model's num_ctx
     tool_timeout: float = 90.0
+    max_total_tool_chars: int = 30000  # one run's whole observation budget
+    max_seconds: float = 240.0         # wall-clock budget for the tool loop
 
 
 @dataclass
@@ -310,7 +312,16 @@ class AgentLoop:
         seen = set()
         nudged = False
         lessons = lessons or []
+        started = time.monotonic()
+        total_tool_chars = 0
+        budget_exhausted = False
         for n in range(self.cfg.max_steps):
+            spent = time.monotonic() - started
+            if spent > self.cfg.max_seconds or total_tool_chars > self.cfg.max_total_tool_chars:
+                budget_exhausted = True
+                self._emit("check", level="warn",
+                           text="Tool budget reached; writing the best answer from what I found.")
+                break
             last = n == self.cfg.max_steps - 1
             self._emit("status", label="Writing the final answer" if last else "Thinking", step=n + 1)
             raw_text = (await self._generate(self._prompt(user_message, history, lessons, steps, last))).strip()
@@ -345,9 +356,12 @@ class AgentLoop:
                                   "otherwise use that result.", ok=False))
                 continue
             seen.add(sig)
-            steps.append(await self._run_tool(name, params, user_id, device_id))
+            step = await self._run_tool(name, params, user_id, device_id)
+            steps.append(step)
+            total_tool_chars += len(step.observation)
         # budget exhausted while still calling tools: one last forced answer
-        self._emit("check", level="warn", text="Step limit reached; writing the best answer from what I found.")
+        self._emit("check", level="warn",
+                   text="Step limit reached; writing the best answer from what I found.")
         text = (await self._generate(self._prompt(user_message, history, lessons, steps, True))).strip()
         if not extract_tool_call(text, self.tool_names):
             text = split_reasoning(text)["answer"] or text
@@ -355,4 +369,5 @@ class AgentLoop:
             good = [s for s in steps if s.kind == "tool" and s.ok]
             text = ("I ran out of steps before finishing. Last result: " + clip(good[-1].observation, 800)) if good \
                 else "I could not complete this: the tools I tried did not return usable results."
-        return LoopResult(text=text, steps=steps, stopped="max_steps")
+        return LoopResult(text=text, steps=steps,
+                          stopped="budget" if budget_exhausted else "max_steps")

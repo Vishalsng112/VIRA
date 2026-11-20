@@ -2,7 +2,7 @@
 from typing import List, Dict, Any, Optional
 from .base import MemoryItem, MemoryStore
 from vira.auth import database
-from .embeddings import rank
+from .ranking import rank_memories
 from . import vector_store
 
 class MemoryManager:
@@ -36,27 +36,17 @@ class MemoryManager:
     ) -> List[MemoryItem]:
         if user_id is None:
             raise ValueError("user_id is required for scoped memory")
+        vector_scores = {}
         try:
             vector_items = await vector_store.search(
-                user_id, query, limit=limit, agent_id=agent_id,
+                user_id, query, limit=max(limit * 4, 40), agent_id=agent_id,
                 conversation_id=conversation_id, memory_type=memory_type,
             )
-            if vector_items:
-                return [
-                    MemoryItem(
-                        id=item["id"], content=item["content"],
-                        metadata={
-                            **item["metadata"], "user_id": item["user_id"],
-                            "agent_id": item["agent_id"],
-                            "conversation_id": item["conversation_id"],
-                            "type": item["memory_type"],
-                            "score": item.get("_score"),
-                        },
-                    )
-                    for item in vector_items
-                ]
+            vector_scores = {
+                item["id"]: float(item.get("_score") or 0.0) for item in vector_items
+            }
         except Exception:
-            pass
+            vector_scores = {}
         candidates = database.search_memories(
             user_id=user_id,
             query=None,
@@ -65,14 +55,14 @@ class MemoryManager:
             conversation_id=conversation_id,
             memory_type=memory_type,
         )
+        for item in candidates:
+            if item["id"] in vector_scores:
+                item["_score"] = vector_scores[item["id"]]
         if query:
-            candidates = rank(
-                query,
-                [(item, item["content"]) for item in candidates],
-                limit=limit,
-            )
+            candidates = rank_memories(query, candidates, limit=limit)
         else:
             candidates = candidates[:limit]
+        database.mark_memories_used([item["id"] for item in candidates])
         return [
             MemoryItem(
                 id=item["id"],

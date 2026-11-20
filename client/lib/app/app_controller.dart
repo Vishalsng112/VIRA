@@ -96,6 +96,8 @@ class AppController extends ChangeNotifier {
       _capture?.captureEnabled ?? settings.captureEnabled;
   bool get autoSync => settings.autoSync;
   AppThemeMode get themeMode => settings.themeMode;
+  bool get diagnosticsEnabled => settings.diagnosticsEnabled;
+  bool get breakRemindersEnabled => settings.breakRemindersEnabled;
 
   Future<void> setThemeMode(AppThemeMode mode) async {
     if (settings.themeMode == mode) return;
@@ -563,6 +565,109 @@ class AppController extends ChangeNotifier {
     await settings.setAutoSync(value);
     if (value) unawaited(syncNow());
     notifyListeners();
+  }
+
+  Future<void> setBreakRemindersEnabled(bool value) async {
+    await settings.setBreakRemindersEnabled(value);
+    notifyListeners();
+  }
+
+  Future<void> setDiagnosticsEnabled(bool value) async {
+    await settings.setDiagnosticsEnabled(value);
+    if (!value) await settings.clearDiagnosticHistory();
+    notifyListeners();
+  }
+
+  /// Record a privacy-preserving diagnostic event locally. Nothing is sent
+  /// unless diagnostics are enabled and the user explicitly sends a report.
+  Future<void> recordDiagnostic(
+    String kind,
+    Object error, {
+    StackTrace? stack,
+  }) async {
+    if (!settings.diagnosticsEnabled) return;
+    await settings.recordDiagnostic({
+      'kind': kind,
+      'message': _redactDiagnostic(error.toString()),
+      if (stack != null)
+        'stack': _redactDiagnostic(
+          stack.toString().split('\n').take(8).join('\n'),
+        ),
+      'platform': _profile?.platform ?? 'unknown',
+      'device_type': _profile?.deviceType ?? 'unknown',
+      'app_version': appVersion,
+    });
+  }
+
+  Map<String, dynamic> diagnosticReport() {
+    final snapshot = syncSnapshot;
+    return {
+      'generated_at': DateTime.now().toUtc().toIso8601String(),
+      'app': appName,
+      'app_version': appVersion,
+      'protocol_version': protocolVersion,
+      'platform': _profile?.platform ?? 'unknown',
+      'device_type': _profile?.deviceType ?? 'unknown',
+      'os_version': _profile?.osVersion ?? '',
+      'capture_enabled': captureEnabled,
+      'auto_sync': autoSync,
+      'pending_events': pendingCount,
+      'sync_state': snapshot.state.name,
+      if (snapshot.lastError != null)
+        'last_sync_error': _redactDiagnostic(snapshot.lastError!),
+      'collectors': [
+        for (final state in collectors)
+          {
+            'id': state.collector.id,
+            'enabled': state.enabled,
+            'status': state.status,
+          },
+      ],
+      'events': settings.diagnosticEvents(),
+    };
+  }
+
+  String diagnosticReportJson() =>
+      const JsonEncoder.withIndent('  ').convert(diagnosticReport());
+
+  Future<String?> sendDiagnosticReport() async {
+    final api = _api;
+    if (!diagnosticsEnabled) return 'Enable diagnostics sharing first.';
+    if (api == null || !isConnected) {
+      return 'Connect to the VIRA server first. The report is still on this device.';
+    }
+    try {
+      await api.submitDiagnostics(diagnosticReport());
+      return null;
+    } on ViraApiException catch (error) {
+      return error.message;
+    } on Object catch (error) {
+      return error.toString();
+    }
+  }
+
+  Future<void> clearDiagnosticHistory() async {
+    await settings.clearDiagnosticHistory();
+    notifyListeners();
+  }
+
+  /// Remove obvious secrets and URLs from diagnostic text before it is stored.
+  String _redactDiagnostic(String value) {
+    var text = value;
+    text = text.replaceAll(
+      RegExp(r'Bearer\s+[A-Za-z0-9._\-]+', caseSensitive: false),
+      'Bearer [REDACTED]',
+    );
+    text = text.replaceAllMapped(
+      RegExp(
+        r'(token|secret|password|api[_-]?key)\s*[:=]\s*\S+',
+        caseSensitive: false,
+      ),
+      (match) => '${match.group(1)}: [REDACTED]',
+    );
+    text = text.replaceAll(RegExp(r'https?://\S+'), '[URL]');
+    if (text.length > 2000) text = '${text.substring(0, 2000)}…';
+    return text;
   }
 
   Future<void> refreshDevices() async {

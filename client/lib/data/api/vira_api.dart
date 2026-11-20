@@ -571,6 +571,13 @@ class ViraApi {
   Future<Map<String, dynamic>> auditLog() async =>
       _decode(await _send('GET', '/api/v1/admin/audit', user: true));
 
+  /// Opt-in, already-redacted client diagnostic report.
+  Future<Map<String, dynamic>> submitDiagnostics(
+    Map<String, dynamic> report,
+  ) async => _decode(
+    await _send('POST', '/api/v1/diagnostics', user: true, body: report),
+  );
+
   Future<Map<String, dynamic>> insightFleet() async =>
       _decode(await _send('GET', '/api/v1/insights/fleet', user: true));
 

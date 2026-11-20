@@ -1,0 +1,41 @@
+name: Decision proposal
+description: Propose an architecture or product decision for the decision log.
+title: "decision: "
+labels: ["decision", "needs-triage"]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What forces are at play? Link issues, docs or benchmarks.
+    validations:
+      required: true
+  - type: textarea
+    id: decision
+    attributes:
+      label: Proposed decision
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and trade-offs
+    validations:
+      required: true
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Consequences
+      description: What becomes easier, harder, or impossible? What must be migrated?
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: Proposed status
+      options:
+        - Proposed
+        - Accepted
+        - Superseded
+    validations:
+      required: true

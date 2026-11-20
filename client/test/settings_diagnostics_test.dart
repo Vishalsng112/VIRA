@@ -1,0 +1,40 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vira_link/data/storage/settings_store.dart';
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('diagnostics are opt-in, bounded and clearable', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = await SettingsStore.open();
+
+    expect(store.diagnosticsEnabled, isFalse);
+    await store.recordDiagnostic({'kind': 'ignored'});
+    expect(store.diagnosticEvents(), isEmpty);
+
+    await store.setDiagnosticsEnabled(true);
+    expect(store.diagnosticsEnabled, isTrue);
+    for (var index = 0; index < SettingsStore.maxDiagnosticEvents + 4; index++) {
+      await store.recordDiagnostic({'kind': 'error', 'index': index});
+    }
+    final events = store.diagnosticEvents();
+    expect(events.length, SettingsStore.maxDiagnosticEvents);
+    expect(events.first['index'], SettingsStore.maxDiagnosticEvents + 3);
+    expect(events.first['captured_at'], isNotNull);
+
+    await store.clearDiagnosticHistory();
+    expect(store.diagnosticEvents(), isEmpty);
+
+    await store.setDiagnosticsEnabled(false);
+    expect(store.diagnosticsEnabled, isFalse);
+  });
+
+  test('break reminders default on and persist', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = await SettingsStore.open();
+    expect(store.breakRemindersEnabled, isTrue);
+    await store.setBreakRemindersEnabled(false);
+    expect(store.breakRemindersEnabled, isFalse);
+  });
+}

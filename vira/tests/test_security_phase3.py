@@ -304,6 +304,26 @@ try:
             self.assertIn("text/csv", response.headers["content-type"])
             self.assertNotIn("supersecret", response.text)
 
+        def test_client_diagnostics_are_redacted_and_listed(self):
+            response = self.client.post(
+                "/api/v1/diagnostics",
+                json={
+                    "app": "VIRA Link",
+                    "app_version": "1.0.0",
+                    "platform": "android",
+                    "sync_state": "error",
+                    "last_sync_error": "Bearer supersecrettoken12345",
+                    "events": [{"message": "password=hunter2"}],
+                },
+            )
+            self.assertEqual(response.status_code, 200, response.text)
+            listing = self.client.get("/api/v1/admin/diagnostics")
+            self.assertEqual(listing.status_code, 200, listing.text)
+            body = listing.text
+            self.assertIn("client_diagnostic", body)
+            self.assertNotIn("supersecrettoken", body)
+            self.assertNotIn("hunter2", body)
+
     tests_available = True
 except ImportError:  # pragma: no cover - minimal installs without FastAPI
     tests_available = False

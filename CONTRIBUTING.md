@@ -1,256 +1,245 @@
 # Contributing to VIRA
 
-Contributions are open and welcome. Thank you for taking the time to help build this.
+Thank you for helping build VIRA. Contributions are open to everyone: code,
+tests, docs, examples, bug reports and design review.
 
-VIRA's modular architecture means you can contribute to one part of the system — a sensor, an agent, a fix, or a doc improvement — without needing to understand the whole codebase. This guide gets you running locally and points you at the best places to start.
-
----
-
-## Table of Contents
-
-- [Getting Started](#getting-started)
-- [Good First Issues](#good-first-issues)
-- [Ways to Contribute](#ways-to-contribute)
-- [Writing a New Agent](#writing-a-new-agent)
-- [Writing a New Sensor](#writing-a-new-sensor)
-- [Event Naming Rules](#event-naming-rules)
-- [PR Checklist](#pr-checklist)
-- [Getting Help](#getting-help)
+VIRA is modular. You can improve one sensor, one agent, one plugin or one page
+without understanding the whole runtime.
 
 ---
 
-## Getting Started
+## Quick start
 
-**Prerequisites:** Python 3.10+, Git, and either [Ollama](https://ollama.com) (for local LLM) or an OpenAI / Anthropic API key.
+Requirements: Python 3.11+, Git, and either Ollama (recommended) or an
+OpenAI/Anthropic key. Docker is only needed for the container path.
+
+Source install:
 
 ```bash
 git clone https://github.com/Vishalsng112/VIRA.git
 cd VIRA
 
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 
-# Pull VIRA's default local model (skip if using OpenAI/Anthropic)
 ollama pull ornith-1.5:9b
-
-python run.py
+python3 run.py
 ```
 
-The dashboard is at `http://localhost:8000`. On first run, admin credentials are printed to the terminal.
+Open <http://localhost:8000>; the first visit creates the administrator.
+For Docker, GPU, native Ollama and Windows/Mac instructions, follow
+[docs/user/getting-started.md](docs/user/getting-started.md).
 
-> For the full architecture, event schemas, agent/sensor specs, and config reference, see **[docs/dev/architecture/framework.md](./docs/dev/architecture/framework.md)**.
+Before your first chat:
 
----
-
-## Good First Issues
-
-These are the best places to start if you're new to the codebase. All are labelled [`good first issue`](https://github.com/Vishalsng112/VIRA/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) on GitHub.
-
-### Agents
-- **`good first issue`** · Build a **CPU spike alert agent** — subscribes to `sensor.hardware.state`, fires an alert when CPU exceeds a configurable threshold. Reference: `vira/agent/examples/AGENT_MONITOR.py`.
-- **`good first issue`** · Build a **idle reminder agent** — detects when the user has been inactive for N minutes (via `sensor.session.state`) and sends a desktop notification.
-- **`good first issue`** · Build a **project context agent** — watches scoped `file.*` events and maintains a summary of the active project in memory.
-
-### Sensors
-- **`good first issue`** · Add a **battery sensor** — polls `psutil.sensors_battery()` and publishes `sensor.battery.state` events with charge level and plugged status.
-- **`good first issue`** · Improve the **Wayland clipboard sensor** — watches clipboard changes and publishes privacy-preserving `sensor.clipboard.changed` events (Linux: `wl-paste` only).
-- **`good first issue`** · Add a **audio sensor** — detects microphone/speaker activity and publishes `sensor.audio.state`.
-
-### Testing & Quality
-- **`good first issue`** · Add unit tests for `EventBus` — cover `subscribe`, `publish`, `unsubscribe`, and the wildcard subscriber path.
-- **`good first issue`** · Add unit tests for `AgentRegistry` — cover `register`, `unregister`, `find_by_event`, `find_by_capability`.
-- **`good first issue`** · Fix the duplicate `AgentMessage` class — there are two definitions (`vira/agent/messaging.py` and `vira/agent_orchestration/messages.py`) with different schemas. Consolidate or clearly separate them.
-
-### Documentation
-- **`good first issue`** · Add docstrings to all public methods in `vira/kernel/event_bus.py`.
-- **`good first issue`** · Add docstrings to all public methods in `vira/agent/base.py`.
-- **`good first issue`** · Write an end-to-end example in `docs/` showing a sensor → event → agent → LLM call flow.
-
-### Improvements
-- **`enhancement`** · Make `WorkflowEngine._resolve_input` support `{{ context.key }}` and `{{ results.step_id }}` placeholder resolution (currently a stub).
-- **`enhancement`** · Add a `pending_events()` implementation to `EventBus` — currently returns 0 always (the internal queue attribute name is wrong).
-- **`enhancement`** · Add compositor-specific opt-in adapters for Wayland focus metadata; do not add X11 support.
-
----
-
-## Ways to Contribute
-
-| Area | What's needed |
-|------|--------------|
-| **Agents** | New agents that subscribe to existing events and do useful things |
-| **Sensors** | New sensors for data sources not yet covered (battery, clipboard, audio, GPU) |
-| **Tests** | Unit and integration tests — coverage is low right now |
-| **Bug fixes** | Open issues labelled `bug` |
-| **Documentation** | Docstrings, examples, guides |
-| **Platform support** | Windows and macOS compatibility (Iteration 2 goal) |
-| **Performance** | Memory/CPU footprint of sensors and the event loop |
-
-If you want to work on something not listed here, open an issue first to discuss it — happy to give feedback before you invest time writing code.
-
----
-
-## Writing a New Agent
-
-1. Create your file anywhere importable, e.g. `vira/agent/my_agents/my_agent.py`.
-2. Extend `BaseAgent` and implement all four abstract methods.
-
-```python
-from vira.agent.base import BaseAgent
-from vira.agent_orchestration.registry import AgentCapability
-
-class MyAgent(BaseAgent):
-    def __init__(self, runtime):
-        super().__init__(
-            name="MyAgent",
-            description="One sentence describing what this agent does.",
-            runtime=runtime
-        )
-        self._capabilities = [
-            AgentCapability(name="my_capability", description="What it does")
-        ]
-        # Kernel event types this agent will react to
-        self._subscribed_events = ["sensor.hardware.state"]
-        # Set to a float (seconds) for periodic agents; None for event-only
-        self._interval_seconds = None
-
-    async def think(self, context, **kwargs) -> dict:
-        """Analyse the event and decide on intent."""
-        event = kwargs.get("event")
-        return {"intent": "act", "data": event.data}
-
-    async def plan(self, thought, **kwargs) -> list:
-        """Turn intent into a list of action steps."""
-        return [{"action": "call_llm", "prompt": str(thought["data"])}]
-
-    async def act(self, plan, **kwargs) -> list:
-        """Execute the plan. Call LLM, tools, or external APIs here."""
-        results = []
-        for step in plan:
-            if step["action"] == "call_llm":
-                response = await self.runtime.call_llm(self.agent_id, step["prompt"])
-                results.append(response)
-        return results
-
-    async def reflect(self, result, **kwargs) -> dict:
-        """Evaluate the result. Optionally store to memory."""
-        return {"done": True}
-```
-
-3. Register it in `config.yaml`:
-
-```yaml
-agents:
-  - name: MyAgent
-    module: vira.agent.my_agents.my_agent
-    class: MyAgent
-    enabled: true
-    config:
-      my_param: value
-```
-
-4. Restart VIRA. Your agent will appear in the dashboard and begin receiving events.
-
-For more detail on the agent lifecycle, state machine, and `AgentRuntime` methods, see [docs/dev/architecture/framework.md → Agent Specification](./docs/dev/architecture/framework.md#agent-specification).
-
----
-
-## Writing a New Sensor
-
-1. Create your file in `vira/sensors/my_sensor.py`.
-2. Extend `BaseSensor`, implement `start`, `stop`, and `read`, and publish events via the dispatcher.
-
-```python
-import asyncio
-from vira.sensors.base_sensor import BaseSensor
-from vira.kernel.event_bus import Event
-
-class MySensor(BaseSensor):
-    def __init__(self, interval: float, event_bus, dispatcher):
-        super().__init__(name="my_sensor")
-        self._interval = interval
-        self._dispatcher = dispatcher
-
-    async def start(self) -> None:
-        self._running = True
-        asyncio.create_task(self._poll())
-
-    async def stop(self) -> None:
-        self._running = False
-
-    async def read(self) -> dict:
-        """Read and return raw data as a dict."""
-        return {"value": 42}
-
-    async def _poll(self):
-        while self._running:
-            data = await self.read()
-            await self._dispatcher.publish(Event(
-                type="sensor.my_sensor.state",   # must follow domain.entity.action
-                data=data,
-                source=self.name
-            ))
-            await asyncio.sleep(self._interval)
-```
-
-3. Register the factory in `vira/kernel/kernel.py` inside `_register_builtin_sensors()`:
-
-```python
-self.register_sensor("my_sensor", lambda cfg, eb, disp, mm: MySensor(
-    interval=cfg.get("interval", 5.0),
-    event_bus=eb,
-    dispatcher=disp
-))
-```
-
-4. Enable it in `config.yaml`:
-
-```yaml
-sensors:
-  - name: my_sensor
-    enabled: true
-    interval: 5.0
+```bash
+python3 -m vira doctor
 ```
 
 ---
 
-## Event Naming Rules
+## VIRA in plain language
 
-All events must follow the **`domain.entity.action`** pattern. This is enforced by convention — the `EventBus` accepts any string, so it is your responsibility as a contributor to get it right.
+VIRA has four layers:
 
-| Pattern | Example | ✅ / ❌ |
-|---------|---------|--------|
-| `domain.entity.action` | `sensor.battery.state` | ✅ |
-| `domain.entity.action` | `agent.my_agent.result` | ✅ |
-| `domain.entity.action` | `kernel.ready` | ✅ |
-| No namespace | `batterysensor` | ❌ |
-| CamelCase | `BatteryEvent` | ❌ |
-| Only two parts when three are needed | `sensor.state` | ❌ |
+1. **Server** — FastAPI, dashboard/chat, SQLite/PostgreSQL, auth, devices,
+   storage, jobs and the operator UI.
+2. **Kernel** — an event bus, dispatcher, scheduler, state and metrics. Sensors
+   and devices publish events; agents and background jobs subscribe.
+3. **Agent runtime** — a bounded reasoning loop that can call permissioned tools,
+   use memory/RAG, delegate to specialists and ask for approval before
+   destructive actions.
+4. **VIRA Link** — the Flutter device companion that captures consent-gated
+   signals, stores them in an offline outbox and syncs to the server.
 
-**Reserved namespaces** (do not use for custom events):
+Useful mental model:
 
-| Namespace | Owner |
-|-----------|-------|
-| `kernel.*` | Kernel only |
-| `agent.registered`, `agent.unregistered` | AgentManager only |
-| `workflow.*` | WorkflowEngine only |
+```text
+device/sensor -> validated event -> stored fact -> agent context -> tool call -> answer
+```
 
----
-
-## PR Checklist
-
-Before opening a pull request, confirm:
-
-- [ ] The code runs without error with `python run.py` and the default `config.yaml`
-- [ ] New events follow the `domain.entity.action` naming convention
-- [ ] New agents implement all four `BaseAgent` abstract methods (`think`, `plan`, `act`, `reflect`)
-- [ ] New sensors publish events via `dispatcher.publish(...)`, not `event_bus.publish(...)` directly
-- [ ] No hardcoded file paths — use `config_manager.get(...)` or environment variables
-- [ ] New `config.yaml` keys are documented in `docs/dev/architecture/framework.md`
-- [ ] If adding a dependency, it is added to `requirements.txt`
+The server is the policy authority. Clients propose or capture; the server
+enforces consent, access, retention and approval.
 
 ---
 
-## Getting Help
+## Repository map
 
-- **Question about the codebase?** Open an issue with the `question` label. Include your Python version, OS, and relevant terminal log lines.
-- **Not sure if your idea fits?** Open an issue before writing code — happy to give early feedback.
-- **Found a bug?** Open an issue with the `bug` label and include steps to reproduce.
+| Path | What lives there |
+|---|---|
+| `vira/api/` | FastAPI app and route modules |
+| `vira/kernel/` | event bus, dispatcher, scheduler, state, security |
+| `vira/agent/` | agent loop, definitions, lessons, examples |
+| `vira/agent_runtime/`, `vira/agent_orchestration/` | runtime, runs, workflows |
+| `vira/memory/`, `vira/rag/`, `vira/insights/` | memory ranking, RAG, device insights |
+| `vira/tools/` | tool registry, built-ins, MCP, sandbox, database tools |
+| `vira/security/` | approvals and redaction |
+| `vira/generated/` | approval-gated generated tools/agents |
+| `vira/evaluation/` | deterministic platform evaluation |
+| `vira/web/static/` | dashboard, chat, auth UI |
+| `client/` | VIRA Link (Flutter) |
+| `examples/plugins/`, `examples/mcp/` | copyable extension examples |
+| `docs/` | user manual, developer manual, reference |
+| `scripts/` | installers, demo, doctor, benchmarks, evaluation, release tools |
+
+---
+
+## Your first change in 15 minutes
+
+Start with the curated [good first issues](docs/dev/good-first-issues.md). A good
+first task has one outcome, one or two files and a runnable check.
+
+A reliable pattern:
+
+1. Reproduce or read the target code.
+2. Add or update a focused test.
+3. Make the smallest change.
+4. Run the focused test, then the relevant suite.
+5. Update docs if behaviour, config, an API route or an extension point changed.
+
+Example focused run:
+
+```bash
+python3 -m unittest vira.tests.test_security_phase3 -v
+cd client && flutter test
+```
+
+---
+
+## Testing
+
+| What | Command |
+|---|---|
+| Full server suite | `python3 -m unittest $(ls vira/tests/test_*.py \| sed 's#/#.#g; s#\\.py$##')` |
+| Tool-use benchmark | `python3 scripts/benchmark.py --offline` |
+| Agent platform evaluation | `python3 scripts/evaluate.py` |
+| Doctor | `python3 -m vira doctor --no-docker` |
+| Client analyze/test | `cd client && flutter analyze && flutter test` |
+| Docs strict build | `./scripts/docs.sh build` |
+
+Some tests need no model or network by design. Keep new tests deterministic and
+offline unless they are explicitly live benchmarks.
+
+Known environment note: `test_load_monitor` can fail on some hosts when the
+memory store is unavailable; state that in the PR rather than hiding it.
+
+---
+
+## Extension examples
+
+Three complete plugin/MCP examples are maintained and tested:
+
+- [`examples/plugins/hello_world`](examples/plugins/hello_world) — tool, route,
+  state.
+- [`examples/plugins/reading_list`](examples/plugins/reading_list) — read/write
+  tools, route, state and a prompt specialist.
+- [`examples/plugins/focus_budget`](examples/plugins/focus_budget) — event
+  subscription, scheduled work, tool and route.
+- [`examples/mcp/notes_server.py`](examples/mcp/notes_server.py) — a real MCP
+  stdio server with a client handshake test.
+
+Run them with:
+
+```bash
+python3 -m unittest vira.tests.test_examples -v
+```
+
+Plugin SDK: [docs/dev/plugin-sdk.md](docs/dev/plugin-sdk.md).
+
+---
+
+## Adding an agent
+
+Prompt-defined specialists are the cheapest and safest extension:
+
+```markdown
+---
+name: reading_coach
+description: Use when the user asks what to read next.
+tools: [reading_list]
+max_steps: 3
+---
+You are VIRA's reading coach. Use reading_list before answering and never invent
+entries.
+```
+
+Drop the file in `vira/agent/definitions/` or a plugin-provided definition.
+Runtime agents subclass `BaseAgent` and implement `think`, `plan`, `act` and
+`reflect`; see [docs/dev/agent-platform.md](docs/dev/agent-platform.md).
+
+---
+
+## Adding a sensor
+
+1. Add `vira/sensors/my_sensor.py`, subclassing `BaseSensor`.
+2. Publish through the validated dispatcher, not the event bus.
+3. Use a `domain.entity.action` event name.
+4. Add a factory registration and a `config.yaml` entry.
+5. Add a unit test with a fake source.
+
+See [docs/dev/architecture/framework.md](docs/dev/architecture/framework.md).
+
+---
+
+## Event naming rules
+
+All events use **`domain.entity.action`**:
+
+| Pattern | Example | Valid |
+|---|---|---|
+| Three-part lowercase namespace | `sensor.battery.state` | Yes |
+| Agent result | `agent.my_agent.result` | Yes |
+| No namespace | `batterysensor` | No |
+| CamelCase | `BatteryEvent` | No |
+
+Reserved prefixes: `kernel.*`, `agent.registered`, `agent.unregistered`,
+`workflow.*`.
+
+---
+
+## Pull request checklist
+
+- [ ] The change has a focused test or a documented reason it cannot.
+- [ ] I ran the relevant tests and pasted the result.
+- [ ] New events follow `domain.entity.action`.
+- [ ] New tools declare the smallest permission set and redact secrets.
+- [ ] New config keys are documented.
+- [ ] Public behaviour/API/plugin changes update `docs/`.
+- [ ] New docs pages are added to `mkdocs.yml` nav.
+- [ ] I updated `CHANGELOG.md` under `Unreleased` for user-visible changes.
+- [ ] Architecture/product changes link a [decision log](docs/dev/decision-log.md)
+      entry or proposal.
+- [ ] No credentials, real device data, session transcripts or generated docs
+      are committed.
+
+---
+
+## Review, cadence and response targets
+
+- Weekly roadmap review; monthly metrics/release review.
+- Releases target the **first Tuesday of each month**; see
+  [release process](docs/dev/releases.md).
+- Security reports: private triage within **2 business days**.
+- Bugs/install failures: initial response within **3 business days**.
+- Good first issues/features: initial response within **5 business days**.
+
+These are targets, not contractual SLAs.
+
+---
+
+## Community standards
+
+Be respectful, assume good intent and critique the change, not the person. The
+[Code of Conduct](CODE_OF_CONDUCT.md) applies in issues, pull requests,
+discussions and any project space.
+
+---
+
+## Getting help
+
+- Open a bug/feature issue using the templates.
+- Ask in Discussions for open-ended questions.
+- For security issues use private reporting from `SECURITY.md`, never a public
+  issue.
+- Not sure an idea fits? Open a short issue before investing time.

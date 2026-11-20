@@ -4,8 +4,10 @@ VIRA Link is the Flutter device companion for a VIRA server. It enrolls a device
 captures only the signals you enable, stores every event in a local outbox and
 syncs to the server when it is reachable.
 
-It runs as an Android APK, iOS app, web PWA, Linux AppImage and Windows desktop
-executable.
+It runs as an Android APK, iOS app, web PWA, Linux AppImage, Windows desktop
+executable and macOS (Apple Silicon) app. See the
+[platform capability matrix](platforms.md) for what each platform can collect and
+which artifact is published.
 
 ## What it does
 
@@ -35,6 +37,7 @@ cd client
 flutter pub get
 flutter run -d chrome       # web
 flutter run -d linux        # Linux desktop
+flutter run -d macos        # macOS desktop (Apple Silicon)
 flutter run                 # connected Android/iOS device
 ```
 

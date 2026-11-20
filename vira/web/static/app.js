@@ -31,7 +31,7 @@
   const $ = (id) => document.getElementById(id);
 
   const state = {
-    health: null, metrics: null, orchestration: null, security: null, approvals: null, modules: null,
+    health: null, metrics: null, orchestration: null, security: null, approvals: null, generated: null, runs: null, modules: null,
     plugins: null, mcpServers: null, marketplace: null, mcpTools: null, usage: null,
     devices: null, deviceInsight: null, ragDocs: null, workflows: null, orgs: null,
     objects: null, releases: null, selectedDevice: null,
@@ -272,6 +272,16 @@
   async function loadApprovals() {
     const r = await fetchJson("/api/v1/admin/approvals?status=pending&limit=50");
     state.approvals = r.ok ? (r.data?.approvals || []) : null;
+  }
+
+  async function loadGenerated() {
+    const r = await fetchJson("/api/v1/generated?limit=200");
+    state.generated = r.ok ? (r.data?.artifacts || []) : null;
+  }
+
+  async function loadRuns() {
+    const r = await fetchJson("/api/v1/runs?limit=50");
+    state.runs = r.ok ? (r.data?.runs || []) : null;
   }
 
   async function loadModules() {
@@ -519,6 +529,65 @@
       llm_manager: (o.runtime || {}).llm_manager,
       mcp_connections: tools.mcp_connections,
     }, { router_running: "Router running", router_subscribed: "Router subscribed", mcp_connections: "MCP connections", llm_manager: "LLM manager" }));
+    renderGenerated();
+  }
+
+  function renderGenerated() {
+    const items = state.generated;
+    if (!items) {
+      setText("generated-count", "Unavailable");
+      setHtml("generated-list", '<li class="empty">Could not load generated artifacts.</li>');
+      return;
+    }
+    setText("generated-count", `${items.length} total`);
+    setHtml("generated-list", items.length ? items.map((a) => {
+      const tone = a.status === "enabled" ? "ok" : a.status === "approved" ? "info" : a.status === "rejected" ? "bad" : "warn";
+      const actions = [];
+      if (a.status === "draft") actions.push(["approve", "Approve"], ["reject", "Reject"]);
+      if (a.status === "approved" || a.status === "disabled") actions.push(["enable", "Enable"]);
+      if (a.status === "enabled") actions.push(["disable", "Disable"]);
+      return `<li class="list-row">
+        <span class="row-icon"><svg class="icon"><use href="#${a.kind === "agent" ? "i-agents" : "i-plug"}"/></svg></span>
+        <div class="row-main">
+          <strong>${esc(a.name)} <span class="chip">${esc(a.kind)}</span></strong>
+          <span>${esc(a.description || "No description")} · v${esc(a.version || "1.0.0")}</span>
+        </div>
+        <div class="row-meta">
+          <span class="badge badge-${tone}">${esc(titleCase(a.status))}</span>
+          <span class="card-note">${esc(fmtDate(a.updated_at))}</span>
+        </div>
+        <div class="row-actions">
+          ${actions.map(([action, label]) => `<button class="btn btn-ghost" type="button" data-generated-id="${esc(a.id)}" data-generated-action="${action}">${label}</button>`).join("")}
+        </div>
+      </li>`;
+    }).join("") : '<li class="empty">No generated artifacts yet.</li>');
+    renderRuns();
+  }
+
+  function renderRuns() {
+    const runs = state.runs;
+    if (!runs) {
+      setText("run-count", "Unavailable");
+      setHtml("run-list", '<li class="empty">Could not load runs.</li>');
+      return;
+    }
+    setText("run-count", `${runs.length} recent`);
+    setHtml("run-list", runs.length ? runs.map((run) => {
+      const tone = run.status === "succeeded" ? "ok" : run.status === "failed" ? "bad" : "warn";
+      const resumable = run.status === "failed" || run.status === "queued";
+      return `<li class="list-row">
+        <span class="row-icon"><svg class="icon"><use href="#i-activity"/></svg></span>
+        <div class="row-main">
+          <strong>${esc(run.status)} <span class="chip">${esc(run.agent_id || "Chatbot")}</span></strong>
+          <span>${esc(fmtDate(run.created_at))}${run.error ? ` · ${esc(run.error).slice(0, 160)}` : ""}</span>
+          <div class="run-timeline" id="run-timeline-${esc(run.id)}" hidden></div>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-ghost" type="button" data-run-timeline="${esc(run.id)}">Trace</button>
+          ${resumable ? `<button class="btn btn-ghost" type="button" data-run-resume="${esc(run.id)}">Resume</button>` : ""}
+        </div>
+      </li>`;
+    }).join("") : '<li class="empty">No agent runs yet.</li>');
   }
 
   /* ---------- render: security ---------- */
@@ -973,7 +1042,7 @@
     await Promise.allSettled([
       load("user", loadUser), load("health", loadHealth), load("metrics", loadMetrics),
       load("context", loadContext), load("config", loadConfig), load("orchestration", loadOrchestration),
-      load("security", loadSecurity), load("approvals", loadApprovals), load("modules", loadModules), load("plugins", loadPlugins),
+      load("security", loadSecurity), load("approvals", loadApprovals), load("generated", loadGenerated), load("runs", loadRuns), load("modules", loadModules), load("plugins", loadPlugins),
       load("mcp", loadMcp), load("usage", loadUsage), load("devices", loadDevices),
       load("knowledge", loadKnowledge), load("workflows", loadWorkflows),
       load("organizations", loadOrganizations), load("objects", loadObjects),
@@ -1219,11 +1288,36 @@
   });
 
   document.addEventListener("click", async (event) => {
-    const target = event.target.closest("[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id]");
+    const target = event.target.closest("[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id],[data-generated-id],[data-run-resume],[data-run-timeline]");
     if (!target) return;
 
     try {
-      if (target.dataset.approvalId) {
+      if (target.dataset.runResume) {
+        const r = await fetchJson(`/api/v1/runs/${encodeURIComponent(target.dataset.runResume)}/resume`, { method: "POST" });
+        if (!r.ok) throw new Error(r.data?.detail || "Could not resume the run");
+        await loadRuns(); renderAgents();
+      } else if (target.dataset.runTimeline) {
+        const id = target.dataset.runTimeline;
+        const box = document.getElementById(`run-timeline-${id}`);
+        if (box) {
+          box.hidden = false;
+          const r = await fetchJson(`/api/v1/runs/${encodeURIComponent(id)}/timeline`);
+          if (!r.ok) throw new Error("Could not load the timeline");
+          const timeline = r.data?.timeline || [];
+          box.innerHTML = timeline.length
+            ? `<pre>${esc(timeline.map((e) => `${e.type}: ${JSON.stringify(e.data)}`).join("\n"))}</pre>`
+            : '<span class="card-note">No trace events.</span>';
+        }
+      } else if (target.dataset.generatedId) {
+        const action = target.dataset.generatedAction;
+        const r = await fetchJson(`/api/v1/generated/${encodeURIComponent(target.dataset.generatedId)}/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: action === "reject" ? JSON.stringify({ reason: "Rejected in dashboard" }) : undefined,
+        });
+        if (!r.ok) throw new Error(r.data?.detail || `Could not ${action} artifact`);
+        await loadGenerated(); renderAgents();
+      } else if (target.dataset.approvalId) {
         const r = await fetchJson(`/api/v1/approvals/${encodeURIComponent(target.dataset.approvalId)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

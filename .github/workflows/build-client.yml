@@ -313,10 +313,48 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  macos:
+    name: macOS app (arm64)
+    needs: [meta, verify]
+    runs-on: macos-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        working-directory: client
+        run: flutter pub get
+
+      - name: Build macOS app
+        working-directory: client
+        run: flutter build macos --release
+
+      - name: Stage artifact
+        working-directory: client
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/macos/Build/Products/Release/vira_link.app \
+            "$GITHUB_WORKSPACE/dist/${{ needs.meta.outputs.base }}-macos-arm64.zip"
+
+      - name: Upload macOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.meta.outputs.base }}-macos
+          path: dist/${{ needs.meta.outputs.base }}-macos-arm64.zip
+          if-no-files-found: error
+          retention-days: 30
+
   release:
     name: Publish release
     if: ${{ inputs.create_release }}
-    needs: [meta, android, ios, web, linux, windows]
+    needs: [meta, android, ios, web, linux, windows, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -325,10 +363,16 @@ jobs:
         with:
           path: dist
 
+      - name: Flatten artifacts
+        run: |
+          cd dist
+          find . -mindepth 2 -type f -exec mv -t . {} +
+          find . -mindepth 1 -type d -empty -delete
+
       - name: Generate checksums
         run: |
           cd dist
-          find . -type f -not -name 'checksums.txt' -print0 \
+          find . -maxdepth 1 -type f -not -name 'checksums.txt' -print0 \
             | sort -z \
             | xargs -0 sha256sum > checksums.txt
 
@@ -339,5 +383,25 @@ jobs:
           name: VIRA Link ${{ needs.meta.outputs.version }} (build ${{ needs.meta.outputs.build }})
           target_commitish: ${{ github.sha }}
           prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          body: |
+            VIRA Link ${{ needs.meta.outputs.version }} (build ${{ needs.meta.outputs.build }}).
+
+            | Platform | Artifact | Signing |
+            |---|---|---|
+            | Android | `*-android.apk` | Signed when Android secrets are configured, otherwise debug-signed |
+            | iOS | `*-ios-unsigned.zip` | Unsigned; sign in Xcode |
+            | Web / PWA | `*-web.zip` | Serve over HTTPS |
+            | Linux x86_64 | `*-linux-x86_64.AppImage` | `chmod +x` and run |
+            | Windows x64 | `*-windows-x64.zip` | Unzip and run `vira_link.exe` |
+            | macOS arm64 | `*-macos-arm64.zip` | Unsigned; right-click → Open or sign locally |
+
+            **Verify downloads:** `sha256sum -c checksums.txt` (macOS:
+            `shasum -a 256 -c checksums.txt`).
+
+            **Uninstall:** Android/iOS remove the app; Linux delete the AppImage;
+            Windows delete the unzipped folder and the app's local data under
+            `%APPDATA%\com.vira.link`; macOS move `vira_link.app` to the Trash.
+            Device credentials can be revoked first from **Settings → Device lifecycle**.
           files: |
             dist/**/*

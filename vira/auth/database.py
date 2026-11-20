@@ -666,6 +666,15 @@ def list_audit(limit: int = 100, before_id: Optional[int] = None) -> List[Dict[s
         return [dict(row) for row in rows]
 
 
+def list_audit_by_type(event_type: str, limit: int = 100) -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM auth_audit WHERE event_type = ? ORDER BY id DESC LIMIT ?",
+            (event_type, min(max(int(limit), 1), 500)),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def list_audit_export(limit: int = 1000, since: Optional[str] = None,
                       until: Optional[str] = None) -> List[Dict[str, Any]]:
     """Audit rows for redacted administrator export (newest first)."""
@@ -1206,6 +1215,41 @@ def update_run(run_id: str, status: str, result_message_id: Optional[str] = None
         return cursor.rowcount == 1
 
 
+def list_runs(user_id: int, status: Optional[str] = None,
+              limit: int = 50) -> List[Dict[str, Any]]:
+    clauses = ["user_id = ?"]
+    values: List[Any] = [user_id]
+    if status:
+        clauses.append("status = ?")
+        values.append(status)
+    values.append(min(max(int(limit), 1), 200))
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"SELECT id, conversation_id, user_id, agent_id, status, input_message_id, "
+            f"result_message_id, error, correlation_id, created_at, updated_at "
+            f"FROM agent_runs WHERE {' AND '.join(clauses)} "
+            "ORDER BY created_at DESC LIMIT ?",
+            values,
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def mark_interrupted_runs() -> int:
+    """Called once at API startup: no queued/running run survived the restart."""
+    now = _utc_now()
+    with transaction() as conn:
+        changed = 0
+        for table in ("agent_runs", "incognito_runs"):
+            cursor = conn.execute(
+                f"UPDATE {table} SET status = 'failed', "
+                "error = COALESCE(error, 'interrupted by server restart'), updated_at = ? "
+                "WHERE status IN ('queued', 'running')",
+                (now,),
+            )
+            changed += int(cursor.rowcount or 0)
+        return changed
+
+
 def get_run(run_id: str, user_id: int) -> Optional[Dict[str, Any]]:
     with get_connection() as conn:
         row = conn.execute("SELECT * FROM agent_runs WHERE id = ? AND user_id = ?", (run_id, user_id)).fetchone()
@@ -1249,6 +1293,41 @@ def store_memory(
     return memory_id
 
 
+def mark_memories_used(memory_ids: List[str]) -> int:
+    ids = [str(item) for item in (memory_ids or []) if item]
+    if not ids:
+        return 0
+    now = _utc_now()
+    placeholders = ",".join("?" for _ in ids)
+    with transaction() as conn:
+        cursor = conn.execute(
+            f"UPDATE memories SET use_count = COALESCE(use_count, 0) + 1, "
+            f"last_used_at = ? WHERE id IN ({placeholders})",
+            (now, *ids),
+        )
+        return int(cursor.rowcount or 0)
+
+
+def record_memory_feedback(memory_id: str, user_id: int, useful: bool,
+                           note: Optional[str] = None) -> bool:
+    with transaction() as conn:
+        cursor = conn.execute(
+            "UPDATE memories SET feedback = ?, feedback_note = ? "
+            "WHERE id = ? AND user_id = ?",
+            ("useful" if useful else "not_useful", (note or "")[:500], memory_id, user_id),
+        )
+        return cursor.rowcount == 1
+
+
+def set_memory_muted(memory_id: str, user_id: int, muted: bool) -> bool:
+    with transaction() as conn:
+        cursor = conn.execute(
+            "UPDATE memories SET feedback = ? WHERE id = ? AND user_id = ?",
+            ("muted" if muted else None, memory_id, user_id),
+        )
+        return cursor.rowcount == 1
+
+
 def search_memories(
     user_id: Optional[int],
     query: Optional[str] = None,
@@ -1264,6 +1343,7 @@ def search_memories(
         "(expires_at IS NULL OR expires_at > ?)",
         "(device_id IS NULL OR device_id IN ("
         "SELECT device_id FROM user_device_access WHERE user_id = ? AND status = 'active'))",
+        "(feedback IS NULL OR feedback != 'muted')",
     ]
     values: list[Any] = [user_id, _utc_now(), user_id]
     if query:

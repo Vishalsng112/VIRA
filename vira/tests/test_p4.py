@@ -73,16 +73,16 @@ class PluginSdkTests(P4Base):
         manager = PluginManager("examples/plugins", kernel=kernel)
         asyncio.run(manager.load_plugins())
         status = manager.status()
-        self.assertEqual(status["loaded"], 1)
-        plugin = manager.list_plugins()[0]
-        self.assertEqual(plugin["id"], "example.hello-world")
-        self.assertEqual(plugin["status"], "active")
+        self.assertEqual(status["loaded"], 3)
+        plugins = {item["id"]: item for item in manager.list_plugins()}
+        self.assertEqual(plugins["example.hello-world"]["status"], "active")
         self.assertIn("example_word_count", kernel.agent_orchestrator.tool_registry.list())
         self.assertTrue(manager.collect_routers())
 
         asyncio.run(manager.set_enabled("example.hello-world", False))
         self.assertNotIn("example_word_count", kernel.agent_orchestrator.tool_registry.list())
-        self.assertFalse(manager.collect_routers())
+        # The other two example plugins keep their routers mounted.
+        self.assertEqual(len(manager.collect_routers()), 2)
 
     def test_permissions_are_denied_when_not_declared(self):
         plugin_dir = Path(self.tmp.name) / "bad"

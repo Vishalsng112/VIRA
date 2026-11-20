@@ -276,8 +276,9 @@ class _InsightsPageState extends State<InsightsPage> {
                       topApp: apps.isEmpty ? null : apps.first,
                       topCategory: apps.isEmpty ? null : _topCategory,
                     ),
-                    if (_currentSessionMs >= 45 * 60 * 1000 ||
-                        _interactiveMs >= 2 * 60 * 60 * 1000) ...[
+                    if (_controller.breakRemindersEnabled &&
+                        (_currentSessionMs >= 45 * 60 * 1000 ||
+                            _interactiveMs >= 2 * 60 * 60 * 1000)) ...[
                       const SizedBox(height: 16),
                       _BreakCard(
                         currentSessionMs: _currentSessionMs,

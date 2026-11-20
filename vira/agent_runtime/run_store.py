@@ -28,6 +28,27 @@ def append(run_id: str, event_type: str, data: Any) -> str:
     return event_id
 
 
+def timeline(run_id: str, limit: int = 500) -> List[Dict[str, Any]]:
+    """Redacted tool/thinking timeline for operators and the chat UI."""
+    from vira.security.redaction import redact
+
+    items = []
+    for event in list_events(run_id, 0, limit):
+        data = redact(event.get("data") or {})
+        if isinstance(data, dict):
+            if "params" in data:
+                data["params"] = redact(data["params"])
+            if "preview" in data and isinstance(data["preview"], str):
+                data["preview"] = data["preview"][:1200]
+        items.append({
+            "seq": event.get("seq"),
+            "type": event.get("event_type"),
+            "created_at": event.get("created_at"),
+            "data": data,
+        })
+    return items
+
+
 def list_events(run_id: str, after_seq: int = 0, limit: int = 500) -> List[Dict[str, Any]]:
     with database.get_connection() as conn:
         rows = conn.execute(

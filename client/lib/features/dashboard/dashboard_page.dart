@@ -42,6 +42,10 @@ class DashboardPage extends StatelessWidget {
                   ),
                   const SizedBox(height: 18),
                   _Hero(controller: controller, snapshot: snapshot),
+                  if (_collectorsNeedingAttention(controller).isNotEmpty) ...[
+                    const SizedBox(height: 14),
+                    _PermissionsBanner(controller: controller),
+                  ],
                   const SizedBox(height: 14),
                   _QuickStats(
                     controller: controller,
@@ -176,6 +180,178 @@ class _Hero extends StatelessWidget {
           label: const Text('Sync now'),
         ),
       ],
+    );
+  }
+}
+
+List<CollectorState> _collectorsNeedingAttention(AppController controller) {
+  return controller.collectors.where((state) {
+    if (state.status == 'permission_denied') return true;
+    return state.enabled &&
+        state.status == 'unavailable' &&
+        state.collector.canRequestAccess;
+  }).toList();
+}
+
+Future<void> _showPermissionSheet(
+  BuildContext context,
+  AppController controller,
+) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Permissions and notifications',
+              style: Theme.of(
+                sheetContext,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'VIRA Link only captures signals you enable. Some signals also need '
+              'an operating-system permission. Nothing is granted automatically.',
+              style: Theme.of(sheetContext).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(sheetContext).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final state in controller.collectors)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(_permissionIcon(state.status)),
+                      title: Text(state.collector.title),
+                      subtitle: Text(_permissionExplanation(state)),
+                      trailing: state.collector.canRequestAccess
+                          ? TextButton(
+                              onPressed: () async {
+                                await controller.requestCollectorAccess(
+                                  state.collector.id,
+                                );
+                                if (sheetContext.mounted) {
+                                  Navigator.pop(sheetContext);
+                                }
+                              },
+                              child: const Text('Allow'),
+                            )
+                          : null,
+                    ),
+                  const Divider(),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.notifications_none_rounded),
+                    title: const Text('Notifications'),
+                    subtitle: const Text(
+                      'In-app break reminders are available now. OS notifications '
+                      'are not scheduled by this build, so VIRA will not ask for '
+                      'notification permission yet.',
+                    ),
+                    trailing: const StatusPill(
+                      label: 'In-app only',
+                      tone: StatusTone.info,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: () => Navigator.pop(sheetContext),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+IconData _permissionIcon(String status) => switch (status) {
+  'available' => Icons.check_circle_outline,
+  'permission_denied' => Icons.lock_outline,
+  'degraded' => Icons.warning_amber_rounded,
+  _ => Icons.info_outline,
+};
+
+String _permissionExplanation(CollectorState state) {
+  if (state.status == 'permission_denied') {
+    return 'Needs an operating-system permission. Tap Allow to open the right settings page.';
+  }
+  if (state.status == 'available') {
+    return state.enabled ? 'Available and shared.' : 'Available but turned off.';
+  }
+  if (state.status == 'degraded') {
+    return state.lastError ?? 'Limited on this platform right now.';
+  }
+  return state.collector.description;
+}
+
+class _PermissionsBanner extends StatelessWidget {
+  const _PermissionsBanner({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final pending = _collectorsNeedingAttention(controller);
+    final denied = pending.where((s) => s.status == 'permission_denied').length;
+    return Card(
+      color: theme.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.lock_open_rounded,
+              color: theme.colorScheme.onTertiaryContainer,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    denied > 0
+                        ? 'A couple of signals need your permission'
+                        : 'Some signals are limited on this device',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.onTertiaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${pending.length} signal${pending.length == 1 ? "" : "s"} '
+                    'could work better. Review permissions, or keep them off.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onTertiaryContainer,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _showPermissionSheet(context, controller),
+                    icon: const Icon(Icons.tune_rounded, size: 18),
+                    label: const Text('Review permissions'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

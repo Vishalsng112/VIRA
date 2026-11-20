@@ -130,6 +130,67 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 SectionCard(
+                  title: 'Permissions and notifications',
+                  subtitle:
+                      'Only the signals you enable are captured. Some also need an OS permission.',
+                  child: Column(
+                    children: [
+                      for (final state in controller.collectors)
+                        if (state.status == 'permission_denied')
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.lock_outline),
+                            title: Text(state.collector.title),
+                            subtitle: const Text(
+                              'Needs an operating-system permission.',
+                            ),
+                            trailing: TextButton(
+                              onPressed: () async {
+                                final opened = await controller
+                                    .requestCollectorAccess(state.collector.id);
+                                if (!context.mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      opened
+                                          ? 'Opened the permission settings.'
+                                          : 'This platform opens permissions from the Overview page.',
+                                    ),
+                                  ),
+                                );
+                              },
+                              child: const Text('Allow'),
+                            ),
+                          ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('In-app break reminders'),
+                        subtitle: const Text(
+                          'Show gentle break suggestions in Insights during long sessions.',
+                        ),
+                        value: controller.breakRemindersEnabled,
+                        onChanged: controller.setBreakRemindersEnabled,
+                      ),
+                      const Divider(height: 20),
+                      const ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.notifications_none_outlined),
+                        title: Text('OS notifications'),
+                        subtitle: Text(
+                          'Not scheduled by this build. VIRA will request the '
+                          'notification permission when OS notifications ship; '
+                          'in-app reminders work without it.',
+                        ),
+                        trailing: StatusPill(
+                          label: 'In-app only',
+                          tone: StatusTone.info,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SectionCard(
                   title: 'Sync',
                   subtitle: 'The outbox drains automatically while the VIRA server is reachable.',
                   child: Column(
@@ -227,6 +288,65 @@ class SettingsPage extends StatelessWidget {
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _clearLocalInsights(context, controller),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SectionCard(
+                  title: 'Diagnostics',
+                  subtitle:
+                      'Off by default. Diagnostics stay on this device unless you choose to send them.',
+                  child: Column(
+                    children: [
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Record anonymous diagnostics'),
+                        subtitle: const Text(
+                          'Stores recent app errors with the platform, sync state and '
+                          'collector status. Credentials, server URL, device ID, '
+                          'username and message content are never included.',
+                        ),
+                        value: controller.diagnosticsEnabled,
+                        onChanged: controller.setDiagnosticsEnabled,
+                      ),
+                      const Divider(height: 20),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.copy_all_outlined),
+                        title: const Text('Copy diagnostic report'),
+                        subtitle: const Text(
+                          'Review the redacted report before sharing it.',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _copyDiagnosticReport(context, controller),
+                      ),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.outbox_outlined),
+                        title: const Text('Send diagnostic report'),
+                        subtitle: Text(
+                          controller.isConnected
+                              ? 'Uploads the redacted report to your VIRA server.'
+                              : 'Connect to your VIRA server to send a report.',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: controller.isConnected
+                            ? () => _sendDiagnosticReport(context, controller)
+                            : null,
+                      ),
+                      if (controller.diagnosticsEnabled)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.delete_outline,
+                            color: theme.colorScheme.error,
+                          ),
+                          title: Text(
+                            'Clear diagnostic history',
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                          onTap: () => _clearDiagnostics(context, controller),
+                        ),
                     ],
                   ),
                 ),
@@ -510,6 +630,87 @@ class SettingsPage extends StatelessWidget {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Local insights cleared.')));
+    }
+  }
+
+  Future<void> _copyDiagnosticReport(
+    BuildContext context,
+    AppController controller,
+  ) async {
+    final report = controller.diagnosticReportJson();
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Diagnostic report'),
+        content: SizedBox(
+          width: 640,
+          height: 420,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              report,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: report));
+              if (!dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Diagnostic report copied to clipboard.'),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Copy report'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendDiagnosticReport(
+    BuildContext context,
+    AppController controller,
+  ) async {
+    if (!controller.diagnosticsEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Turn on anonymous diagnostics first, then send a report.'),
+        ),
+      );
+      return;
+    }
+    final error = await controller.sendDiagnosticReport();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          error ?? 'Diagnostic report sent. Thank you for helping improve VIRA.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _clearDiagnostics(
+    BuildContext context,
+    AppController controller,
+  ) async {
+    await controller.clearDiagnosticHistory();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Diagnostic history cleared.')),
+      );
     }
   }
 

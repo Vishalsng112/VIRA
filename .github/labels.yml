@@ -1,0 +1,38 @@
+# Suggested repository labels. Sync manually or with the GitHub CLI:
+#   gh label create "good first issue" --color 7057ff --description "Small, well-scoped starter task"
+- name: good first issue
+  color: "7057ff"
+  description: Small, well-scoped starter task with a runnable acceptance check
+- name: help wanted
+  color: "008672"
+  description: Maintainers would welcome a contributor
+- name: needs-triage
+  color: "fbca04"
+  description: Not yet reviewed by a maintainer
+- name: bug
+  color: "d73a4a"
+  description: Something is broken
+- name: enhancement
+  color: "a2eeef"
+  description: A user-visible improvement
+- name: documentation
+  color: "0075ca"
+  description: Docs, examples or developer experience
+- name: plugin
+  color: "5319e7"
+  description: Plugin SDK or example plugin
+- name: mcp
+  color: "1d76db"
+  description: MCP servers, tools or policies
+- name: security
+  color: "ee0701"
+  description: Security-sensitive; use private reporting for vulnerabilities
+- name: release
+  color: "0e8a16"
+  description: Release checklist or release automation
+- name: decision
+  color: "c5def5"
+  description: Architecture or product decision proposal
+- name: showcase
+  color: "f9d0c4"
+  description: Real deployment or demo submission

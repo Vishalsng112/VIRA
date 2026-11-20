@@ -56,6 +56,8 @@ nav:
           - One-command install: user/install/one-command.md
           - Docker and deployment: user/install/docker.md
       - VIRA Link client: user/client.md
+      - Platform capability matrix: user/platforms.md
+      - Showcase: user/showcase.md
       - Five-minute proof: user/demo.md
       - Choose a local model: user/models.md
       - Security overview: user/security.md
@@ -69,6 +71,10 @@ nav:
           - Agent design: dev/architecture/agent-design.md
           - Tool search: dev/architecture/tool-search.md
           - Database tools: dev/architecture/database-tools.md
+      - Agent and tool platform: dev/agent-platform.md
+      - Good first issues: dev/good-first-issues.md
+      - Release process: dev/releases.md
+      - Decision log: dev/decision-log.md
       - Plugin SDK: dev/plugin-sdk.md
       - Design documents:
           - Client system design: dev/designs/client-system-design.md
@@ -81,6 +87,9 @@ nav:
           - Backup and restore drill: dev/runbooks/backup-restore.md
       - Benchmarks:
           - Tool-use benchmark: dev/benchmarks/tool-use.md
+      - Evaluations:
+          - Agent platform evaluation: dev/evaluations/agent-platform.md
+          - Research basis: dev/evaluations/research-basis.md
       - Roadmap:
           - Product roadmap: roadmap.md
           - Server roadmap: dev/roadmap/server.md

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "eventbus-docstrings",
+    "title": "Add docstrings to EventBus public methods",
+    "area": "documentation",
+    "difficulty": "1–2 hours",
+    "files": ["vira/kernel/event_bus.py"],
+    "acceptance": "Every public method and property has a concise docstring; `python3 -m unittest vira.tests.test_event_bus -v` still passes.",
+    "labels": ["good first issue", "documentation"]
+  },
+  {
+    "id": "eventbus-tests",
+    "title": "Add EventBus subscribe, publish, unsubscribe and wildcard tests",
+    "area": "testing",
+    "difficulty": "half a day",
+    "files": ["vira/kernel/event_bus.py"],
+    "acceptance": "New tests cover subscribe, publish, unsubscribe, a wildcard subscriber and a slow subscriber; `python3 -m unittest vira.tests.test_event_bus -v` passes.",
+    "labels": ["good first issue", "testing"]
+  },
+  {
+    "id": "doctor-json-schema",
+    "title": "Document the `vira doctor --json` schema and add a shape test",
+    "area": "documentation",
+    "difficulty": "1–2 hours",
+    "files": ["vira/doctor.py", "docs/user/troubleshooting.md", "vira/tests/test_doctor.py"],
+    "acceptance": "The JSON keys are documented and a test asserts the report contains ok/counts/checks with name/status/summary.",
+    "labels": ["good first issue", "documentation", "testing"]
+  },
+  {
+    "id": "sensor-flow-example",
+    "title": "Add a sensor → event → agent → answer example",
+    "area": "documentation",
+    "difficulty": "half a day",
+    "files": ["docs/dev/architecture/framework.md", "docs/dev/agent-platform.md"],
+    "acceptance": "A new example shows the event name, dispatcher path, agent subscription and the visible result, with real code references.",
+    "labels": ["good first issue", "documentation"]
+  },
+  {
+    "id": "hello-plugin-route-test",
+    "title": "Add an HTTP route test for the hello-world plugin",
+    "area": "testing",
+    "difficulty": "1–2 hours",
+    "files": ["examples/plugins/hello_world/plugin.py", "vira/tests/test_examples.py"],
+    "acceptance": "A test calls the plugin route handler or mounted router and asserts the greeting and persisted request count.",
+    "labels": ["good first issue", "testing", "plugin"]
+  },
+  {
+    "id": "client-collector-status-test",
+    "title": "Add a client test for collector permission and unavailable states",
+    "area": "client",
+    "difficulty": "half a day",
+    "files": ["client/lib/services/capture/capture_service.dart", "client/test/"],
+    "acceptance": "A Flutter unit test asserts permission_denied and unavailable are surfaced without throwing; `flutter test` passes.",
+    "labels": ["good first issue", "client", "testing"]
+  },
+  {
+    "id": "docs-link-checker",
+    "title": "Add a docs link checker to CI",
+    "area": "tooling",
+    "difficulty": "half a day",
+    "files": ["scripts/", ".github/workflows/docs.yml"],
+    "acceptance": "A script reports broken relative links in README/docs and fails CI when a new broken link is introduced.",
+    "labels": ["good first issue", "tooling", "documentation"]
+  },
+  {
+    "id": "dashboard-aria-labels",
+    "title": "Improve keyboard and screen-reader labels on dashboard buttons",
+    "area": "accessibility",
+    "difficulty": "1–2 hours",
+    "files": ["vira/web/static/dashboard.html", "vira/web/static/app.js"],
+    "acceptance": "Icon-only buttons have descriptive aria-labels and focus-visible styling; the page still works without a mouse.",
+    "labels": ["good first issue", "accessibility", "frontend"]
+  },
+  {
+    "id": "run-resume-test",
+    "title": "Add an API test for resuming a failed run",
+    "area": "testing",
+    "difficulty": "half a day",
+    "files": ["vira/tests/test_phase5.py", "vira/api/app.py"],
+    "acceptance": "A TestClient test resumes a failed run with its original message and asserts a new run is returned without duplicating the user message.",
+    "labels": ["good first issue", "testing", "agents"]
+  },
+  {
+    "id": "plugin-sdk-typings",
+    "title": "Add type hints to the plugin context registration methods",
+    "area": "developer experience",
+    "difficulty": "1–2 hours",
+    "files": ["vira/plugins/api.py"],
+    "acceptance": "Registration methods have precise type hints and the plugin examples still load and pass `vira.tests.test_examples`.",
+    "labels": ["good first issue", "plugin", "developer-experience"]
+  }
+]

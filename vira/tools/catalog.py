@@ -90,7 +90,12 @@ class ToolSpec:
 
 
 def _tokens(text: str) -> List[str]:
-    return [word for word in _WORD.findall((text or "").lower()) if word not in _STOP]
+    words = [word for word in _WORD.findall((text or "").lower()) if word not in _STOP]
+    expanded = list(words)
+    for word in words:
+        if len(word) >= 4 and word.endswith("s"):
+            expanded.append(word[:-1])
+    return expanded
 
 
 def _infer_category(name: str, description: str) -> str:

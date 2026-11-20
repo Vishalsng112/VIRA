@@ -225,6 +225,16 @@ class AgentOrchestratorModule(ViraModule):
                     except Exception as exc:
                         logger.error("Failed to connect MCP server {}: {}", record["name"], exc)
 
+            # Enable only generated tools that were explicitly approved and
+            # enabled by an administrator. Drafts never execute.
+            try:
+                from vira.generated.service import sync_registry
+                generated_tools = sync_registry(self.tool_registry)
+                if generated_tools:
+                    logger.info("Enabled generated tools: {}", generated_tools)
+            except Exception as exc:
+                logger.error("Failed to sync generated tools: {}", exc)
+
             # After registration, log the final registry state
             logger.info(f"Final tool registry: {self.tool_registry.list()}")
 

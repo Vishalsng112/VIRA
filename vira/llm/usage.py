@@ -102,7 +102,8 @@ def _period_start(period: str) -> str:
 
 
 def totals_since(since: str, user_id: Optional[int] = None,
-                 organization_id: Optional[str] = None) -> Dict[str, float]:
+                 organization_id: Optional[str] = None,
+                 agent_id: Optional[str] = None) -> Dict[str, float]:
     clauses = ["created_at >= ?"]
     values: List[Any] = [since]
     if user_id is not None:
@@ -111,6 +112,9 @@ def totals_since(since: str, user_id: Optional[int] = None,
     if organization_id is not None:
         clauses.append("organization_id = ?")
         values.append(organization_id)
+    if agent_id is not None:
+        clauses.append("agent_id = ?")
+        values.append(agent_id)
     with database.get_connection() as conn:
         row = conn.execute(
             "SELECT COALESCE(SUM(total_tokens),0) AS tokens, "
@@ -127,6 +131,8 @@ def usage_for_quota(scope: str, subject_id: str, period: str) -> Dict[str, float
         return totals_since(_period_start(period), user_id=int(subject_id))
     if scope == "org":
         return totals_since(_period_start(period), organization_id=subject_id)
+    if scope == "agent":
+        return totals_since(_period_start(period), agent_id=subject_id)
     return totals_since(_period_start(period))
 
 
@@ -147,8 +153,8 @@ def get_quota(scope: str, subject_id: str, period: str) -> Optional[Dict[str, An
 
 def set_quota(scope: str, subject_id: str, period: str, token_limit: Optional[int] = None,
               cost_limit_usd: Optional[float] = None) -> Dict[str, Any]:
-    if scope not in ("user", "org", "global"):
-        raise errors.ValidationFailed("scope must be user, org or global")
+    if scope not in ("user", "org", "agent", "global"):
+        raise errors.ValidationFailed("scope must be user, org, agent or global")
     if period not in ("day", "month"):
         raise errors.ValidationFailed("period must be day or month")
     now = _now()
@@ -177,13 +183,16 @@ def delete_quota(quota_id: str) -> bool:
         return bool(cur.rowcount)
 
 
-def check_quota(user_id: Optional[int], organization_id: Optional[str] = None) -> None:
-    if user_id is None:
+def check_quota(user_id: Optional[int], organization_id: Optional[str] = None,
+                agent_id: Optional[str] = None) -> None:
+    if user_id is None and not agent_id:
         return
     for quota in list_quotas():
         if quota["scope"] == "user" and str(user_id) != str(quota["subject_id"]):
             continue
         if quota["scope"] == "org" and str(organization_id or "") != str(quota["subject_id"]):
+            continue
+        if quota["scope"] == "agent" and str(agent_id or "") != str(quota["subject_id"]):
             continue
         usage = usage_for_quota(quota["scope"], str(quota["subject_id"]), quota["period"])
         token_limit = quota.get("token_limit")

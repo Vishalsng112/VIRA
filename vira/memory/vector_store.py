@@ -32,7 +32,7 @@ async def search(user_id: int, query: str, limit: int = 10,
                  memory_type: Optional[str] = None) -> List[Dict[str, Any]]:
     provider = get_embedding_provider()
     query_vector = await provider.embed(query)
-    clauses = ["e.user_id = ?"]
+    clauses = ["e.user_id = ?", "(m.feedback IS NULL OR m.feedback != 'muted')"]
     values: List[Any] = [user_id]
     if agent_id:
         clauses.append("(m.agent_id = ? OR m.agent_id IS NULL)")

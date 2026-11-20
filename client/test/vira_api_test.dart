@@ -289,4 +289,24 @@ void main() {
       'Thinking…',
     );
   });
+
+  test('diagnostic reports use the authenticated diagnostics endpoint', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/v1/diagnostics');
+      expect(request.headers['Authorization'], 'Bearer session-123');
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      expect(body['platform'], 'linux');
+      expect(body['events'], isEmpty);
+      return http.Response(jsonEncode({'status': 'recorded'}), 200);
+    });
+    final api = ViraApi('http://localhost:8000/', client: client)
+      ..sessionId = 'session-123';
+    final result = await api.submitDiagnostics({
+      'platform': 'linux',
+      'app_version': '1.0.0',
+      'events': <Map<String, dynamic>>[],
+    });
+    expect(result['status'], 'recorded');
+  });
 }

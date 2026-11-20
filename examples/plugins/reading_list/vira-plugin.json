@@ -1,0 +1,19 @@
+{
+  "id": "example.reading-list",
+  "name": "Reading List",
+  "version": "1.0.0",
+  "api_version": "1",
+  "description": "Example plugin: a private reading list with tools, an HTTP route, namespaced state and a prompt specialist.",
+  "author": "VIRA contributors",
+  "license": "MIT",
+  "entrypoint": "plugin.py:ReadingListPlugin",
+  "permissions": [
+    "tools.register",
+    "tools.register.write",
+    "http.routes",
+    "storage",
+    "agents.register"
+  ],
+  "categories": ["example", "productivity", "knowledge"],
+  "config": {"max_items": 200}
+}

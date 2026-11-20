@@ -166,6 +166,24 @@ model's hidden intent.
 python3 -m unittest vira.tests.test_security_phase3.ApprovalTests -v
 ```
 
+### 4b. Generated tools and agents
+
+**Threat.** A model or user proposes a tool/agent that silently gains execution
+rights, bypasses review, or changes after approval.
+
+**Controls**
+
+- Generated artifacts are stored with a checksum and a draft → approved → enabled
+  lifecycle.
+- Only administrators can approve, reject, enable or disable.
+- Drafts and disabled artifacts are never registered and are re-checked at every
+  invocation, even if an old object remains in a registry.
+- Generated tools support only one safe HTTPS GET with an explicit host
+  allow-list, no custom headers/secrets, SSRF checks, bounded output and optional
+  JSON validation.
+- Generated agents run with an allow-listed tool set and bounded steps.
+- Every transition is audited.
+
 ### 5. Plugin and MCP supply chain
 
 **Threat.** A third-party plugin or MCP server declares one capability, then

@@ -22,21 +22,29 @@ default provider; cloud models are optional.
 
 - **Self-hosted server** with authenticated dashboard, chat, memory, agents,
   workflows, RAG, users, MCP tools and audit.
-- **Device context** through VIRA Link on Android, iOS, web/PWA, Linux and Windows,
-  with per-collector consent and offline sync.
+- **Device context** through VIRA Link on Android, iOS, web/PWA, Linux, Windows and
+  macOS (Apple Silicon build), with per-collector consent and offline sync.
 - **Agent tools** including web research, filesystem/shell with permissions, RAG,
   insights, MCP servers and read-only database queries.
+- **Reviewable agent platform**: approval-gated generated tools/agents, tool and
+  time budgets, run resume, redacted run timelines, memory feedback and
+  per-user/agent cost quotas.
+- **Reproducible evaluation**: deterministic tool-selection, task, memory,
+  recovery and safety results recorded for every release.
 - **Operational controls**: non-root, capability-dropped Docker deployment,
   field-level encryption for sensitive values, rate limits, approval gates for
   destructive tools, a Bubblewrap sandbox, a redacted audit export and a tested
   backup/restore drill.
-- **Published releases** with Android, iOS (unsigned), web, Linux AppImage and
-  Windows artifacts.
+- **Published releases** with Android, iOS (unsigned), web, Linux AppImage,
+  Windows and macOS (unsigned, Apple Silicon) artifacts plus checksums.
 
 ### What is not built yet
 
 - Verified AI-generated tools or agents. This remains research.
-- A native macOS VIRA Link client. macOS users can use the web/PWA client.
+- Signed macOS/iOS store builds. The artifacts exist and are unsigned; signing
+  needs your Apple credentials.
+- OS notification scheduling. In-app reminders work; notification permission is
+  requested only when scheduled notifications ship.
 - A hosted SaaS version. VIRA is local-first.
 
 See the **[product roadmap](ROADMAP.md)** for the maturity plan and acceptance
@@ -296,19 +304,20 @@ design.
 ### Device companion: VIRA Link
 
 `client/` is **VIRA Link**, a modular Flutter client for Android, iOS, the web,
-Linux and Windows. It signs in as a VIRA user, enrolls the device, captures only
-the signals you enable, stores every event in a local outbox, and sends bounded
-batches to the server when it is reachable. Offline capture keeps working; the
-queue drains automatically on reconnect.
+Linux, Windows and macOS (Apple Silicon). It signs in as a VIRA user, enrolls the
+device, captures only the signals you enable, stores every event in a local
+outbox, and sends bounded batches to the server when it is reachable. Offline
+capture keeps working; the queue drains automatically on reconnect.
 
-There is **no native macOS client yet**. On macOS, use the web/PWA client in a
-browser; the server itself runs natively through Docker. Native macOS packaging is
-tracked in the [roadmap](ROADMAP.md).
+The macOS build is published unsigned as `vira_link.app`; right-click → **Open**
+the first time or sign it locally. Intel Macs can use the web/PWA client; an Intel
+desktop build is not part of the release matrix yet. See the
+[platform capability matrix](docs/user/platforms.md) for the exact support story.
 
 ```bash
 cd client
 flutter pub get
-flutter run -d chrome       # or android, linux
+flutter run -d chrome       # or android, ios, linux, windows, macos
 ```
 
 See [client/README.md](client/README.md) for the module layout and API contract.
@@ -368,17 +377,26 @@ Start with:
 
 - [Getting started](docs/user/getting-started.md) — install and run VIRA
 - [Five-minute proof](docs/user/demo.md) — see the agent, tools and database boundary work
+- [Platform capability matrix](docs/user/platforms.md) — artifacts, collectors, signing and uninstall per platform
 - [Choose a local model](docs/user/models.md) — tiers by RAM/GPU, cloud fallback and the tool-use warning
 - [Tool-use benchmark](docs/dev/benchmarks/tool-use.md) — reproducible device, database, RAG and recovery results
+- [Agent and tool platform](docs/dev/agent-platform.md) — generated artifacts, budgets, memory, run recovery and quotas
+- [Agent platform evaluation](docs/dev/evaluations/agent-platform.md) — comparable tool selection, memory, safety and recovery results
 - [Security overview](docs/user/security.md) — controls, evidence and limits
 - [Threat model](docs/dev/security/threat-model.md) — assets, boundaries, threats and residual risk
 - [Backup/restore drill](docs/dev/runbooks/backup-restore.md) — tested RPO/RTO evidence
 - [Docker and deployment](docs/user/install/docker.md) — server/client, Ollama, GPU, operations
 - [Product roadmap](ROADMAP.md) — maturity phases and acceptance criteria
+- [Showcase](docs/user/showcase.md) — demo and deployment patterns
+- [Changelog](CHANGELOG.md) — release notes in Keep-a-Changelog format
+- [Release process](docs/dev/releases.md) — monthly cadence, checklist and response targets
+- [Decision log](docs/dev/decision-log.md) — accepted product and architecture decisions
 - [Developer manual](docs/dev/index.md) — architecture, plugin SDK and design docs
 - [API reference](docs/reference/api.md) — generated from the FastAPI schema
 - [Architecture diagram](docs/assets/VIRA_architecture.svg)
 - [Contributing](CONTRIBUTING.md) — including how to build the docs locally
+- [Good first issues](docs/dev/good-first-issues.md) — curated, current starter tasks
+- [Code of Conduct](CODE_OF_CONDUCT.md) — community standards
 
 Preview the docs locally (creates a project-local `.venv`, so the system
 `mkdocs` is never used):
@@ -420,10 +438,11 @@ and UI details can still change.
 Working: kernel, sensors, events, state, metrics, authenticated dashboard, chat,
 memory, runs, agent lifecycle, local/MCP tools with permissions and auditing,
 multi-user accounts and devices, Docker deployment on Linux/macOS/Windows, and
-VIRA Link on Android, iOS, web/PWA, Linux and Windows.
+VIRA Link on Android, iOS, web/PWA, Linux, Windows and macOS (Apple Silicon).
 
-Still open: native macOS client, approval gates for generated agents/tools,
-stronger isolation, evaluation tooling, better memory retrieval and run recovery.
+Still open: signed Apple store builds, OS notification scheduling, stronger
+isolation, verified (not just approved) generated artifacts, broader evaluation
+datasets and deeper long-term memory research.
 The [product roadmap](ROADMAP.md) defines the phases and acceptance criteria.
 
 ## How to give feedback
@@ -438,6 +457,12 @@ includes evidence:
 
 Open a GitHub issue with that context. For security problems, use
 [SECURITY.md](SECURITY.md) instead of a public issue.
+
+Response targets: security reports are triaged privately within 2 business days,
+bugs/install failures within 3 business days, and good first issues/features
+within 5 business days. Releases target the first Tuesday of each month. These
+are targets, not contractual SLAs. Community standards are in
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ---
 

@@ -211,6 +211,8 @@ agents:
       max_steps: 6              # tool-call rounds before a forced final answer
       max_prompt_chars: 12000   # ~3k tokens; raise if your model has a bigger context
       max_tool_chars: 3000      # tool output shown to the model per call
+      max_total_tool_chars: 30000  # whole-run observation budget
+      max_seconds: 240          # wall-clock budget for the tool loop
       tool_timeout: 90          # seconds per tool call (search tries several engines)
       history_limit: 20         # messages kept per conversation
       learn_lessons: true       # store/recall lessons from failed tool calls

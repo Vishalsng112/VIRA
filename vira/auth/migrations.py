@@ -638,6 +638,47 @@ def _m010_p4_ecosystem(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_updates_lookup ON update_releases(product, channel, published_at)")
 
 
+def _m013_generated_artifacts(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS generated_artifacts (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL CHECK (kind IN ('tool', 'agent')),
+            name TEXT NOT NULL,
+            version TEXT NOT NULL DEFAULT '1.0.0',
+            description TEXT NOT NULL DEFAULT '',
+            spec TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'draft'
+                CHECK (status IN ('draft', 'approved', 'rejected', 'enabled', 'disabled')),
+            checksum TEXT NOT NULL,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            approved_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            approved_at TEXT,
+            enabled_at TEXT,
+            rejection_reason TEXT,
+            UNIQUE(kind, name, version)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_generated_status "
+        "ON generated_artifacts(kind, status, updated_at)"
+    )
+
+
+def _m014_memory_feedback(conn: sqlite3.Connection) -> None:
+    _add_column(conn, "memories", "last_used_at", "TEXT")
+    _add_column(conn, "memories", "use_count", "INTEGER NOT NULL DEFAULT 0")
+    _add_column(conn, "memories", "feedback", "TEXT")
+    _add_column(conn, "memories", "feedback_note", "TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_feedback "
+        "ON memories(user_id, feedback, created_at)"
+    )
+
+
 def _m012_agent_approvals(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -697,6 +738,8 @@ MIGRATIONS: List[Tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (10, "p4_ecosystem", _m010_p4_ecosystem),
     (11, "device_installation_identity", _m011_device_installation),
     (12, "agent_approvals", _m012_agent_approvals),
+    (13, "generated_artifacts", _m013_generated_artifacts),
+    (14, "memory_feedback", _m014_memory_feedback),
 ]
 
 
