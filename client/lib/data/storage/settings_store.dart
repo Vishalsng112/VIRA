@@ -1,5 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/utils/ids.dart';
 
 /// Non-secret client preferences. Secrets live in [CredentialStore].
@@ -13,6 +14,7 @@ class SettingsStore {
   static const _intervalKey = 'settings.capture_interval_seconds';
   static const _collectorKey = 'settings.collector';
   static const _installationKey = 'settings.installation_id';
+  static const _themeKey = 'settings.theme_mode';
 
   static const defaultServerUrl = 'http://localhost:8000';
   static const defaultCaptureIntervalSeconds = 10;
@@ -54,6 +56,14 @@ class SettingsStore {
       _prefs.getInt(_intervalKey) ?? defaultCaptureIntervalSeconds;
   Future<void> setCaptureIntervalSeconds(int value) =>
       _prefs.setInt(_intervalKey, value);
+
+  AppThemeMode get themeMode => switch (_prefs.getString(_themeKey)) {
+    'light' => AppThemeMode.light,
+    'dark' => AppThemeMode.dark,
+    _ => AppThemeMode.system,
+  };
+  Future<void> setThemeMode(AppThemeMode mode) =>
+      _prefs.setString(_themeKey, mode.name);
 
   bool collectorEnabled(String id, {bool fallback = true}) =>
       _prefs.getBool('$_collectorKey.$id') ?? fallback;

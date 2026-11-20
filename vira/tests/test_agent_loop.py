@@ -139,6 +139,25 @@ class McpToolTests(unittest.IsolatedAsyncioTestCase):
         await AgentLoop(rt, "a", "s", TOOLS).run("q", user_id=9)
         self.assertEqual(rt.tool_calls[0][1]["user_id"], 9)
 
+    async def test_database_mcp_gets_the_authenticated_caller(self):
+        specs = [{
+            "name": "database_query.database_query",
+            "description": "read-only SQL",
+            "parameters": {"properties": {
+                "sql": {"type": "string"},
+                "vira_caller_user_id": {"type": "integer"},
+            }, "required": ["sql"]},
+        }]
+        rt = FakeRuntime([
+            '{"tool": "database_query.database_query", "params": '
+            '{"sql": "SELECT 1", "vira_caller_user_id": 999}}',
+            "done",
+        ])
+        await AgentLoop(rt, "a", "s", specs).run("q", user_id=9)
+        _name, kwargs = rt.tool_calls[0]
+        self.assertEqual(kwargs["sql"], "SELECT 1")
+        self.assertEqual(kwargs["vira_caller_user_id"], 9)  # never trusts the model
+
     async def test_gives_one_nudge_before_accepting_defeat(self):
         rt = FakeRuntime(['{"tool": "web_browse", "params": {"url": "bad"}}', "I cannot do this.",
                           '{"tool": "web_browse", "params": {"url": "good"}}', "answer"],

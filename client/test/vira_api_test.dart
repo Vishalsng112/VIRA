@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:vira_link/core/models/captured_event.dart';
+import 'package:vira_link/core/models/chat_models.dart';
 import 'package:vira_link/core/models/device_info.dart';
 import 'package:vira_link/data/api/vira_api.dart';
 
@@ -267,4 +268,25 @@ void main() {
       );
     },
   );
+
+  test('stream labels use the server status, tool and check fields', () {
+    expect(
+      const ChatStreamEvent('status', {'label': 'Thinking'}).label,
+      'Thinking',
+    );
+    expect(
+      const ChatStreamEvent('tool_start', {
+        'tool': 'database_query.database_query',
+      }).label,
+      'Using database_query',
+    );
+    expect(
+      const ChatStreamEvent('check', {'text': 'Retrying'}).label,
+      'Retrying',
+    );
+    expect(
+      const ChatStreamEvent('thought', {'text': 'reasoning'}).label,
+      'Thinking…',
+    );
+  });
 }

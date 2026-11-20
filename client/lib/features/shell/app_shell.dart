@@ -4,6 +4,7 @@ import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
 import '../../app/modules.dart';
 import '../../app/widgets.dart';
+import '../../core/config/app_config.dart';
 import '../onboarding/onboarding_page.dart';
 import '../../services/sync/sync_service.dart';
 
@@ -53,8 +54,9 @@ class _AppShellState extends State<AppShell> {
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        minimum: const EdgeInsets.only(bottom: 28),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -380,6 +382,7 @@ class _MobileHeader extends StatelessWidget {
               ],
             ),
           ),
+          _ThemeButton(controller: controller),
           _SyncButton(controller: controller),
         ],
       ),
@@ -421,6 +424,7 @@ class _WideHeader extends StatelessWidget {
               ],
             ),
           ),
+          _ThemeButton(controller: controller),
           _SyncStatus(controller: controller),
           const SizedBox(width: 8),
           _SyncButton(controller: controller),
@@ -448,6 +452,27 @@ String _timeAgo(DateTime? time) {
   if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
   if (diff.inHours < 24) return '${diff.inHours} h ago';
   return '${diff.inDays} d ago';
+}
+
+class _ThemeButton extends StatelessWidget {
+  const _ThemeButton({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final mode = controller.themeMode;
+    final (icon, label) = switch (mode) {
+      AppThemeMode.system => (Icons.brightness_auto_rounded, 'System'),
+      AppThemeMode.light => (Icons.dark_mode_outlined, 'Light'),
+      AppThemeMode.dark => (Icons.light_mode_outlined, 'Dark'),
+    };
+    return IconButton(
+      tooltip: 'Appearance: $label. Tap to change.',
+      onPressed: controller.cycleThemeMode,
+      icon: Icon(icon),
+    );
+  }
 }
 
 class _SyncButton extends StatelessWidget {

@@ -65,6 +65,7 @@ nav:
           - System design: dev/architecture/system-design.md
           - Agent design: dev/architecture/agent-design.md
           - Tool search: dev/architecture/tool-search.md
+          - Database tools: dev/architecture/database-tools.md
       - Plugin SDK: dev/plugin-sdk.md
       - Design documents:
           - Client system design: dev/designs/client-system-design.md

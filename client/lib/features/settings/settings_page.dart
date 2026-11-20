@@ -79,7 +79,8 @@ class SettingsPage extends StatelessWidget {
                             label: const Text('Rename this device'),
                           ),
                           OutlinedButton.icon(
-                            onPressed: () => _reauthenticate(context, controller),
+                            onPressed: () =>
+                                _reauthenticate(context, controller),
                             icon: const Icon(Icons.lock_open_outlined),
                             label: const Text('Sign in again'),
                           ),
@@ -90,9 +91,47 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 SectionCard(
+                  title: 'Appearance',
+                  subtitle: 'Choose light, dark or follow the system setting. Your choice is remembered on this device.',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SegmentedButton<AppThemeMode>(
+                        segments: const [
+                          ButtonSegment(
+                            value: AppThemeMode.system,
+                            icon: Icon(Icons.brightness_auto_rounded),
+                            label: Text('System'),
+                          ),
+                          ButtonSegment(
+                            value: AppThemeMode.light,
+                            icon: Icon(Icons.light_mode_outlined),
+                            label: Text('Light'),
+                          ),
+                          ButtonSegment(
+                            value: AppThemeMode.dark,
+                            icon: Icon(Icons.dark_mode_outlined),
+                            label: Text('Dark'),
+                          ),
+                        ],
+                        selected: {controller.themeMode},
+                        onSelectionChanged: (value) =>
+                            controller.setThemeMode(value.first),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'The glass cards, gradients and status colours adapt automatically.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SectionCard(
                   title: 'Sync',
-                  subtitle:
-                      'The outbox drains automatically while the VIRA server is reachable.',
+                  subtitle: 'The outbox drains automatically while the VIRA server is reachable.',
                   child: Column(
                     children: [
                       SwitchListTile(
@@ -158,8 +197,7 @@ class SettingsPage extends StatelessWidget {
                 const SizedBox(height: 16),
                 SectionCard(
                   title: 'Privacy and data',
-                  subtitle:
-                      'Local data stays on this device unless you export or sync it.',
+                  subtitle: 'Local data stays on this device unless you export or sync it.',
                   child: Column(
                     children: [
                       ListTile(
@@ -195,7 +233,8 @@ class SettingsPage extends StatelessWidget {
                 const SizedBox(height: 16),
                 SectionCard(
                   title: 'Device lifecycle',
-                  subtitle: 'Revocation takes effect on the server immediately.',
+                  subtitle:
+                      'Revocation takes effect on the server immediately.',
                   child: Column(
                     children: [
                       ListTile(
@@ -307,7 +346,8 @@ class SettingsPage extends StatelessWidget {
     if (id == null) return;
     final error = await controller.renameDevice(id, name);
     if (error != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
     }
   }
 
@@ -424,7 +464,9 @@ class SettingsPage extends StatelessWidget {
               Navigator.pop(dialogContext);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Local data copied to clipboard.')),
+                  const SnackBar(
+                    content: Text('Local data copied to clipboard.'),
+                  ),
                 );
               }
             },
@@ -465,9 +507,9 @@ class SettingsPage extends StatelessWidget {
     if (confirmed != true || !context.mounted) return;
     await controller.clearLocalHistory();
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Local insights cleared.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Local insights cleared.')));
     }
   }
 
@@ -479,7 +521,9 @@ class SettingsPage extends StatelessWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(unlink ? 'Sign out and unlink?' : 'Disconnect this device?'),
+        title: Text(
+          unlink ? 'Sign out and unlink?' : 'Disconnect this device?',
+        ),
         content: Text(
           unlink
               ? 'This revokes the device on the server, removes local credentials and deletes queued events.'

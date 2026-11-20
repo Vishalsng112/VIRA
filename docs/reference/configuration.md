@@ -26,6 +26,7 @@ file's inline comments.
 | `llm` | Default model and provider/model catalogue |
 | `agents` | Enabled agents and their settings |
 | `mcp_server` | MCP server command and permissions |
+| `database_mcp` | Built-in read-only database MCP server |
 | `agent_policy` | Persisted-agent loading and allowed modules |
 
 ## Environment overrides

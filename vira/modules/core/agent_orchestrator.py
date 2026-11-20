@@ -1,6 +1,9 @@
 # vira/modules/core/agent_orchestrator.py
 import importlib
 import asyncio
+import os
+import sys
+from pathlib import Path
 from loguru import logger
 from vira.agent_orchestration.message_bus import AgentMessageBus
 from vira.kernel.module_manager import ViraModule
@@ -152,6 +155,62 @@ class AgentOrchestratorModule(ViraModule):
                     "MCP not available or no 'mcp_server' config. "
                     "Only local tools (if any) will be available."
                 )
+
+            # Built-in read-only database MCP server. It gives the Chatbot
+            # schema-aware SELECT access without exposing write operations.
+            database_mcp = self._config_manager.get("database_mcp", {}) or {}
+            if (
+                MCP_AVAILABLE
+                and database_mcp.get("enabled", True)
+                and "database_query" not in self._mcp_by_name
+            ):
+                try:
+                    default_script = (
+                        Path(__file__).resolve().parents[3]
+                        / "vira"
+                        / "tools"
+                        / "database_mcp_server.py"
+                    )
+                    command = database_mcp.get("command") or [
+                        sys.executable,
+                        str(default_script),
+                    ]
+                    args = list(database_mcp.get("args") or [])
+                    if isinstance(command, list):
+                        cmd = command[0]
+                        args = command[1:] + args
+                    else:
+                        cmd = command
+                    child_env = {
+                        str(key): str(value)
+                        for key, value in {
+                            **os.environ,
+                            **(database_mcp.get("env") or {}),
+                        }.items()
+                    }
+                    connection = MCPServerConnection.stdio(
+                        name="database_query",
+                        command=cmd,
+                        args=args,
+                        env=child_env,
+                    )
+                    registered = await self.tool_registry.register_mcp_server(
+                        connection,
+                        default_permissions=ToolPermission(
+                            actions=database_mcp.get(
+                                "permissions", ["read", "execute"]
+                            )
+                        ),
+                    )
+                    self._mcp_connections.append(connection)
+                    self._mcp_by_name["database_query"] = connection
+                    logger.info(
+                        "Registered database_query MCP tools: {}", registered
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Failed to connect database_query MCP server: {}", exc
+                    )
 
             # Installed MCP marketplace servers (DB-backed allow-lists).
             if MCP_AVAILABLE:

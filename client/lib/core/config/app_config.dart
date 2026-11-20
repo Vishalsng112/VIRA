@@ -2,6 +2,9 @@ const appName = 'VIRA Link';
 const appVersion = '1.0.0';
 const protocolVersion = 1;
 
+/// How the app should choose its light or dark palette.
+enum AppThemeMode { system, light, dark }
+
 const defaultServerUrl = 'http://localhost:8000';
 const defaultCaptureIntervalSeconds = 10;
 const defaultSyncIntervalSeconds = 15;

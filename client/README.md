@@ -8,7 +8,7 @@ web PWA, Linux AppImage and Windows desktop executable.
 ## What it does
 
 - Signs in with a normal VIRA user account.
-- **Chats with the server's Chatbot agent** from the **Chat** tab: streaming answers, live tool activity, conversation history, search and delete.
+- **Chats with the server's Chatbot agent** from the **Chat** tab: streaming answers, a live step/tool trace inside the chat, conversation history, search, delete a chat and delete all chats.
 - Enrolls this device through `POST /api/v1/devices` and stores the one-time
   device credential in the platform keystore/keychain.
 - Captures device telemetry through modular collectors.

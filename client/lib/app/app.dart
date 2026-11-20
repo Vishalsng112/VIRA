@@ -40,13 +40,20 @@ class _ViraLinkAppState extends State<ViraLinkApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) => AppScope(
     controller: widget.controller,
-    child: MaterialApp(
-      title: appName,
-      debugShowCheckedModeBanner: false,
-      theme: buildLightTheme(),
-      darkTheme: buildDarkTheme(),
-      themeMode: ThemeMode.system,
-      home: const AppBackground(child: AppShell()),
+    child: AnimatedBuilder(
+      animation: widget.controller,
+      builder: (context, _) => MaterialApp(
+        title: appName,
+        debugShowCheckedModeBanner: false,
+        theme: buildLightTheme(),
+        darkTheme: buildDarkTheme(),
+        themeMode: switch (widget.controller.themeMode) {
+          AppThemeMode.system => ThemeMode.system,
+          AppThemeMode.light => ThemeMode.light,
+          AppThemeMode.dark => ThemeMode.dark,
+        },
+        home: const AppBackground(child: AppShell()),
+      ),
     ),
   );
 }

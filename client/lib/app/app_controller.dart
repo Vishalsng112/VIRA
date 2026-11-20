@@ -95,6 +95,20 @@ class AppController extends ChangeNotifier {
   bool get captureEnabled =>
       _capture?.captureEnabled ?? settings.captureEnabled;
   bool get autoSync => settings.autoSync;
+  AppThemeMode get themeMode => settings.themeMode;
+
+  Future<void> setThemeMode(AppThemeMode mode) async {
+    if (settings.themeMode == mode) return;
+    await settings.setThemeMode(mode);
+    notifyListeners();
+  }
+
+  /// Cycles System → Light → Dark → System for the quick header toggle.
+  Future<void> cycleThemeMode() => setThemeMode(switch (settings.themeMode) {
+    AppThemeMode.system => AppThemeMode.light,
+    AppThemeMode.light => AppThemeMode.dark,
+    AppThemeMode.dark => AppThemeMode.system,
+  });
 
   String get suggestedDeviceName {
     final profile = _profile;

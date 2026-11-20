@@ -231,6 +231,15 @@ class AgentLoop:
         ident = {"user_id": user_id}  # local tools read it; MCP tools must not receive it
         if device_id:
             ident["device_id"] = device_id
+        if name.startswith("database_query."):
+            # The database MCP server needs the authenticated caller for
+            # {{caller_user_id}} substitution and admin checks. Inject it only
+            # into tools whose schema declares it, and always override any
+            # value the model may have supplied.
+            props = self._props.get(name) or set()
+            if "vira_caller_user_id" in props:
+                params = dict(params)
+                params["vira_caller_user_id"] = user_id
         if "." in name:  # MCP tools: send only declared arguments, never framework ids
             props = self._props.get(name)
             if props:

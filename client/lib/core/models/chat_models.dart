@@ -97,22 +97,38 @@ class ChatStreamEvent {
   String? get detail => data['detail']?.toString();
   String? get response => data['response']?.toString();
   int? get status => (data['status'] as num?)?.toInt();
+  String? get text =>
+      (data['text'] ?? data['message'] ?? data['label'])?.toString();
+  String? get tool => data['tool']?.toString();
+  String? get callId => data['id']?.toString();
+  Map<String, dynamic> get params => data['params'] is Map
+      ? Map<String, dynamic>.from(data['params'] as Map)
+      : const {};
+  bool get ok => data['ok'] != false;
 
-  /// A short human label for the live activity line.
+  /// A short human label for the live activity header.
   String? get label {
     switch (type) {
       case 'status':
-        return data['message']?.toString() ?? data['status']?.toString();
+        return data['label']?.toString() ??
+            data['message']?.toString() ??
+            data['status']?.toString();
       case 'thought':
         return 'Thinking…';
       case 'tool_start':
-        final name = data['tool'] ?? data['name'] ?? 'tool';
+        final name = (data['tool'] ?? data['name'] ?? 'tool')
+            .toString()
+            .split('.')
+            .last;
         return 'Using $name';
       case 'tool_end':
-        final name = data['tool'] ?? data['name'] ?? 'tool';
+        final name = (data['tool'] ?? data['name'] ?? 'tool')
+            .toString()
+            .split('.')
+            .last;
         return 'Finished $name';
       case 'check':
-        return data['message']?.toString();
+        return data['text']?.toString() ?? data['message']?.toString();
       default:
         return null;
     }

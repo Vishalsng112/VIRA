@@ -603,8 +603,17 @@ class ViraApi {
   Future<Map<String, dynamic>> createBackup() async =>
       _decode(await _send('POST', '/api/v1/admin/backups', user: true));
 
-  Future<Map<String, dynamic>> alerts() async =>
-      _decode(await _send('GET', '/ops/alerts', user: true));
+  Future<Map<String, dynamic>> alerts() async {
+    try {
+      return await _decode(
+        await _send('GET', '/api/v1/ops/alerts', user: true),
+      );
+    } on ViraApiException catch (error) {
+      // Older servers exposed this route without the /api/v1 prefix.
+      if (error.statusCode != 404) rethrow;
+    }
+    return _decode(await _send('GET', '/ops/alerts', user: true));
+  }
 
   void close() => _client.close();
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:material_ui/material_ui.dart';
 
@@ -26,7 +27,8 @@ class _ChatPageState extends State<ChatPage> {
   List<ChatConversation> _conversations = const [];
   List<ChatMessage> _messages = const [];
   ChatConversation? _selected;
-  List<String> _activity = const [];
+  List<Map<String, dynamic>> _liveEvents = const [];
+  String _liveLabel = 'Thinking…';
   String? _error;
   String _searchText = '';
   bool _loadingList = true;
@@ -34,6 +36,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _sending = false;
   bool _showList = true;
   bool _incognito = false;
+  bool _deletingAll = false;
   bool _disposed = false;
 
   static const _suggestions = [
@@ -152,7 +155,8 @@ class _ChatPageState extends State<ChatPage> {
     _set(() {
       _selected = conversation;
       _messages = const [];
-      _activity = const [];
+      _liveEvents = const [];
+      _liveLabel = 'Thinking…';
       _error = null;
       _showList = false;
       _incognito = conversation.incognito;
@@ -164,7 +168,8 @@ class _ChatPageState extends State<ChatPage> {
     _set(() {
       _selected = null;
       _messages = const [];
-      _activity = const [];
+      _liveEvents = const [];
+      _liveLabel = 'Thinking…';
       _error = null;
       _incognito = incognito;
       _showList = false;
@@ -211,6 +216,65 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _deleteAllConversations() async {
+    final api = _api;
+    if (api == null || _conversations.isEmpty || _sending) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete all chats?'),
+        content: Text(
+          'This removes ${_conversations.length} conversation(s) and all of '
+          'their messages from your VIRA server. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.error,
+            ),
+            child: const Text('Delete all'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    _set(() {
+      _deletingAll = true;
+      _error = null;
+    });
+    var deleted = 0;
+    var failed = 0;
+    for (final conversation in List<ChatConversation>.from(_conversations)) {
+      try {
+        await api.deleteConversation(conversation.id);
+        deleted += 1;
+      } on Object {
+        failed += 1;
+      }
+    }
+    _set(() {
+      _deletingAll = false;
+      _selected = null;
+      _messages = const [];
+      _liveEvents = const [];
+      _liveLabel = 'Thinking…';
+      _showList = true;
+    });
+    await _loadConversations();
+    if (!mounted) return;
+    _snack(
+      failed == 0
+          ? 'Deleted ${deleted == 1 ? '1 chat' : '$deleted chats'}.'
+          : 'Deleted $deleted chat(s); $failed could not be deleted.',
+    );
+  }
+
   Future<void> _send([String? preset]) async {
     final text = (preset ?? _composer.text).trim();
     if (text.isEmpty || _sending) return;
@@ -223,7 +287,8 @@ class _ChatPageState extends State<ChatPage> {
     _set(() {
       _sending = true;
       _error = null;
-      _activity = const [];
+      _liveEvents = const [];
+      _liveLabel = 'Thinking…';
       _messages = [
         ..._messages,
         ChatMessage(role: 'user', content: text, createdAt: DateTime.now()),
@@ -248,7 +313,6 @@ class _ChatPageState extends State<ChatPage> {
       }
 
       String? answer;
-      final activity = <String>[];
       await for (final event in api.streamChat(
         message: text,
         conversationId: conversation.id,
@@ -264,14 +328,7 @@ class _ChatPageState extends State<ChatPage> {
             event.detail ?? 'VIRA could not answer that message.',
           );
         }
-        final label = event.label;
-        if (label != null && label.trim().isNotEmpty) {
-          activity.add(label);
-          if (activity.length > 4) activity.removeAt(0);
-          _set(() {
-            _activity = List<String>.from(activity);
-          });
-        }
+        _recordEvent(event);
         _scrollToEnd();
       }
 
@@ -282,16 +339,18 @@ class _ChatPageState extends State<ChatPage> {
           'VIRA finished without an answer. Please try asking again.',
         );
       }
+      final trace = List<Map<String, dynamic>>.from(_liveEvents);
       _set(() {
         _messages = [
           for (final message in _messages)
             if (message.pending)
-              message.copyWith(content: answer, pending: false)
+              message.copyWith(content: answer, pending: false, trace: trace)
             else
               message,
         ];
         _sending = false;
-        _activity = const [];
+        _liveEvents = const [];
+        _liveLabel = 'Thinking…';
       });
       _scrollToEnd();
       await _loadConversations();
@@ -306,9 +365,11 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _failPending(String reason) {
+    final trace = List<Map<String, dynamic>>.from(_liveEvents);
     _set(() {
       _sending = false;
-      _activity = const [];
+      _liveEvents = const [];
+      _liveLabel = 'Thinking…';
       _error = reason;
       _messages = [
         for (final message in _messages)
@@ -317,12 +378,27 @@ class _ChatPageState extends State<ChatPage> {
               content: message.content.isEmpty ? reason : message.content,
               pending: false,
               failed: true,
+              trace: trace,
             )
           else
             message,
       ];
     });
     _scrollToEnd();
+  }
+
+  void _recordEvent(ChatStreamEvent event) {
+    final data = Map<String, dynamic>.from(event.data);
+    data['type'] = event.type;
+    final events = [..._liveEvents, data];
+    if (events.length > 120) {
+      events.removeRange(0, events.length - 120);
+    }
+    final label = event.label?.trim();
+    _set(() {
+      _liveEvents = events;
+      if (label != null && label.isNotEmpty) _liveLabel = label;
+    });
   }
 
   void _scrollToEnd() {
@@ -396,6 +472,29 @@ class _ChatPageState extends State<ChatPage> {
                   ),
                 ),
               ),
+              if (_deletingAll)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else
+                PopupMenuButton<String>(
+                  tooltip: 'Chat options',
+                  onSelected: (value) {
+                    if (value == 'delete_all') _deleteAllConversations();
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'delete_all',
+                      enabled: _conversations.isNotEmpty && !_sending,
+                      child: const Text('Delete all chats'),
+                    ),
+                  ],
+                ),
               IconButton(
                 tooltip: 'New chat',
                 onPressed: () => _newChat(),
@@ -574,9 +673,7 @@ class _ChatPageState extends State<ChatPage> {
                       ),
                       Text(
                         _sending
-                            ? (_activity.isEmpty
-                                  ? 'VIRA is working…'
-                                  : _activity.last)
+                            ? _liveLabel
                             : 'Private assistant on your VIRA server',
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
@@ -610,7 +707,12 @@ class _ChatPageState extends State<ChatPage> {
                     padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
-                      return _MessageBubble(message: _messages[index]);
+                      final message = _messages[index];
+                      return _MessageBubble(
+                        message: message,
+                        liveEvents: message.pending ? _liveEvents : null,
+                        liveLabel: _liveLabel,
+                      );
                     },
                   ),
           ),
@@ -808,9 +910,15 @@ class _ChatPageState extends State<ChatPage> {
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.message,
+    this.liveEvents,
+    this.liveLabel,
+  });
 
   final ChatMessage message;
+  final List<Map<String, dynamic>>? liveEvents;
+  final String? liveLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -895,21 +1003,413 @@ class _MessageBubble extends StatelessWidget {
                   ),
                 ),
               ),
-              child: message.content.isEmpty && !failed
-                  ? const _TypingDots()
-                  : SelectableText(
-                      message.content,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        height: 1.55,
-                        color: failed ? theme.colorScheme.error : null,
-                      ),
-                    ),
+              child: Builder(
+                builder: (context) {
+                  final running = liveEvents != null;
+                  final trace = liveEvents ?? message.trace;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (running || trace.isNotEmpty) ...[
+                        _AgentTrace(
+                          events: trace,
+                          running: running,
+                          label: liveLabel ?? 'Thinking…',
+                        ),
+                        if (message.content.isNotEmpty || !running)
+                          const SizedBox(height: 10),
+                      ],
+                      if (message.content.isEmpty && !failed && running)
+                        const _TypingDots()
+                      else if (message.content.isNotEmpty || failed)
+                        SelectableText(
+                          message.content,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            height: 1.55,
+                            color: failed ? theme.colorScheme.error : null,
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _AgentTrace extends StatefulWidget {
+  const _AgentTrace({
+    required this.events,
+    required this.running,
+    required this.label,
+  });
+
+  final List<Map<String, dynamic>> events;
+  final bool running;
+  final String label;
+
+  @override
+  State<_AgentTrace> createState() => _AgentTraceState();
+}
+
+class _AgentTraceState extends State<_AgentTrace> {
+  late bool _expanded = widget.running;
+
+  @override
+  void didUpdateWidget(covariant _AgentTrace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.running && !oldWidget.running) {
+      _expanded = true;
+    } else if (!widget.running && oldWidget.running) {
+      _expanded = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final trace = _buildTrace(widget.events);
+    if (!widget.running && trace.items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final summary = widget.running
+        ? _withEllipsis(widget.label)
+        : trace.toolCount > 0
+        ? 'Worked for ${trace.seconds}s · ${trace.toolCount} '
+              'tool call${trace.toolCount == 1 ? '' : 's'}'
+        : 'Thought for ${trace.seconds}s';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.38),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.55),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+              child: Row(
+                children: [
+                  if (widget.running)
+                    const SizedBox(
+                      width: 15,
+                      height: 15,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 16,
+                      color: scheme.primary,
+                    ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 19,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded && trace.items.isNotEmpty) ...[
+            Divider(
+              height: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.4),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final item in trace.items.take(16))
+                    _TraceRow(item: item),
+                  if (trace.items.length > 16)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        '${trace.items.length - 16} earlier step(s) hidden',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _withEllipsis(String value) {
+    final text = value.trim();
+    return text.endsWith('…') ? text : '$text…';
+  }
+}
+
+class _TraceData {
+  const _TraceData({
+    required this.items,
+    required this.toolCount,
+    required this.seconds,
+  });
+
+  final List<_TraceItem> items;
+  final int toolCount;
+  final int seconds;
+}
+
+_TraceData _buildTrace(List<Map<String, dynamic>> events) {
+  final items = <_TraceItem>[];
+  final byId = <String, _TraceItem>{};
+  var toolCount = 0;
+
+  for (final event in events) {
+    final type = event['type']?.toString() ?? '';
+    if (type == 'thought') {
+      final text = (event['text'] ?? event['message'] ?? '').toString().trim();
+      if (text.isNotEmpty) items.add(_TraceItem.thought(text));
+    } else if (type == 'check') {
+      final text = (event['text'] ?? event['message'] ?? '').toString().trim();
+      if (text.isNotEmpty) items.add(_TraceItem.check(text));
+    } else if (type == 'tool_start') {
+      final tool = (event['tool'] ?? event['name'] ?? 'tool').toString();
+      final id = (event['id'] ?? 'tool-$toolCount').toString();
+      final params = event['params'] is Map
+          ? Map<String, dynamic>.from(event['params'] as Map)
+          : <String, dynamic>{};
+      final item = _TraceItem.tool(id: id, tool: tool, params: params);
+      byId[id] = item;
+      items.add(item);
+      toolCount += 1;
+    } else if (type == 'tool_end') {
+      final id = event['id']?.toString() ?? '';
+      final item = byId[id];
+      if (item != null) {
+        item.state = event['ok'] == false ? 'error' : 'ok';
+        item.ms = (event['ms'] as num?)?.toInt();
+        item.preview = event['preview']?.toString();
+      }
+    }
+  }
+
+  final stamps = events
+      .map((event) => (event['ts'] as num?)?.toDouble())
+      .whereType<double>()
+      .toList();
+  var seconds = 1;
+  if (stamps.length > 1) {
+    final difference = (stamps.last - stamps.first).round();
+    if (difference > seconds) seconds = difference;
+  }
+  return _TraceData(items: items, toolCount: toolCount, seconds: seconds);
+}
+
+class _TraceItem {
+  _TraceItem.thought(this.text)
+    : kind = 'thought',
+      id = '',
+      tool = '',
+      params = const {};
+
+  _TraceItem.check(this.text)
+    : kind = 'check',
+      id = '',
+      tool = '',
+      params = const {};
+
+  _TraceItem.tool({required this.id, required this.tool, required this.params})
+    : kind = 'tool',
+      text = '';
+
+  final String kind;
+  final String text;
+  final String id;
+  final String tool;
+  final Map<String, dynamic> params;
+  String state = 'running';
+  int? ms;
+  String? preview;
+}
+
+class _TraceRow extends StatelessWidget {
+  const _TraceRow({required this.item});
+
+  final _TraceItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    if (item.kind == 'thought') {
+      return _row(
+        context,
+        Icons.auto_awesome_outlined,
+        scheme.onSurfaceVariant,
+        Text(
+          _clip(item.text, 420),
+          maxLines: 4,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+            fontStyle: FontStyle.italic,
+            height: 1.4,
+          ),
+        ),
+      );
+    }
+    if (item.kind == 'check') {
+      return _row(
+        context,
+        Icons.info_outline,
+        const Color(0xFFFFB55C),
+        Text(
+          _clip(item.text, 300),
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.bodySmall?.copyWith(height: 1.4),
+        ),
+      );
+    }
+
+    final running = item.state == 'running';
+    final error = item.state == 'error';
+    final name = item.tool.split('.').last;
+    final args = _paramSummary(item.params);
+    final duration = item.ms == null
+        ? ''
+        : item.ms! >= 1000
+        ? '${(item.ms! / 1000).toStringAsFixed(1)}s'
+        : '${item.ms}ms';
+    return _row(
+      context,
+      null,
+      error ? scheme.error : const Color(0xFF4ADE9B),
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (running)
+                const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                Icon(
+                  error ? Icons.error_outline : Icons.check_circle,
+                  size: 14,
+                  color: error ? scheme.error : const Color(0xFF4ADE9B),
+                ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (duration.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Text(
+                  duration,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (args.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 20, top: 1),
+              child: Text(
+                args,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          if (item.preview != null && item.preview!.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 20, top: 3),
+              child: Text(
+                _clip(item.preview!, 320),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: error ? scheme.error : scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(BuildContext context, IconData? icon, Color color, Widget child) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (icon != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 1),
+              child: Icon(icon, size: 14, color: color),
+            )
+          else
+            const SizedBox(width: 14),
+          const SizedBox(width: 6),
+          Expanded(child: child),
+        ],
+      ),
+    );
+  }
+
+  static String _paramSummary(Map<String, dynamic> params) {
+    for (final value in params.values) {
+      if (value == null) continue;
+      final text = value is String ? value : jsonEncode(value);
+      final cleaned = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (cleaned.isNotEmpty) return _clip(cleaned, 90);
+    }
+    return '';
+  }
+
+  static String _clip(String value, int limit) =>
+      value.length <= limit ? value : '${value.substring(0, limit - 1)}…';
 }
 
 class _TypingDots extends StatelessWidget {

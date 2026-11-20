@@ -255,6 +255,15 @@ mcp_server:
   command: ["python", "vira/tools/mcp_server.py"]   # path to your MCP server script
   permissions: ["read", "write", "execute"]
 
+# Read-only database access for the Chatbot and agents.
+# Tools: database_tables, database_schema, database_examples,
+#        database_account_summary, database_query.
+database_mcp:
+  enabled: true
+  # Omit command to use the running Python interpreter (recommended).
+  # command: ["python", "vira/tools/database_mcp_server.py"]
+  permissions: ["read", "execute"]
+
 agent_policy:
   load_persisted_agents: false # only agents explicitly enabled below start at boot
   allowed_modules:
