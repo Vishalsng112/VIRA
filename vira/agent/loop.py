@@ -42,6 +42,7 @@ class LoopConfig:
     old_obs_chars: int = 300         # observations older than the last two
     max_prompt_chars: int = 16000    # ~4k tokens; keep below your model's num_ctx
     tool_timeout: float = 90.0
+    tool_timeouts: Dict[str, float] = field(default_factory=dict)  # per-tool overrides
     max_total_tool_chars: int = 30000  # one run's whole observation budget
     max_seconds: float = 240.0         # wall-clock budget for the tool loop
 
@@ -268,6 +269,16 @@ class AgentLoop:
                    ms=int((time.monotonic() - started) * 1000), preview=clip(step.observation, 700))
         return step
 
+    def _tool_timeout(self, name: str) -> float:
+        short = name.split(".")[-1]
+        value = self.cfg.tool_timeouts.get(name)
+        if value is None:
+            value = self.cfg.tool_timeouts.get(short)
+        try:
+            return max(1.0, float(value)) if value is not None else self.cfg.tool_timeout
+        except (TypeError, ValueError):
+            return self.cfg.tool_timeout
+
     async def _run_tool_inner(self, name: str, params: Dict[str, Any], ident: Dict[str, Any], user_id) -> Step:
         try:
             if name == "tool_search" and self.catalog is not None:
@@ -289,14 +300,14 @@ class AgentLoop:
                 coro = self.extra_tools[name](params)
             else:
                 coro = self.runtime.use_tool(self.agent_id, name, **ident, **params)
-            raw = await asyncio.wait_for(coro, timeout=self.cfg.tool_timeout)
+            raw = await asyncio.wait_for(coro, timeout=self._tool_timeout(name))
             text = tool_result_text(raw)
             failed = bool(getattr(raw, "isError", False))
             logger.info(f"[tool] {name} {clip(json.dumps(params, default=str), 200)} -> "
                         f"{'ERROR' if failed else 'ok'}: {clip(text, 300)}")
             return Step("tool", name, params, ("ERROR: " if failed else "") + text, ok=not failed)
         except asyncio.TimeoutError:
-            return Step("tool", name, params, f"ERROR: timed out after {self.cfg.tool_timeout:.0f}s", ok=False)
+            return Step("tool", name, params, f"ERROR: timed out after {self._tool_timeout(name):.0f}s", ok=False)
         except Exception as exc:  # fed back so the model can correct itself
             logger.warning(f"[{self.agent_id}] tool {name} failed: {exc}")
             return Step("tool", name, params, f"ERROR: {type(exc).__name__}: {exc}", ok=False)

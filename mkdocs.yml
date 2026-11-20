@@ -81,6 +81,7 @@ nav:
           - Multi-device design: dev/designs/multi-device-design.md
           - Multi-device implementation: dev/designs/multi-device-implementation.md
           - P4 ecosystem and scale: dev/designs/p4-ecosystem.md
+          - Sandbox execution environments: dev/designs/sandbox-execution.md
           - Wayland sensor design: dev/designs/wayland-sensor.md
       - Security:
           - Threat model: dev/security/threat-model.md

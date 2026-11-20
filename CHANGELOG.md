@@ -8,6 +8,12 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Added
 
+- Mature sandbox execution environments: persistent per-agent/per-user
+  workspaces, shell and argv execution, multi-file project creation, background
+  jobs with logs/kill, pip/npm dependency installs, archives with safe restore,
+  policy updates, usage/quota reporting and disk-backed recovery after restart.
+- ChatAgent per-agent tool permissions (`allow`/`deny`/`pinned`) and per-tool
+  timeouts; the shipped Chatbot pins the `sandbox` tool for code/build work.
 - Plugin examples and MCP server examples with end-to-end tests.
 - Contributor guide, decision log, release cadence and issue templates.
 - Showcase page for deployment patterns and community demos.
@@ -16,6 +22,9 @@ All notable changes to VIRA are documented here. The format follows
 
 - Documentation navigation now includes the platform matrix, evaluations,
   agent platform, release process and showcase.
+- The shipped configuration auto-approves the isolated `sandbox` tool via
+  `security.approvals.safe_tools`, so the ChatAgent can write and execute code
+  without a per-call approval. Shell and host-filesystem writes remain gated.
 
 ## [0.4.0] - 2026-11-21
 

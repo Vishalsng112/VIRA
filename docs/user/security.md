@@ -94,6 +94,15 @@ actions and leaves an audit trail.
 - The Bubblewrap sandbox gives agents a private filesystem namespace with CPU,
   memory, process and timeout limits. It is designed for development workloads,
   **not** for running hostile code. Use a container or VM for a stronger boundary.
+- Sandbox workspaces are persistent and owned by an agent plus the signed-in
+  user; explicit sandbox IDs owned by another user are rejected. Commands run
+  with a cleared environment, read-only system paths, `--cap-drop ALL`, and only
+  the workspace and artifacts mounts writable.
+- The shipped `config.yaml` lists `sandbox` in `security.approvals.safe_tools`,
+  so a ChatAgent can build, write and execute inside its isolated environment
+  without a prompt for every file or command. Remove it from `safe_tools` to
+  restore per-call approval. Read-only inspection operations never need
+  approval, and shell/filesystem tools remain gated regardless.
 - Plugins run in-process and are treated as trusted local code. Install only
   plugins you trust.
 

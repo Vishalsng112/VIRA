@@ -12,6 +12,7 @@ Tool awareness:
 """
 import re
 import uuid
+from fnmatch import fnmatch
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
@@ -74,11 +75,32 @@ class ChatAgent(BaseAgent):
         self.max_tokens = merged.get("max_tokens", 1024)
         self.history_limit = int(merged.get("history_limit", 20))
         self.retry_on_miss = bool(merged.get("retry_on_miss", True))
+        tool_settings = merged.get("tools")
+        if isinstance(tool_settings, dict):
+            allow = tool_settings.get("allow")
+            deny = tool_settings.get("deny")
+            pinned = tool_settings.get("pinned")
+        else:
+            allow = merged.get("allowed_tools", tool_settings)
+            deny = merged.get("denied_tools")
+            pinned = merged.get("pinned_tools")
+        # None/empty allow means "every registered tool"; a non-empty list is an
+        # explicit per-agent permission list.  Pinned tools are always offered
+        # to the loop, which is how code/build agents keep the sandbox visible.
+        self.allowed_tools = [str(item) for item in allow] if isinstance(allow, (list, tuple)) and allow else None
+        self.denied_tools = [str(item) for item in deny] if isinstance(deny, (list, tuple)) else []
+        self.pinned_tools = [str(item) for item in pinned] if isinstance(pinned, (list, tuple)) else []
+        tool_timeouts = merged.get("tool_timeouts")
+        self.tool_timeouts = (
+            {str(name): float(value) for name, value in tool_timeouts.items()}
+            if isinstance(tool_timeouts, dict) else {}
+        )
         self.loop_config = LoopConfig(
             max_steps=int(merged.get("max_steps", 6)),
             max_tool_chars=int(merged.get("max_tool_chars", 3000)),
             max_prompt_chars=int(merged.get("max_prompt_chars", 12000)),
             tool_timeout=float(merged.get("tool_timeout", 90)),
+            tool_timeouts=self.tool_timeouts,
             max_total_tool_chars=int(merged.get("max_total_tool_chars", 30000)),
             max_seconds=float(merged.get("max_seconds", 240)),
         )
@@ -131,21 +153,42 @@ class ChatAgent(BaseAgent):
             self.definitions = self._load_definitions()
             self._definitions_version = definitions_version_now
 
+    def _tool_allowed(self, name: str) -> bool:
+        """Apply the agent's explicit tool permission list.
+
+        Patterns support shell-style globs and may match either the fully
+        qualified MCP name (``server.tool``) or the short tool name.
+        """
+        short = name.split(".")[-1]
+        def matches(pattern: str) -> bool:
+            return fnmatch(name, pattern) or fnmatch(short, pattern)
+        if any(matches(pattern) for pattern in self.denied_tools):
+            return False
+        if self.allowed_tools is None:
+            return True
+        return any(matches(pattern) for pattern in self.allowed_tools)
+
     def _load_tools(self) -> List[Dict]:
-        """Fetch tool metadata from the ToolExecutor."""
+        """Fetch tool metadata from the ToolExecutor, filtered by permission."""
         try:
             executor = self.runtime.tool_executor
             if not executor:
                 return []
             registry = getattr(executor, "_registry", None)
             tools = []
+            denied = []
             for name in executor.list_tools():
+                if not self._tool_allowed(name):
+                    denied.append(name)
+                    continue
                 tool = registry.get(name) if registry else None
                 tools.append({
                     "name": name,
                     "description": getattr(tool, "description", "No description"),
                     "parameters": tool.get_schema() if tool and hasattr(tool, "get_schema") else {},
                 })
+            if denied:
+                logger.info(f"[{self.name}] tools not permitted for this agent: {denied}")
             return tools
         except AttributeError:
             logger.warning("ToolExecutor does not support listing tools. No tools loaded.")
@@ -290,7 +333,11 @@ class ChatAgent(BaseAgent):
 
         def make_loop() -> AgentLoop:
             hints = [name for name, _ in self._suggest_tools(message, 3)]
-            selected = self.tool_catalog.select(message, limit=8, required=hints)
+            available = {t["name"] for t in self.available_tools}
+            required = hints + [name for name in self.pinned_tools
+                                if name in available and name not in hints]
+            selected = self.tool_catalog.select(
+                message, limit=max(8, len(required)), required=required)
             return AgentLoop(
                 self.runtime, self.agent_id, self._build_system_prompt(message, selected),
                 selected, self.loop_config,

@@ -24,8 +24,9 @@ APPROVAL_REQUIRED_PREFIX = "APPROVAL_REQUIRED"
 DEFAULT_TTL_MINUTES = 30
 
 _FILESYSTEM_DESTRUCTIVE = {"write", "mkdir"}
-_SANDBOX_DESTRUCTIVE = {
-    "write", "execute", "install", "create", "archive", "restore", "delete",
+_SANDBOX_SAFE = {
+    "read", "list", "stat", "search", "jobs", "job", "job_logs", "usage",
+    "sandboxes", "info", "read_file", "list_files", "cat", "ls",
 }
 _ALWAYS_DESTRUCTIVE = {"shell"}
 _MCP_SAFE_TOOLS = {"database_query", "insights", "web", "utility", "git",
@@ -82,8 +83,8 @@ def approval_reason(tool_name: str, action: str, arguments: Dict[str, Any],
             return f"Filesystem '{operation}' can modify the workspace"
         return None
     if short == "sandbox":
-        if operation in _SANDBOX_DESTRUCTIVE:
-            return f"Sandbox '{operation}' can write files or run code"
+        if operation not in _SANDBOX_SAFE:
+            return f"Sandbox '{operation or 'create'}' can write files or run code"
         return None
     if short in _ALWAYS_DESTRUCTIVE:
         return "Shell commands can affect the host"

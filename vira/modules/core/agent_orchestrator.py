@@ -109,15 +109,15 @@ class AgentOrchestratorModule(ViraModule):
             self.tool_registry.register(UserContextTool())
             self.tool_registry.register(RagSearchTool())
             sandbox_config = self._config_manager.get("sandbox", {}) or {}
-            sandbox_policy = {
+            default_policy = SandboxPolicy.from_dict({
                 key: sandbox_config[key]
-                for key in ("network_enabled", "timeout_seconds", "max_processes",
-                            "cpu_seconds", "memory_mb", "allow_package_install")
+                for key in SandboxPolicy.__dataclass_fields__
                 if key in sandbox_config
-            }
+            })
             self.tool_registry.register(SandboxTool(SandboxManager(
                 root=sandbox_config.get("root", "/AgentWorkspace"),
-                default_policy=SandboxPolicy(**sandbox_policy),
+                bwrap_binary=sandbox_config.get("bwrap_binary", "bwrap"),
+                default_policy=default_policy,
             )))
 
             # --- MCP Connection with enhanced logging ---

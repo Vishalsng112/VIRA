@@ -53,7 +53,30 @@ for the full set.
     - Keep port `8000` behind the reverse proxy.
 
 The Bubblewrap sandbox is for development workloads, not hostile code. Use a
-container or VM for a stronger boundary.
+container or VM for a stronger boundary. See
+[Sandbox execution environments](../dev/designs/sandbox-execution.md) for the
+full lifecycle, operations and policy reference.
+
+### Sandbox keys
+
+| Key | Default | Purpose |
+|---|---|---|
+| `backend` | `bubblewrap` | Execution backend (Bubblewrap is the supported backend) |
+| `root` | `/AgentWorkspace` | Writable root for sandbox workspaces and archives |
+| `bwrap_binary` | `bwrap` | Override the Bubblewrap executable path |
+| `network_enabled` | `false` | Default outbound network access |
+| `timeout_seconds` | `900` | Maximum wall clock per command |
+| `max_processes` | `128` | Process/thread headroom |
+| `cpu_seconds` | `600` | RLIMIT_CPU |
+| `memory_mb` | `2048` | RLIMIT_AS |
+| `allow_package_install` | `true` | Enable `pip`/`npm` installs |
+| `allow_shell` | `true` | Allow shell command strings (`bash -lc`) |
+| `workspace_quota_mb` | `2048` | Soft quota for project files |
+| `max_output_bytes` | `200000` | Per-stream output cap |
+
+Individual sandboxes may override these values at creation with the
+`policy` argument of the `sandbox` tool. `security.approvals` still gates
+destructive operations.
 
 ## Related
 

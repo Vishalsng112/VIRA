@@ -61,12 +61,16 @@ scheduler:
 sandbox:
   backend: bubblewrap
   root: /AgentWorkspace
+  # bwrap_binary: bwrap            # override when bubblewrap is not on PATH
   network_enabled: true
   timeout_seconds: 900
   max_processes: 128
   cpu_seconds: 600
   memory_mb: 2048
   allow_package_install: true
+  allow_shell: true                # strings run through /bin/bash -lc inside the sandbox
+  workspace_quota_mb: 2048         # soft disk quota enforced after file operations
+  max_output_bytes: 200000         # per stream, keeps huge build logs out of the prompt
 
 # Core provider-neutral tools. Keep this inside a project directory or another
 # explicitly approved root; sandbox remains the option for untrusted code.
@@ -82,8 +86,12 @@ security:
     ttl_minutes: 30
     # Force every operation of these tools through approval:
     # destructive_tools: ["mcp_server.custom_shell"]
-    # Always allow these even if their category looks destructive:
-    # safe_tools: ["filesystem"]
+    # Always allow these even if their category looks destructive.
+    # The sandbox is an isolated execution environment with its own filesystem,
+    # namespace, network policy and resource limits, so agents can build and run
+    # projects without a prompt per file/command. Remove "sandbox" here to
+    # restore per-call approval for sandbox writes, executes and installs.
+    safe_tools: ["sandbox"]
   default_permissions:
     - "event.publish.*"
     - "command.execute.command.agent.run"
@@ -94,6 +102,8 @@ security:
     - "llm.call.*"
     - "tool.execute.*"
     - "tool.use.*"
+    # Explicit grant for sandbox execution environments (also covered by tool.use.*).
+    - "tool.use.sandbox.*"
 
 # Request rate limits (in-process; use Redis for multi-worker deployments).
 rate_limits:
@@ -212,11 +222,20 @@ agents:
       max_prompt_chars: 12000   # ~3k tokens; raise if your model has a bigger context
       max_tool_chars: 3000      # tool output shown to the model per call
       max_total_tool_chars: 30000  # whole-run observation budget
-      max_seconds: 240          # wall-clock budget for the tool loop
+      max_seconds: 600          # wall-clock budget for the tool loop (builds take time)
       tool_timeout: 90          # seconds per tool call (search tries several engines)
+      tool_timeouts:            # per-tool overrides; sandbox builds can run long
+        sandbox: 600
       history_limit: 20         # messages kept per conversation
       learn_lessons: true       # store/recall lessons from failed tool calls
       delegation: true          # allow sub-agents from vira/agent/definitions/*.md
+      # Explicit per-agent tool permission. An empty allow list means every
+      # registered tool is available; add names/globs to restrict this agent.
+      # 'pinned' keeps the sandbox in the prompt so code/build tasks can always
+      # create an execution environment instead of only chatting about it.
+      tools:
+        allow: []               # e.g. ["sandbox", "web", "filesystem", "database_query.*"]
+        pinned: ["sandbox"]
       # definitions_dir: "~/.vira/agents"   # your own sub-agent .md files
 
   # - name: AutonomousBehaviorAgent
