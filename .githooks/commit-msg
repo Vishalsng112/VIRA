@@ -1,0 +1,8 @@
+#!/bin/sh
+# Reject commits that credit GitHub Copilot as a co-author.
+# Such trailers cause GitHub to list "Copilot" as a repository contributor.
+if grep -qiE '^Co-authored-by:.*(Copilot|github-copilot)' "$1"; then
+  echo "Commit rejected: remove the Copilot co-author trailer." >&2
+  echo "See .githooks/commit-msg" >&2
+  exit 1
+fi
