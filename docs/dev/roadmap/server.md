@@ -148,7 +148,7 @@ and auditable; specialist agents answer common insight questions reliably.
 - [x] **Plugin/extension API**: manifest-discovered plugins, versioned SDK,
   declared permissions, tools, routes, sensors, agents, prompt specialists,
   events, jobs and namespaced state. Enable/disable/reload via
-  `/api/v1/plugins`; guide in `docs/PLUGIN_SDK.md`.
+  `/api/v1/plugins`; guide in `docs/dev/plugin-sdk.md`.
 - [x] **MCP tool marketplace** and remote tool allow-list policies: curated
   catalogue, install/enable/connect lifecycle and `default`/`user`/`role`/`org`
   policies enforced by the tool executor.
@@ -164,7 +164,7 @@ and auditable; specialist agents answer common insight questions reliably.
   ledger, daily/model/agent summaries, resource usage and user/org/global token
   and cost quotas.
 
-Full design notes: [P4_ECOSYSTEM.md](P4_ECOSYSTEM.md).
+Full design notes: [P4_ECOSYSTEM.md](../designs/p4-ecosystem.md).
 
 ### P5 — Operations and security
 

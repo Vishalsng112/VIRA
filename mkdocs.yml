@@ -1,0 +1,147 @@
+# VIRA documentation site.
+#
+# Build:      mkdocs build --strict
+# Preview:    mkdocs serve -a 127.0.0.1:8001
+# PDF:        mkdocs build -f mkdocs.pdf-user.yml
+#             mkdocs build -f mkdocs.pdf-dev.yml
+# Deploy:     mike deploy --push --update-aliases <version> latest
+site_name: VIRA
+site_author: VIRA contributors
+site_description: Local-first AI server and extensible agent platform
+site_url: https://vishalsng112.github.io/VIRA/
+repo_url: https://github.com/Vishalsng112/VIRA
+repo_name: Vishalsng112/VIRA
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; VIRA contributors · MIT licensed
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - User manual:
+      - user/index.md
+      - Getting started: user/getting-started.md
+      - Install:
+          - One-command install: user/install/one-command.md
+          - Docker and deployment: user/install/docker.md
+      - VIRA Link client: user/client.md
+      - Troubleshooting: user/troubleshooting.md
+  - Developer manual:
+      - dev/index.md
+      - Contributing: dev/contributing.md
+      - Architecture:
+          - Framework overview: dev/architecture/framework.md
+          - System design: dev/architecture/system-design.md
+          - Agent design: dev/architecture/agent-design.md
+          - Tool search: dev/architecture/tool-search.md
+      - Plugin SDK: dev/plugin-sdk.md
+      - Design documents:
+          - Client system design: dev/designs/client-system-design.md
+          - Multi-device design: dev/designs/multi-device-design.md
+          - Multi-device implementation: dev/designs/multi-device-implementation.md
+          - P4 ecosystem and scale: dev/designs/p4-ecosystem.md
+          - Wayland sensor design: dev/designs/wayland-sensor.md
+      - Roadmap:
+          - Server roadmap: dev/roadmap/server.md
+          - Client roadmap: dev/roadmap/client.md
+  - Reference:
+      - HTTP API: reference/api.md
+      - Events: reference/events.md
+      - Configuration: reference/configuration.md
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: date
+  - minify:
+      minify_html: true
+  - redirects:
+      redirect_maps:
+        "INSTALL.md": "user/install/one-command.md"
+        "DOCKER.md": "user/install/docker.md"
+        "VIRA_DOCS.md": "dev/architecture/framework.md"
+        "SYSTEM_DESIGN.md": "dev/architecture/system-design.md"
+        "AGENT_DESIGN.md": "dev/architecture/agent-design.md"
+        "TOOL_SEARCH.md": "dev/architecture/tool-search.md"
+        "PLUGIN_SDK.md": "dev/plugin-sdk.md"
+        "P4_ECOSYSTEM.md": "dev/designs/p4-ecosystem.md"
+        "MULTI_DEVICE_IMPLEMENTATION.md": "dev/designs/multi-device-implementation.md"
+        "WAYLAND_SENSOR_DESIGN.md": "dev/designs/wayland-sensor.md"
+        "SERVER_ROADMAP.md": "dev/roadmap/server.md"
+  - swagger-ui-tag
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Vishalsng112/VIRA
+      name: VIRA on GitHub
+  version:
+    provider: mike
+    default: latest
+
+validation:
+  links:
+    not_found: warn
+    absolute_links: warn
+    unrecognized_links: warn
+  anchors: warn
+

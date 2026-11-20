@@ -1,0 +1,9 @@
+# Documentation ownership.
+# Reviewers are requested automatically for changes under docs/ or to the
+# documentation toolchain. Replace the handle if the docs maintainer changes.
+/docs/                      @Vishalsng112
+/mkdocs.yml                 @Vishalsng112
+/mkdocs.pdf-user.yml        @Vishalsng112
+/mkdocs.pdf-dev.yml         @Vishalsng112
+/requirements-docs.txt      @Vishalsng112
+/.github/workflows/docs.yml @Vishalsng112

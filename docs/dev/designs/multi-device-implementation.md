@@ -1,6 +1,6 @@
 # VIRA Multi-Device Implementation Notes
 
-Implements `VIRA_MULTI_DEVICE_DESIGN.md` against the current code base. The
+Implements `docs/dev/designs/multi-device-design.md` against the current code base. The
 server is a platform; endpoint devices connect through `/api/v1`. **The server
 installation is itself an endpoint device** (`devices.is_server_local = 1`): its
 in-process sensors publish through the same `EventIngestionService` as remote
@@ -39,7 +39,7 @@ NFR-REL-01, NFR-OBS-01, NFR-COMP-01 map to the tests in
 * Hard user deletion / retention workflow (delete is a tombstone; conversations and memories are kept).
 * A web UI for user/device administration (use the API).
 * The unversioned legacy routes remain as adapters; the web UI still uses them.
-* `docs/SYSTEM_DESIGN.md` / `VIRA_DOCS.md` / diagrams were not rewritten.
+* `docs/dev/architecture/system-design.md` / `docs/dev/architecture/framework.md` / diagrams were not rewritten.
 
 ## Operating notes
 

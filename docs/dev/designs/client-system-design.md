@@ -2,7 +2,7 @@
 
 > **Status:** Draft v0.1 · **Audience:** Flutter and VIRA-server developers · **Scope:** the cross-platform client app (Android, iOS/iPadOS, Linux, web) for the *Private Family Assistant* use case, and the server additions it requires.
 >
-> Companion to [`SYSTEM_DESIGN.md`](./SYSTEM_DESIGN.md) (server) and [`MULTI_DEVICE_IMPLEMENTATION.md`](./MULTI_DEVICE_IMPLEMENTATION.md). This document is written so a developer can start coding from it: every requirement has an ID, every API has a payload, every table has DDL, and the client internals are specified down to class level.
+> Companion to [`SYSTEM_DESIGN.md`](../architecture/system-design.md) (server) and [`MULTI_DEVICE_IMPLEMENTATION.md`](./multi-device-implementation.md). This document is written so a developer can start coding from it: every requirement has an ID, every API has a payload, every table has DDL, and the client internals are specified down to class level.
 
 ---
 

@@ -22,11 +22,11 @@
 
 ## Architecture Overview
 
-![Project Screenshot](VIRA_architecture.png)
+![Project Screenshot](../../assets/VIRA_architecture.png)
 
 For the target high-level and low-level design, persistence boundaries,
 database selection guidance, and migration plan, see
-[SYSTEM_DESIGN.md](./SYSTEM_DESIGN.md).
+[SYSTEM_DESIGN.md](./system-design.md).
 
 ---
 

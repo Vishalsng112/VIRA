@@ -4,7 +4,7 @@ This phase makes VIRA extensible and deployable beyond a single household.
 
 ## Plugin and extension API
 
-See [PLUGIN_SDK.md](PLUGIN_SDK.md). Highlights:
+See [PLUGIN_SDK.md](../plugin-sdk.md). Highlights:
 
 - manifest-based plugin discovery (`vira-plugin.json`)
 - stable `Plugin` / `PluginContext` SDK

@@ -9,12 +9,12 @@ first and allows individual runtime components to scale independently later.
 
 VIRA is an asynchronous Python application composed of:
 
-- FastAPI HTTP routes in [`vira/api/app.py`](../vira/api/app.py)
-- Kernel lifecycle and event processing in [`vira/kernel/`](../vira/kernel/)
-- Agents and lifecycle contracts in [`vira/agent/`](../vira/agent/)
-- Agent routing and scheduling in [`vira/agent_orchestration/`](../vira/agent_orchestration/)
-- LLM and tool access through [`vira/agent_runtime/`](../vira/agent_runtime/)
-- Authentication and SQLite access in [`vira/auth/`](../vira/auth/)
+- FastAPI HTTP routes in [`vira/api/app.py`](https://github.com/Vishalsng112/VIRA/blob/main/vira/api/app.py)
+- Kernel lifecycle and event processing in [`vira/kernel/`](https://github.com/Vishalsng112/VIRA/tree/main/vira/kernel/)
+- Agents and lifecycle contracts in [`vira/agent/`](https://github.com/Vishalsng112/VIRA/tree/main/vira/agent/)
+- Agent routing and scheduling in [`vira/agent_orchestration/`](https://github.com/Vishalsng112/VIRA/tree/main/vira/agent_orchestration/)
+- LLM and tool access through [`vira/agent_runtime/`](https://github.com/Vishalsng112/VIRA/tree/main/vira/agent_runtime/)
+- Authentication and SQLite access in [`vira/auth/`](https://github.com/Vishalsng112/VIRA/tree/main/vira/auth/)
 - SQLite-backed conversations, messages, agent runs, scoped memories, agent
   definitions, tool-call audits, and outbox events
 

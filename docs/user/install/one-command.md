@@ -187,4 +187,4 @@ Remove-Item $env:USERPROFILE\VIRA -Recurse -Force
 - **Port in use:** re-run with `--port 8080` or change `VIRA_PORT` in `.env`.
 
 For deeper deployment, backup, security and developer instructions see
-[docs/DOCKER.md](DOCKER.md) and the [architecture diagram](VIRA_architecture.svg).
+[Docker and deployment](docker.md) and the [architecture diagram](../../assets/VIRA_architecture.svg).

@@ -401,8 +401,8 @@ docker compose -f compose.yaml -f compose.dev.yaml up -d --build
 
 ## Related docs
 
-- [Architecture](VIRA_architecture.svg)
-- [Deployment roadmap](SERVER_ROADMAP.md)
-- [Plugin SDK](PLUGIN_SDK.md)
-- [P4 ecosystem](P4_ECOSYSTEM.md)
-- [Client README](../client/README.md)
+- [Architecture](../../assets/VIRA_architecture.svg)
+- [Deployment roadmap](../../dev/roadmap/server.md)
+- [Plugin SDK](../../dev/plugin-sdk.md)
+- [P4 ecosystem](../../dev/designs/p4-ecosystem.md)
+- [Client README](https://github.com/Vishalsng112/VIRA/blob/main/client/README.md)

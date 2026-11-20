@@ -1,0 +1,58 @@
+# VIRA Developer Manual (PDF).
+#
+#   ENABLE_PDF_EXPORT=1 mkdocs build -f mkdocs.pdf-dev.yml
+#
+# Produces site-pdf/dev/pdf/vira-developer-manual.pdf from the same Markdown as
+# the website. Only `docs/dev/` and `docs/reference/` are included.
+INHERIT: mkdocs.yml
+
+site_dir: site-pdf/dev
+
+exclude_docs: |
+  user/
+
+# Keep the PDF nav flat. mkdocs-with-pdf drops pages that sit inside a nested
+# section (a section inside a section), so every page is a top-level chapter.
+nav:
+  - Home: index.md
+  - Developer manual: dev/index.md
+  - Contributing: dev/contributing.md
+  - Framework overview: dev/architecture/framework.md
+  - System design: dev/architecture/system-design.md
+  - Agent design: dev/architecture/agent-design.md
+  - Tool search: dev/architecture/tool-search.md
+  - Plugin SDK: dev/plugin-sdk.md
+  - Client system design: dev/designs/client-system-design.md
+  - Multi-device design: dev/designs/multi-device-design.md
+  - Multi-device implementation: dev/designs/multi-device-implementation.md
+  - P4 ecosystem and scale: dev/designs/p4-ecosystem.md
+  - Wayland sensor design: dev/designs/wayland-sensor.md
+  - Server roadmap: dev/roadmap/server.md
+  - Client roadmap: dev/roadmap/client.md
+  - HTTP API: reference/api.md
+  - Events: reference/events.md
+  - Configuration: reference/configuration.md
+
+plugins:
+  - search
+  - with-pdf:
+      enabled_if_env: ENABLE_PDF_EXPORT
+      output_path: pdf/vira-developer-manual.pdf
+      cover: true
+      cover_title: VIRA Developer Manual
+      cover_subtitle: Building, extending and operating VIRA
+      author: VIRA contributors
+      copyright: MIT licensed
+      toc_title: Contents
+      toc_level: 3
+      ordered_chapter_level: 2
+      back_cover: false
+      verbose: false
+      theme_handler_path: scripts/pdf_theme.py
+
+validation:
+  links:
+    not_found: ignore
+    absolute_links: ignore
+    unrecognized_links: ignore
+  anchors: ignore

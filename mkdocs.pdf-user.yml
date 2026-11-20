@@ -1,0 +1,48 @@
+# VIRA User Manual (PDF).
+#
+#   ENABLE_PDF_EXPORT=1 mkdocs build -f mkdocs.pdf-user.yml
+#
+# Produces site-pdf/user/pdf/vira-user-manual.pdf from the same Markdown as the
+# website. Only `docs/user/` and the landing page are included.
+INHERIT: mkdocs.yml
+
+site_dir: site-pdf/user
+
+exclude_docs: |
+  dev/
+  reference/
+
+# Keep the PDF nav flat. mkdocs-with-pdf drops pages that sit inside a nested
+# section (a section inside a section), so every page is a top-level chapter.
+nav:
+  - Home: index.md
+  - User manual: user/index.md
+  - Getting started: user/getting-started.md
+  - One-command install: user/install/one-command.md
+  - Docker and deployment: user/install/docker.md
+  - VIRA Link client: user/client.md
+  - Troubleshooting: user/troubleshooting.md
+
+plugins:
+  - search
+  - with-pdf:
+      enabled_if_env: ENABLE_PDF_EXPORT
+      output_path: pdf/vira-user-manual.pdf
+      cover: true
+      cover_title: VIRA User Manual
+      cover_subtitle: Running and using VIRA
+      author: VIRA contributors
+      copyright: MIT licensed
+      toc_title: Contents
+      toc_level: 3
+      ordered_chapter_level: 2
+      back_cover: false
+      verbose: false
+      theme_handler_path: scripts/pdf_theme.py
+
+validation:
+  links:
+    not_found: ignore
+    absolute_links: ignore
+    unrecognized_links: ignore
+  anchors: ignore

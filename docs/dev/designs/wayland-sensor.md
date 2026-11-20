@@ -37,7 +37,7 @@ The portal's source selection and consent must remain visible to the user.
 
 ## Configuration guidance
 
-The default values in [`config.yaml`](../config.yaml) balance behavioral
+The default values in [`config.yaml`](https://github.com/Vishalsng112/VIRA/blob/main/config.yaml) balance behavioral
 resolution with event volume:
 
 - Event-driven filesystem changes are the primary fine-grained work signal.

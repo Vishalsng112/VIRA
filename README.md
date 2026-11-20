@@ -39,7 +39,7 @@ VIRA has two pieces:
   and health signals. It connects to VIRA Server. You can use the dashboard and
   chat without installing VIRA Link.
 
-[![VIRA Server and VIRA Link client](docs/VIRA_server_client.svg)](docs/VIRA_server_client.svg)
+[![VIRA Server and VIRA Link client](docs/assets/VIRA_server_client.svg)](docs/assets/VIRA_server_client.svg)
 
 *VIRA Server is installed once — usually in Docker on a computer or NAS. VIRA Link
 is installed only on devices whose signals you want to collect: phones, tablets
@@ -65,7 +65,7 @@ Docker; chooses an Ollama model; downloads VIRA; starts the server and worker;
 and pulls the model.
 
 Open <http://localhost:8000> when it finishes. The first visit creates the admin
-account. Full install options and safety notes: **[docs/INSTALL.md](docs/INSTALL.md)**.
+account. Full install options and safety notes: **[docs/user/install/one-command.md](docs/user/install/one-command.md)**.
 
 ### Manual Docker install
 
@@ -91,7 +91,7 @@ docker compose -f compose.host-ollama.yaml up -d --build
 ```
 
 Full install, server/client, native-Ollama, GPU, backup and troubleshooting
-instructions: **[docs/DOCKER.md](docs/DOCKER.md)**.
+instructions: **[docs/user/install/docker.md](docs/user/install/docker.md)**.
 
 ### Run from source (development)
 
@@ -216,8 +216,8 @@ itself registered as a device, so local sensors use the same ingestion path as r
 clients. Device credentials are separate from user sessions, scoped, expiring and
 revocable.
 
-See [docs/MULTI_DEVICE_IMPLEMENTATION.md](docs/MULTI_DEVICE_IMPLEMENTATION.md) for the
-current status and [VIRA_MULTI_DEVICE_DESIGN.md](VIRA_MULTI_DEVICE_DESIGN.md) for the
+See [docs/dev/designs/multi-device-implementation.md](docs/dev/designs/multi-device-implementation.md) for the
+current status and [docs/dev/designs/multi-device-design.md](docs/dev/designs/multi-device-design.md) for the
 design.
 
 ### Device companion: VIRA Link
@@ -238,7 +238,7 @@ See [client/README.md](client/README.md) for the module layout and API contract.
 
 ---
 
-[![VIRA system architecture](docs/VIRA_architecture.svg)](docs/VIRA_architecture.svg)
+[![VIRA system architecture](docs/assets/VIRA_architecture.svg)](docs/assets/VIRA_architecture.svg)
 
 ---
 
@@ -275,23 +275,35 @@ client/                     VIRA Link device companion (Flutter)
 config.yaml                 runtime configuration
 run.py                      start VIRA
 Dockerfile / compose*.yaml  production server and Ollama deployment
-docs/DOCKER.md              server/client install and operations guide
+docs/                       documentation source (portal + manual + site config)
 ```
 
 ## Documentation
 
-- [docs/VIRA_DOCS.md](docs/VIRA_DOCS.md) — framework reference and config
-- [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) — design and persistence
-- [docs/AGENT_DESIGN.md](docs/AGENT_DESIGN.md)
-- [docs/TOOL_SEARCH.md](docs/TOOL_SEARCH.md) — tool catalog, relevance ranking and prompt budgeting
-- [docs/PLUGIN_SDK.md](docs/PLUGIN_SDK.md) — plugin manifest, permissions and extension API
-- [docs/P4_ECOSYSTEM.md](docs/P4_ECOSYSTEM.md) — marketplace, organizations, storage, quotas and scale-out
-- [docs/MULTI_DEVICE_IMPLEMENTATION.md](docs/MULTI_DEVICE_IMPLEMENTATION.md) and
-  [VIRA_MULTI_DEVICE_DESIGN.md](VIRA_MULTI_DEVICE_DESIGN.md)
-- [docs/INSTALL.md](docs/INSTALL.md) — one-command Linux/macOS/Windows installer
-- [docs/VIRA_server_client.svg](docs/VIRA_server_client.svg) — server vs client overview
-- [docs/DOCKER.md](docs/DOCKER.md) — server/client installation, Docker, Ollama, GPU and operations
-- [docs/VIRA_architecture.svg](docs/VIRA_architecture.svg) — complete system architecture diagram
+The documentation is built as a website and as PDF manuals from the Markdown in
+`docs/`:
+
+- **Website:** <https://vishalsng112.github.io/VIRA/>
+- **User manual (PDF):** attached to each [release](https://github.com/Vishalsng112/VIRA/releases)
+- **Developer manual (PDF):** attached to each [release](https://github.com/Vishalsng112/VIRA/releases)
+
+Start with:
+
+- [Getting started](docs/user/getting-started.md) — install and run VIRA
+- [Docker and deployment](docs/user/install/docker.md) — server/client, Ollama, GPU, operations
+- [Developer manual](docs/dev/index.md) — architecture, plugin SDK and design docs
+- [API reference](docs/reference/api.md) — generated from the FastAPI schema
+- [Architecture diagram](docs/assets/VIRA_architecture.svg)
+- [Contributing](CONTRIBUTING.md) — including how to build the docs locally
+
+Preview the docs locally (creates a project-local `.venv`, so the system
+`mkdocs` is never used):
+
+```bash
+./scripts/docs.sh serve      # http://127.0.0.1:8001
+./scripts/docs.sh build      # strict build
+./scripts/docs.sh pdf        # both PDF manuals
+```
 
 ---
 

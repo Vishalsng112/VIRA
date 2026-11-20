@@ -73,3 +73,16 @@ Thumbs.db
 **/.symlinks/
 **/DerivedData/
 **/xcuserdata/
+
+# ---------------------------------------------------------------------------
+# Documentation build output and generated API schema
+# ---------------------------------------------------------------------------
+site/
+site-pdf/
+docs/reference/openapi.json
+
+# Local agent session transcripts (large, accidental commits)
+session-*.md
+
+# Large local backups (do not let tooling snapshot these)
+/backup.zip

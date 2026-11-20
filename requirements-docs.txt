@@ -1,0 +1,12 @@
+# Documentation toolchain for the VIRA docs site and PDF manuals.
+# Preferred:   ./scripts/docs.sh serve   (creates .venv and installs this file)
+# Manual:      python -m venv .venv && .venv/bin/pip install -r requirements-docs.txt
+#              .venv/bin/mkdocs serve -a 127.0.0.1:8001
+# PDF build:   ./scripts/docs.sh pdf
+mkdocs-material>=9.5,<10
+mkdocs-git-revision-date-localized-plugin>=1.2,<2
+mkdocs-minify-plugin>=0.8,<1
+mkdocs-redirects>=1.2,<2
+mkdocs-swagger-ui-tag>=0.6,<1
+mkdocs-with-pdf>=0.9,<1
+mike>=2.1,<3

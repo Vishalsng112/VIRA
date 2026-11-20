@@ -101,7 +101,7 @@ lib/
 ```
 
 The full data taxonomy, use cases and future phases are in
-[ROADMAP.md](ROADMAP.md). In short: the client is being built to collect device
+[ROADMAP.md](../docs/dev/roadmap/client.md). In short: the client is being built to collect device
 health, app usage, screen/focus signals and opt-in context so VIRA agents can
 later produce wellbeing, study and productivity insights.
 

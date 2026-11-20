@@ -37,7 +37,7 @@ python run.py
 
 The dashboard is at `http://localhost:8000`. On first run, admin credentials are printed to the terminal.
 
-> For the full architecture, event schemas, agent/sensor specs, and config reference, see **[docs/VIRA_DOCS.md](./docs/VIRA_DOCS.md)**.
+> For the full architecture, event schemas, agent/sensor specs, and config reference, see **[docs/dev/architecture/framework.md](./docs/dev/architecture/framework.md)**.
 
 ---
 
@@ -149,7 +149,7 @@ agents:
 
 4. Restart VIRA. Your agent will appear in the dashboard and begin receiving events.
 
-For more detail on the agent lifecycle, state machine, and `AgentRuntime` methods, see [docs/VIRA_DOCS.md → Agent Specification](./docs/VIRA_DOCS.md#agent-specification).
+For more detail on the agent lifecycle, state machine, and `AgentRuntime` methods, see [docs/dev/architecture/framework.md → Agent Specification](./docs/dev/architecture/framework.md#agent-specification).
 
 ---
 
@@ -244,7 +244,7 @@ Before opening a pull request, confirm:
 - [ ] New agents implement all four `BaseAgent` abstract methods (`think`, `plan`, `act`, `reflect`)
 - [ ] New sensors publish events via `dispatcher.publish(...)`, not `event_bus.publish(...)` directly
 - [ ] No hardcoded file paths — use `config_manager.get(...)` or environment variables
-- [ ] New `config.yaml` keys are documented in `docs/VIRA_DOCS.md`
+- [ ] New `config.yaml` keys are documented in `docs/dev/architecture/framework.md`
 - [ ] If adding a dependency, it is added to `requirements.txt`
 
 ---
