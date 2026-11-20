@@ -29,8 +29,8 @@ cd VIRA
 
 pip install -r requirements.txt
 
-# Pull a local model (skip if using OpenAI/Anthropic)
-ollama pull llama3.2
+# Pull VIRA's default local model (skip if using OpenAI/Anthropic)
+ollama pull ornith-1.5:9b
 
 python run.py
 ```

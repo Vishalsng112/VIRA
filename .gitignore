@@ -1,9 +1,75 @@
-#  ignore all pycache files
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
 __pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+env/
+ENV/
 
-# ignore all .ipynb_checkpoints
+# ---------------------------------------------------------------------------
+# Jupyter
+# ---------------------------------------------------------------------------
 .ipynb_checkpoints/
 
-data/
-
+# ---------------------------------------------------------------------------
+# Local runtime data, secrets and outputs
+# ---------------------------------------------------------------------------
+# Keep the repository's data/ directory local: SQLite DB, checkpoints, logs,
+# captured missions, device state and other runtime output.
+/data/
 *.ck
+.env
+.env.*
+!.env.example
+
+# Root build/release outputs. The Flutter client has its own .gitignore.
+/build/
+/dist/
+*.AppImage
+*.apk
+*.aab
+*.ipa
+
+# ---------------------------------------------------------------------------
+# Logs, temporary files and OS metadata
+# ---------------------------------------------------------------------------
+*.log
+*.tmp
+*.swp
+*.pid
+*.sock
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------------------
+# Editors / IDEs
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# ---------------------------------------------------------------------------
+# Flutter / Dart safety nets (client/.gitignore handles the client tree)
+# ---------------------------------------------------------------------------
+.dart_tool/
+.flutter-plugins-dependencies
+**/doc/api/
+**/ios/Flutter/.last_build_id
+**/Pods/
+**/.symlinks/
+**/DerivedData/
+**/xcuserdata/

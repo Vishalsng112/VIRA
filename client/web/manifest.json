@@ -1,11 +1,11 @@
 {
-    "name": "client",
-    "short_name": "client",
+    "name": "VIRA Link",
+    "short_name": "VIRA Link",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F8FAFD",
+    "theme_color": "#1A73E8",
+    "description": "Device companion for your private VIRA server.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

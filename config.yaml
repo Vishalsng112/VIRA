@@ -128,7 +128,8 @@ sensors:
 
 
 llm:
-  default_model: "gpt-oss:20b"
+  # VIRA's final/default local model choice.
+  default_model: "ornith-1.5:35b" #"ornith-1.5:9b"
   models:
     # - name: "gpt-4"
     #   provider: "openai"
@@ -143,9 +144,10 @@ llm:
     #   max_tokens: 4096
     - name: "local-llama"
       provider: "ollama"
-      model: "gpt-oss:20b" #"ornith:9b" #"gemma4:e4b"
+      model: "ornith-1.5:35b" #"ornith-1.5:9b"
       base_url: "http://localhost:11434"
-      temperature: 0.8
+      temperature: 0.1
+      num_ctx: 65536             # enough room for larger context and code output
 
 # agents:
 #   - name: "AGENT_1"
@@ -169,7 +171,7 @@ agents:
     config:
       system_prompt: "You are VIRA, a friendly, helpful assistant. For news, recent events, people, prices or anything you are not sure about, do not answer from memory: call web_search first, then web_browse on the best result, then answer from what you read and name your sources. If a tool fails, say exactly what failed."
       temperature: 0.7
-      max_tokens: 8192
+      max_tokens: 65536
       # --- agent loop (tuned for small local models) ---
       max_steps: 6              # tool-call rounds before a forced final answer
       max_prompt_chars: 12000   # ~3k tokens; raise if your model has a bigger context
@@ -192,27 +194,6 @@ agents:
   #     decision_cooldown_seconds: 300
   #     learning_interval: 10
   #     llm_triage: false         # true = local LLM adds severity/explanation to decisions
-
-  # --- Autonomous persona swarm: ONE script -> N independent agents (dashboard: /swarm) ---
-  # Raise `count` for more agents (personas beyond the 3 listed come from vira/swarm/personas.py).
-  # - name: Swarm
-  #   module: vira.agent.Agents.persona_agent
-  #   class: PersonaAgent
-  #   enabled: true
-  #   swarm:
-  #     count: 2
-  #     personas: ['accounting_expert', 'dev_architect']   # + scientist, musician fill the other 2 slots
-  #     # personas: ['accounting_expert', 'dev_architect', 'dev_backend', 'dev_io', 'dev_platform', 'dev_qa', 'dev_ux', 'gst_expert', 'inventory_engineer', 'reports_engineer', 'tech_lead']   # + scientist, musician fill the other 2 slots
-  #     # personas: [politician, actor]   # + scientist, musician fill the other 2 slots
-  #     # personas: [dev_architect, dev_ux, dev_qa]
-  #   config:
-  #     speak_interval: [20, 45]    # seconds between an agent's own turns (random jitter)
-  #     heartbeat_interval: 5       # how often each agent announces "I'm alive"
-  #     peer_ttl: 20                # a peer silent for this long is considered dead
-  #     reflect_every: 4            # evolve (reflect + adjust traits) every N own turns
-  #     llm_concurrency: 1          # parallel LLM calls shared by the swarm (local model = 1)
-  #     max_tokens: 400
-  #     temperature: 0.85
 
   # - name: "AGENT_1"
   #   module: "vira.agent.examples.AGENT_MONITOR"

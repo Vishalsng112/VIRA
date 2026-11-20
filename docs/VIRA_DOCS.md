@@ -131,7 +131,7 @@ Agent modules must match `agent_policy.allowed_modules` in `config.yaml`.
 Only agents listed in the startup `agents:` configuration are loaded by default.
 Persisted agent definitions from the authenticated dashboard/database are ignored at boot unless
 `agent_policy.load_persisted_agents: true` is explicitly configured. This prevents a previously
-enabled Swarm or agent from restarting after it is removed or disabled in `config.yaml`.
+enabled agent from restarting after it is removed or disabled in `config.yaml`.
 This allow-list is enforced before importing a configured agent module.
 
 Tool execution goes through `ToolExecutor`, which checks both the tool's
@@ -482,13 +482,14 @@ sensors:                               # list of sensor configs
     interval: 5.0                      # polling interval in seconds
 
 llm:
-  default_model: "llama3.2:latest"
+  default_model: "ornith-1.5:9b"       # VIRA's final default local model choice
   models:
     - name: "local-llama"
       provider: "ollama"               # "ollama" | "openai" | "anthropic"
-      model: "llama3.2:latest"
+      model: "ornith-1.5:9b"
       base_url: "http://localhost:11434"
       temperature: 0.8
+      num_ctx: 16384
     - name: "gpt-4"
       provider: "openai"
       api_key: "${OPENAI_API_KEY}"     # resolved from env
@@ -520,6 +521,10 @@ VIRA supports three LLM backends via `vira/llm/`:
 | Ollama (local) | `OllamaLLM` | `provider: "ollama"` | None — local HTTP |
 | OpenAI | `OpenAILLM` | `provider: "openai"` | `api_key` in config or `$OPENAI_API_KEY` |
 | Anthropic | `AnthropicLLM` | `provider: "anthropic"` | `api_key` in config or `$ANTHROPIC_API_KEY` |
+
+VIRA ships configured for **`ornith-1.5:9b`** through Ollama. This is the final default
+model choice for the framework; install it with `ollama pull ornith-1.5:9b`. Other
+providers and models remain fully supported and can be selected explicitly.
 
 The `LLMManager` selects the backend at runtime via `LLMFactory`. Agents call:
 

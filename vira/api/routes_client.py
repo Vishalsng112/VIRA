@@ -1,4 +1,4 @@
-"""Versioned endpoints consumed by the Flutter family client."""
+"""Versioned endpoints consumed by VIRA clients (family app and VIRA Link)."""
 from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -28,7 +28,16 @@ def build_client_router(user_dep, kernel) -> APIRouter:
         return {"protocol": {"current": 1, "min_supported": 1},
                 "server": {"id": "local-vira", "name": "VIRA", "version": "0.3.0"},
                 "limits": {"max_note_bytes": 102400, "max_ops_per_push": 200, "max_changes_per_page": 500},
-                "features": {"attachments": False, "push": False, "chat_grounding": True}}
+                "features": {"attachments": False, "push": False, "chat_grounding": True},
+                "devices": {
+                    "protocol": 1,
+                    "enrollment_path": "/api/v1/devices",
+                    "heartbeat_path": "/api/v1/devices/{device_id}/heartbeat",
+                    "ingest_path": "/api/v1/devices/{device_id}/events:batch",
+                    "batch_size": 100,
+                    "heartbeat_seconds": 30,
+                    "event_types": ["device.telemetry.*", "sensor.*", "file.*"],
+                }}
 
     @router.get("/households")
     async def households(user: UserPrincipal = Depends(user_dep)):

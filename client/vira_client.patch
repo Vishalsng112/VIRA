@@ -1,0 +1,2130 @@
+diff -ruN pa/client/lib/local_replica.dart pb/client/lib/local_replica.dart
+--- pa/client/lib/local_replica.dart	2026-11-04 20:15:55.637799572 +0000
++++ pb/client/lib/local_replica.dart	2026-11-04 20:15:55.639059126 +0000
+@@ -1,17 +1,48 @@
+ import 'dart:convert';
++import 'dart:math';
+ 
+ import 'package:shared_preferences/shared_preferences.dart';
+ 
++/// RFC-4122 v4 id used for entity ids and idempotent `op_id`s.
++String newId() {
++  final r = Random.secure();
++  final b = List<int>.generate(16, (_) => r.nextInt(256));
++  b[6] = (b[6] & 0x0f) | 0x40;
++  b[8] = (b[8] & 0x3f) | 0x80;
++  String h(int i) => b[i].toRadixString(16).padLeft(2, '0');
++  return '${h(0)}${h(1)}${h(2)}${h(3)}-${h(4)}${h(5)}-${h(6)}${h(7)}-'
++      '${h(8)}${h(9)}-${h(10)}${h(11)}${h(12)}${h(13)}${h(14)}${h(15)}';
++}
++
+ class LocalReplica {
+   LocalReplica._(this._preferences);
+ 
+   final SharedPreferences _preferences;
++  SharedPreferences get prefs => _preferences;
+ 
+-  static Future<LocalReplica> open() async =>
+-      LocalReplica._(await SharedPreferences.getInstance());
++  static const _schema = 2;
+ 
+-  List<Map<String, dynamic>> readEntities(String householdId) {
+-    final raw = _preferences.getString('replica:$householdId:entities');
++  static Future<LocalReplica> open() async {
++    final replica = LocalReplica._(await SharedPreferences.getInstance());
++    await replica._migrate();
++    return replica;
++  }
++
++  /// Schema 2 stores `_version` on entities. Old caches lack it, so drop the
++  /// server-derived data once and re-bootstrap. The outbox is always kept.
++  Future<void> _migrate() async {
++    if ((_preferences.getInt('replica:schema') ?? 0) >= _schema) return;
++    for (final key in _preferences.getKeys().toList()) {
++      if (key.startsWith('replica:') &&
++          (key.endsWith(':entities') || key.endsWith(':cursor'))) {
++        await _preferences.remove(key);
++      }
++    }
++    await _preferences.setInt('replica:schema', _schema);
++  }
++
++  List<Map<String, dynamic>> _list(String key) {
++    final raw = _preferences.getString(key);
+     if (raw == null) return [];
+     final decoded = jsonDecode(raw);
+     if (decoded is! List) return [];
+@@ -21,36 +52,85 @@
+         .toList();
+   }
+ 
++  Future<void> _save(String key, Object value) async =>
++      _preferences.setString(key, jsonEncode(value));
++
++  // ---- server-confirmed entities -------------------------------------
++  List<Map<String, dynamic>> readEntities(String householdId) =>
++      _list('replica:$householdId:entities');
++
+   Future<void> replaceEntities(
+     String householdId,
+     List<Map<String, dynamic>> entities,
+-  ) async {
+-    await _preferences.setString(
+-      'replica:$householdId:entities',
+-      jsonEncode(entities),
+-    );
+-  }
++  ) => _save('replica:$householdId:entities', entities);
+ 
+-  List<Map<String, dynamic>> pendingOps(String householdId) {
+-    final raw = _preferences.getString('replica:$householdId:outbox');
+-    if (raw == null) return [];
+-    final decoded = jsonDecode(raw);
+-    if (decoded is! List) return [];
+-    return decoded
+-        .whereType<Map>()
+-        .map((item) => Map<String, dynamic>.from(item))
+-        .toList();
+-  }
++  /// Merge a page of server changes (CFR-63, CFR-65: delete/forget drop data).
++  Future<void> applyChanges(
++    String householdId,
++    List<Map<String, dynamic>> changes,
++  ) async {
++    final byKey = <String, Map<String, dynamic>>{
++      for (final e in readEntities(householdId))
++        '${e['entity_type']}:${e['id']}': e,
++    };
++    for (final c in changes) {
++      final key = '${c['entity_type']}:${c['entity_id']}';
++      if (c['op'] == 'delete' || c['op'] == 'forget') {
++        byKey.remove(key);
++      } else if (c['data'] is Map) {
++        byKey[key] = {
++          'entity_type': c['entity_type'],
++          ...Map<String, dynamic>.from(c['data'] as Map),
++          '_version': c['version'],
++        };
++      }
++    }
++    await replaceEntities(householdId, byKey.values.toList());
++    if (changes.isNotEmpty) {
++      await setCursor(householdId, (changes.last['seq'] as num).toInt());
++    }
++  }
++
++  /// Confirmed entities with the still-pending outbox overlaid, so the UI
++  /// reads from local data and shows offline edits at once (CFR-60).
++  /// Overlaid rows carry `_pending: true` (CFR-64).
++  List<Map<String, dynamic>> view(String householdId) {
++    final byKey = <String, Map<String, dynamic>>{
++      for (final e in readEntities(householdId))
++        '${e['entity_type']}:${e['id']}': e,
++    };
++    for (final op in pendingOps(householdId)) {
++      final key = '${op['entity_type']}:${op['entity_id']}';
++      if (op['op'] == 'delete') {
++        byKey.remove(key);
++      } else {
++        final data = op['data'] is Map
++            ? Map<String, dynamic>.from(op['data'] as Map)
++            : <String, dynamic>{};
++        byKey[key] = {
++          ...?byKey[key],
++          'entity_type': op['entity_type'],
++          'id': op['entity_id'],
++          ...data,
++          '_pending': true,
++        };
++      }
++    }
++    return byKey.values.toList();
++  }
++
++  // ---- outbox ----------------------------------------------------------
++  List<Map<String, dynamic>> pendingOps(String householdId) =>
++      _list('replica:$householdId:outbox');
+ 
+   Future<void> enqueue(
+     String householdId,
+     Map<String, dynamic> operation,
+   ) async {
+-    final operations = pendingOps(householdId)..add(operation);
+-    await _preferences.setString(
+-      'replica:$householdId:outbox',
+-      jsonEncode(operations),
+-    );
++    final operations = pendingOps(householdId);
++    if (operations.any((o) => o['op_id'] == operation['op_id'])) return;
++    operations.add(operation);
++    await _save('replica:$householdId:outbox', operations);
+   }
+ 
+   Future<void> removePending(
+@@ -60,10 +140,7 @@
+     final operations = pendingOps(householdId)
+         .where((operation) => !operationIds.contains(operation['op_id']))
+         .toList();
+-    await _preferences.setString(
+-      'replica:$householdId:outbox',
+-      jsonEncode(operations),
+-    );
++    await _save('replica:$householdId:outbox', operations);
+   }
+ 
+   int cursor(String householdId) =>
+@@ -72,9 +149,58 @@
+   Future<void> setCursor(String householdId, int value) async =>
+       _preferences.setInt('replica:$householdId:cursor', value);
+ 
++  // ---- conflict copies (CFR-26) ---------------------------------------
++  List<Map<String, dynamic>> conflicts(String householdId) =>
++      _list('replica:$householdId:conflicts');
++
++  Future<void> addConflict(
++    String householdId,
++    Map<String, dynamic> conflict,
++  ) async {
++    final all = conflicts(householdId)
++      ..removeWhere((c) => c['op_id'] == conflict['op_id'])
++      ..add(conflict);
++    await _save('replica:$householdId:conflicts', all);
++  }
++
++  Future<void> removeConflict(String householdId, String opId) async {
++    final all = conflicts(householdId)..removeWhere((c) => c['op_id'] == opId);
++    await _save('replica:$householdId:conflicts', all);
++  }
++
++  // ---- active household, chat history, settings -----------------------
++  String? get lastHousehold => _preferences.getString('replica:last_household');
++
++  Future<void> setLastHousehold(String id) async =>
++      _preferences.setString('replica:last_household', id);
++
++  List<Map<String, dynamic>> chatHistory() => _list('chat:history');
++
++  Future<void> saveChatHistory(List<Map<String, dynamic>> messages) async =>
++      _save(
++        'chat:history',
++        messages.length > 200 ? messages.sublist(messages.length - 200) : messages,
++      );
++
++  String get chatDraft => _preferences.getString('chat:draft') ?? '';
++
++  Future<void> setChatDraft(String value) async =>
++      _preferences.setString('chat:draft', value);
++
++  bool flag(String key, {bool fallback = true}) =>
++      _preferences.getBool('setting:$key') ?? fallback;
++
++  Future<void> setFlag(String key, bool value) async =>
++      _preferences.setBool('setting:$key', value);
++
++  String? text(String key) => _preferences.getString('setting:$key');
++
++  Future<void> setText(String key, String value) async =>
++      _preferences.setString('setting:$key', value);
++
+   Future<void> clearHousehold(String householdId) async {
+-    await _preferences.remove('replica:$householdId:entities');
+-    await _preferences.remove('replica:$householdId:outbox');
+-    await _preferences.remove('replica:$householdId:cursor');
++    for (final part in ['entities', 'outbox', 'cursor', 'conflicts']) {
++      await _preferences.remove('replica:$householdId:$part');
++    }
+   }
+ }
+diff -ruN pa/client/lib/main.dart pb/client/lib/main.dart
+--- pa/client/lib/main.dart	2026-11-04 20:15:55.637652326 +0000
++++ pb/client/lib/main.dart	2026-11-04 20:15:55.638961400 +0000
+@@ -1,6 +1,10 @@
++import 'dart:async';
++import 'dart:math' as math;
++
+ import 'package:flutter/material.dart';
+ 
+ import 'local_replica.dart';
++import 'screens.dart';
+ import 'vira_api.dart';
+ 
+ void main() => runApp(const ViraApp());
+@@ -320,7 +324,7 @@
+   State<HomePage> createState() => _HomePageState();
+ }
+ 
+-class _HomePageState extends State<HomePage> {
++class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+   WorkspacePage _page = WorkspacePage.dashboard;
+   Map<String, dynamic>? _health;
+   Map<String, dynamic>? _orchestration;
+@@ -343,19 +347,206 @@
+   String? _username;
+   bool _isAdmin = false;
+   LocalReplica? _replica;
++  Set<String> _pendingIds = {};
++  List<Map<String, dynamic>> _conflicts = [];
++  bool _syncing = false;
++  bool _polling = false;
++  bool _stopPoll = false;
++  late final FamilyActions _actions = FamilyActions(widget.api);
++
++  bool get _online => _syncState != 'Offline';
++
++  /// Mirrors the server role matrix: children and guests are read-only.
++  bool get _canEdit {
++    final mine = _households.where((h) => h['id'] == widget.api.householdId);
++    if (mine.isEmpty) return true;
++    final role = mine.first['my_role'];
++    return role == 'admin' || role == 'adult';
++  }
+ 
+   @override
+   void initState() {
+     super.initState();
+-    LocalReplica.open().then((replica) {
+-      if (mounted) setState(() => _replica = replica);
+-    });
+-    _loadWorkspace();
++    WidgetsBinding.instance.addObserver(this);
++    _boot();
++  }
++
++  @override
++  void dispose() {
++    _stopPoll = true;
++    WidgetsBinding.instance.removeObserver(this);
++    _chat.dispose();
++    super.dispose();
++  }
++
++  @override
++  void didChangeAppLifecycleState(AppLifecycleState state) {
++    if (state == AppLifecycleState.resumed) _syncNow();
++  }
++
++  /// Local-first start: show cached data immediately, then sync (CFR-60).
++  Future<void> _boot() async {
++    final replica = await LocalReplica.open();
++    if (!mounted) return;
++    _replica = replica;
++    final last = replica.lastHousehold;
++    if (last != null) {
++      widget.api.householdId = last;
++      _applyView();
++    }
++    await _loadWorkspace();
++    _startPolling();
++  }
++
++  void _applyView() {
++    final h = widget.api.householdId;
++    final r = _replica;
++    if (h == null || r == null) return;
++    final entities = r.view(h);
++    List<Map<String, dynamic>> of(String type) =>
++        entities.where((e) => e['entity_type'] == type).toList();
++    bool pinned(Map<String, dynamic> n) => n['pinned'] == true || n['pinned'] == 1;
++    _notes = of('note')
++      ..sort((a, b) {
++        if (pinned(a) != pinned(b)) return pinned(a) ? -1 : 1;
++        return '${b['updated_at']}'.compareTo('${a['updated_at']}');
++      });
++    _checklistItems = of('checklist_item');
++    _reminders = of('reminder');
++    _pendingIds = {
++      for (final e in entities)
++        if (e['_pending'] == true) '${e['entity_type']}:${e['id']}',
++    };
++    _conflicts = r.conflicts(h);
++  }
++
++  void _refreshFromReplica() {
++    if (!mounted) return;
++    setState(_applyView);
++  }
++
++  Future<void> _pullChanges() async {
++    final h = widget.api.householdId;
++    final r = _replica;
++    if (h == null || r == null) return;
++    await widget.api.flushPendingOps();
++    for (var page = 0; page < 50; page++) {
++      Map<String, dynamic> result;
++      try {
++        result = await widget.api.changesPage(cursor: r.cursor(h));
++      } on ViraException catch (e) {
++        if (e.statusCode == 410) {
++          // Cursor expired/compacted: re-bootstrap (CFR-63).
++          await r.replaceEntities(h, []);
++          await r.setCursor(h, 0);
++          continue;
++        }
++        rethrow;
++      }
++      final changes = (result['changes'] as List? ?? [])
++          .whereType<Map>()
++          .map((c) => Map<String, dynamic>.from(c))
++          .toList();
++      await r.applyChanges(h, changes);
++      if (result['has_more'] != true || changes.isEmpty) break;
++    }
++  }
++
++  Future<void> _syncNow() async {
++    if (_syncing || widget.api.householdId == null || _replica == null) return;
++    _syncing = true;
++    if (mounted) setState(() => _syncState = 'Syncing');
++    try {
++      await _pullChanges();
++      if (mounted) {
++        setState(() {
++          _syncState = 'Synced';
++          _lastSync = DateTime.now().toLocal().toString().substring(0, 16);
++        });
++      }
++    } on Object {
++      if (mounted) setState(() => _syncState = 'Offline');
++    } finally {
++      _syncing = false;
++      _refreshFromReplica();
++    }
++  }
++
++  Future<void> _afterLocalChange() async {
++    _refreshFromReplica();
++    await _syncNow();
++  }
++
++  /// Long-poll the server for change hints; falls back to retry with backoff.
++  void _startPolling() {
++    if (_polling) return;
++    _polling = true;
++    _pollLoop();
++  }
++
++  Future<void> _pollLoop() async {
++    var backoff = 2;
++    while (mounted && !_stopPoll) {
++      final h = widget.api.householdId;
++      final r = _replica;
++      if (h == null || r == null) {
++        await Future<void>.delayed(const Duration(seconds: 2));
++        continue;
++      }
++      try {
++        final res = await widget.api.waitForChanges(r.cursor(h));
++        backoff = 2;
++        final changed = res['changed'] == true;
++        if (changed || _syncState == 'Offline' || _pendingIds.isNotEmpty) {
++          await _syncNow();
++        }
++        if (changed) await Future<void>.delayed(const Duration(seconds: 1));
++      } on Object catch (error) {
++        if (error is ViraException &&
++            (error.statusCode == 401 || error.statusCode == 403)) {
++          if (mounted) setState(() => _syncState = 'Needs attention');
++          break;
++        }
++        if (mounted) setState(() => _syncState = 'Offline');
++        await Future<void>.delayed(Duration(seconds: backoff));
++        backoff = math.min(backoff * 2, 30);
++      }
++    }
++    _polling = false;
++  }
++
++  Future<void> _switchHousehold(String id) async {
++    widget.api.householdId = id;
++    await _replica?.setLastHousehold(id);
++    _refreshFromReplica();
++    await _loadWorkspace();
++  }
++
++  Future<void> _openNote(Map<String, dynamic>? note) async {
++    final saved = await Navigator.of(context).push<bool>(
++      MaterialPageRoute(
++        builder: (_) =>
++            NoteEditorPage(api: widget.api, note: note, canEdit: _canEdit),
++      ),
++    );
++    if (saved == true && mounted) await _afterLocalChange();
++  }
++
++  Future<void> _openConflicts() async {
++    final replica = _replica;
++    if (replica == null) return;
++    await Navigator.of(context).push(
++      MaterialPageRoute(
++        builder: (_) => ConflictsPage(api: widget.api, replica: replica),
++      ),
++    );
++    if (mounted) await _afterLocalChange();
+   }
+ 
+   Future<void> _loadWorkspace() async {
+     setState(() {
+-      _loading = true;
++      // Keep cached content on screen while refreshing (offline-first).
++      _loading = _replica == null || widget.api.householdId == null;
+       _loadError = null;
+     });
+     try {
+@@ -381,53 +572,15 @@
+             ];
+       final homes = await widget.api.households();
+       if (homes.isNotEmpty) {
+-        widget.api.householdId = homes.first['id'] as String;
+-        await widget.api.flushPendingOps();
++        final current = widget.api.householdId;
++        widget.api.householdId = homes.any((h) => h['id'] == current)
++            ? current
++            : homes.first['id'] as String;
++        await _replica?.setLastHousehold(widget.api.householdId!);
+         final members = await widget.api.members(widget.api.householdId!);
+         final notebooks = await widget.api.notebooks(widget.api.householdId!);
+-        final cursor = _replica?.cursor(widget.api.householdId!) ?? 0;
+-        final changes = await widget.api.changes(cursor: cursor);
+-        final byKey = <String, Map<String, dynamic>>{
+-          for (final entity
+-              in (_replica?.readEntities(widget.api.householdId!) ?? []))
+-            '${entity['entity_type']}:${entity['id']}': entity,
+-        };
+-        for (final change in changes) {
+-          final key = '${change['entity_type']}:${change['entity_id']}';
+-          if (change['op'] == 'delete') {
+-            byKey.remove(key);
+-          } else if (change['data'] is Map) {
+-            byKey[key] = {
+-              'entity_type': change['entity_type'],
+-              ...Map<String, dynamic>.from(change['data'] as Map),
+-            };
+-          }
+-        }
+-        if (_replica != null) {
+-          await _replica!.replaceEntities(
+-            widget.api.householdId!,
+-            byKey.values.toList(),
+-          );
+-          if (changes.isNotEmpty) {
+-            await _replica!.setCursor(
+-              widget.api.householdId!,
+-              changes.last['seq'] as int,
+-            );
+-          }
+-        }
+-        final entities = byKey.values.toList();
+-        _notes = entities
+-            .where((item) => item['entity_type'] == 'note')
+-            .map(Map<String, dynamic>.from)
+-            .toList();
+-        _checklistItems = entities
+-            .where((item) => item['entity_type'] == 'checklist_item')
+-            .map(Map<String, dynamic>.from)
+-            .toList();
+-        _reminders = entities
+-            .where((item) => item['entity_type'] == 'reminder')
+-            .map(Map<String, dynamic>.from)
+-            .toList();
++        await _pullChanges();
++        _applyView();
+         _members = members;
+         _notebooks = notebooks;
+         _syncState = 'Synced';
+@@ -465,11 +618,19 @@
+         _loading = false;
+       });
+     } on Object catch (error) {
++      final unauthorized = error is ViraException &&
++          (error.statusCode == 401 || error.statusCode == 403);
++      final hasCache = _replica != null && widget.api.householdId != null;
++      if (hasCache) _applyView();
+       if (mounted) {
+         setState(() {
+           _loading = false;
+-          _syncState = 'Needs attention';
+-          _loadError = error.toString();
++          if (hasCache && !unauthorized) {
++            _syncState = 'Offline'; // keep working from the local replica
++          } else {
++            _syncState = 'Needs attention';
++            _loadError = error.toString();
++          }
+         });
+       }
+     }
+@@ -1347,69 +1508,15 @@
+     }
+   }
+ 
+-  Widget _listsView() {
+-    final checklists = _notes
+-        .where((note) => note['kind'] == 'checklist')
+-        .toList();
+-    return ListView(
+-      padding: const EdgeInsets.all(16),
+-      children: [
+-        Row(
+-          children: [
+-            Expanded(
+-              child: Text(
+-                'Shared lists',
+-                style: Theme.of(context).textTheme.headlineSmall,
+-              ),
+-            ),
+-            FilledButton.icon(
+-              onPressed: _showAddChecklist,
+-              icon: const Icon(Icons.add),
+-              label: const Text('New list'),
+-            ),
+-          ],
+-        ),
+-        const SizedBox(height: 12),
+-        if (checklists.isEmpty)
+-          const Card(
+-            child: Padding(
+-              padding: EdgeInsets.all(20),
+-              child: Text(
+-                'Create a grocery, packing, or chores list for your family.',
+-              ),
+-            ),
+-          ),
+-        ...checklists.map(
+-          (list) => Card(
+-            child: ExpansionTile(
+-              leading: const Icon(Icons.checklist),
+-              title: Text(list['title']?.toString() ?? 'Checklist'),
+-              subtitle: Text(
+-                '${_checklistItems.where((item) => item['note_id'] == list['id']).length} items',
+-              ),
+-              children: [
+-                ..._checklistItems
+-                    .where((item) => item['note_id'] == list['id'])
+-                    .map(
+-                      (item) => CheckboxListTile(
+-                        value: item['done'] == true || item['done'] == 1,
+-                        title: Text(item['text']?.toString() ?? ''),
+-                        onChanged: (done) =>
+-                            _toggleChecklistItem(item, done ?? false),
+-                      ),
+-                    ),
+-                ListTile(
+-                  leading: const Icon(Icons.add),
+-                  title: const Text('Add item'),
+-                  onTap: () => _showAddChecklistItem(list['id'].toString()),
+-                ),
+-              ],
+-            ),
+-          ),
+-        ),
+-      ],
+-    );
+-  }
++  Widget _listsView() => ChecklistsPane(
++    notes: _notes,
++    items: _checklistItems,
++    canEdit: _canEdit,
++    actions: _actions,
++    onChanged: _afterLocalChange,
++    onNewList: _showAddChecklist,
++    onAddItem: _showAddChecklistItem,
++  );
+ 
+   Future<void> _showAddChecklist() async {
+     final title = TextEditingController();
+@@ -1454,7 +1561,7 @@
+       ),
+     );
+     title.dispose();
+-    if (result == true && mounted) await _loadWorkspace();
++    if (result == true && mounted) await _afterLocalChange();
+   }
+ 
+   Future<void> _showAddChecklistItem(String noteId) async {
+@@ -1497,7 +1604,7 @@
+       ),
+     );
+     text.dispose();
+-    if (result == true && mounted) await _loadWorkspace();
++    if (result == true && mounted) await _afterLocalChange();
+   }
+ 
+   Future<void> _toggleChecklistItem(
+@@ -1511,7 +1618,7 @@
+         text: item['text']?.toString() ?? '',
+         done: done,
+       );
+-      await _loadWorkspace();
++      await _afterLocalChange();
+     } on Object catch (error) {
+       if (mounted) {
+         ScaffoldMessenger.of(context)
+@@ -1520,51 +1627,12 @@
+     }
+   }
+ 
+-  Widget _remindersView() => ListView(
+-    padding: const EdgeInsets.all(16),
+-    children: [
+-      Row(
+-        children: [
+-          Expanded(
+-            child: Text(
+-              'Reminders',
+-              style: Theme.of(context).textTheme.headlineSmall,
+-            ),
+-          ),
+-          FilledButton.icon(
+-            onPressed: _showAddReminder,
+-            icon: const Icon(Icons.add_alert),
+-            label: const Text('New reminder'),
+-          ),
+-        ],
+-      ),
+-      const SizedBox(height: 12),
+-      if (_reminders.isEmpty)
+-        const Card(
+-          child: Padding(
+-            padding: EdgeInsets.all(20),
+-            child: Text(
+-              'Create reminders for everyone or a specific family member.',
+-            ),
+-          ),
+-        ),
+-      ..._reminders.map(
+-        (reminder) => Card(
+-          child: ListTile(
+-            leading: Icon(
+-              reminder['urgent'] == true
+-                  ? Icons.priority_high
+-                  : Icons.notifications_active_outlined,
+-            ),
+-            title: Text(reminder['title']?.toString() ?? 'Reminder'),
+-            subtitle: Text(
+-              '${reminder['due_at'] ?? 'No due date'} · ${reminder['status'] ?? 'active'}',
+-            ),
+-            trailing: const Icon(Icons.chevron_right),
+-          ),
+-        ),
+-      ),
+-    ],
++  Widget _remindersView() => RemindersPane(
++    reminders: _reminders,
++    canEdit: _canEdit,
++    actions: _actions,
++    onChanged: _afterLocalChange,
++    onNew: _showAddReminder,
+   );
+ 
+   Future<void> _showAddReminder() async {
+@@ -1623,7 +1691,7 @@
+     );
+     title.dispose();
+     due.dispose();
+-    if (result == true && mounted) await _loadWorkspace();
++    if (result == true && mounted) await _afterLocalChange();
+   }
+ 
+   Widget _searchView() {
+@@ -1676,56 +1744,14 @@
+     );
+   }
+ 
+-  Widget _notesView() => Padding(
+-    padding: const EdgeInsets.all(16),
+-    child: Column(
+-      crossAxisAlignment: CrossAxisAlignment.stretch,
+-      children: [
+-        Row(
+-          children: [
+-            Expanded(
+-              child: Text(
+-                'Shared notes',
+-                style: Theme.of(context).textTheme.headlineSmall,
+-              ),
+-            ),
+-            FilledButton.icon(
+-              onPressed: _showAddNote,
+-              icon: const Icon(Icons.add),
+-              label: const Text('New note'),
+-            ),
+-          ],
+-        ),
+-        const SizedBox(height: 12),
+-        Expanded(
+-          child: _notes.isEmpty
+-              ? const Center(
+-                  child: Text('No shared notes yet. Create the first one.'),
+-                )
+-              : ListView.builder(
+-                  itemCount: _notes.length,
+-                  itemBuilder: (_, index) {
+-                    final note = _notes[index];
+-                    return Card(
+-                      child: ListTile(
+-                        leading: Icon(
+-                          note['pinned'] == true
+-                              ? Icons.push_pin
+-                              : Icons.note_outlined,
+-                        ),
+-                        title: Text(note['title']?.toString() ?? 'Untitled'),
+-                        subtitle: Text(
+-                          note['body_md']?.toString() ?? '',
+-                          maxLines: 2,
+-                          overflow: TextOverflow.ellipsis,
+-                        ),
+-                      ),
+-                    );
+-                  },
+-                ),
+-        ),
+-      ],
+-    ),
++  Widget _notesView() => NotesPane(
++    notes: _notes,
++    pending: _pendingIds,
++    canEdit: _canEdit,
++    conflictCount: _conflicts.length,
++    onNew: () => _openNote(null),
++    onOpen: _openNote,
++    onConflicts: _openConflicts,
+   );
+ 
+   Future<void> _showAddNote() async {
+@@ -1783,36 +1809,11 @@
+     );
+     title.dispose();
+     body.dispose();
+-    if (result == true && mounted) await _loadWorkspace();
++    if (result == true && mounted) await _afterLocalChange();
+   }
+ 
+-  Widget _chatView() => Padding(
+-    padding: const EdgeInsets.all(16),
+-    child: Column(
+-      children: [
+-        Expanded(
+-          child: SingleChildScrollView(
+-            child: Align(
+-              alignment: Alignment.topLeft,
+-              child: Text(_answer.isEmpty ? 'Ask VIRA something.' : _answer),
+-            ),
+-          ),
+-        ),
+-        Row(
+-          children: [
+-            Expanded(
+-              child: TextField(
+-                controller: _chat,
+-                onSubmitted: (_) => _sendChat(),
+-                decoration: const InputDecoration(hintText: 'Message VIRA'),
+-              ),
+-            ),
+-            IconButton(onPressed: _sendChat, icon: const Icon(Icons.send)),
+-          ],
+-        ),
+-      ],
+-    ),
+-  );
++  Widget _chatView() =>
++      ChatPane(api: widget.api, replica: _replica, online: _online);
+ 
+   Widget _diagnosticsView() => ListView(
+     padding: const EdgeInsets.all(16),
+@@ -1945,25 +1946,15 @@
+     ),
+   );
+ 
+-  Widget _settingsView() => ListView(
+-    padding: const EdgeInsets.all(16),
+-    children: [
+-      const ListTile(
+-        leading: Icon(Icons.language),
+-        title: Text('Connected server'),
+-        subtitle: Text('VIRA local server'),
+-      ),
+-      ListTile(
+-        leading: const Icon(Icons.refresh),
+-        title: const Text('Refresh workspace data'),
+-        onTap: _loadWorkspace,
+-      ),
+-      ListTile(
+-        leading: const Icon(Icons.logout),
+-        title: const Text('Sign out'),
+-        onTap: _logout,
+-      ),
+-    ],
++  Widget _settingsView() => SettingsPane(
++    api: widget.api,
++    replica: _replica,
++    households: _households,
++    conflictCount: _conflicts.length,
++    onSwitch: _switchHousehold,
++    onChanged: _loadWorkspace,
++    onRefresh: _syncNow,
++    onLogout: _logout,
+   );
+ 
+   Widget _errorView() => Center(
+diff -ruN pa/client/lib/screens.dart pb/client/lib/screens.dart
+--- pa/client/lib/screens.dart	1970-01-01 00:00:00.000000000 +0000
++++ pb/client/lib/screens.dart	2026-11-04 20:15:55.639071809 +0000
+@@ -0,0 +1,1000 @@
++import 'dart:convert';
++
++import 'package:flutter/material.dart';
++
++import 'local_replica.dart';
++import 'vira_api.dart';
++
++typedef Json = Map<String, dynamic>;
++
++bool _truthy(Object? v) => v == true || v == 1;
++
++Widget _syncBadge(bool pending) => Tooltip(
++  message: pending ? 'Waiting to sync' : 'Synced',
++  child: Icon(
++    pending ? Icons.cloud_upload_outlined : Icons.cloud_done_outlined,
++    size: 18,
++  ),
++);
++
++Future<String?> _askText(
++  BuildContext context,
++  String title, {
++  String initial = '',
++  String label = '',
++}) {
++  final controller = TextEditingController(text: initial);
++  return showDialog<String>(
++    context: context,
++    builder: (ctx) => AlertDialog(
++      title: Text(title),
++      content: TextField(
++        controller: controller,
++        autofocus: true,
++        decoration: InputDecoration(labelText: label),
++        onSubmitted: (v) => Navigator.pop(ctx, v),
++      ),
++      actions: [
++        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
++        FilledButton(
++          onPressed: () => Navigator.pop(ctx, controller.text),
++          child: const Text('Save'),
++        ),
++      ],
++    ),
++  );
++}
++
++Future<bool> _confirm(BuildContext context, String message) async =>
++    await showDialog<bool>(
++      context: context,
++      builder: (ctx) => AlertDialog(
++        content: Text(message),
++        actions: [
++          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
++          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
++        ],
++      ),
++    ) ??
++    false;
++
++/// Write helpers shared by the panes. Every write goes to the outbox first.
++class FamilyActions {
++  FamilyActions(this.api);
++  final ViraApi api;
++
++  Future<void> toggleItem(Json item, bool done) => api.saveChecklistItem(
++    id: item['id'].toString(),
++    noteId: item['note_id'].toString(),
++    text: item['text']?.toString() ?? '',
++    done: done,
++    position: item['position']?.toString() ?? 'a0',
++  );
++
++  Future<void> renameItem(Json item, String text) => api.saveChecklistItem(
++    id: item['id'].toString(),
++    noteId: item['note_id'].toString(),
++    text: text,
++    done: _truthy(item['done']),
++    position: item['position']?.toString() ?? 'a0',
++  );
++
++  Future<void> deleteItems(Iterable<Json> items) =>
++      api.deleteEntities('checklist_item', items.map((i) => i['id'].toString()).toList());
++
++  Future<void> deleteList(Json list, Iterable<Json> items) async {
++    await deleteItems(items);
++    await api.deleteEntities('note', [list['id'].toString()]);
++  }
++
++  static const templates = <String, List<String>>{
++    'Groceries': ['Milk', 'Eggs', 'Bread', 'Vegetables', 'Fruit'],
++    'Packing': ['Clothes', 'Toiletries', 'Chargers', 'Documents', 'Medicines'],
++    'Chores': ['Dishes', 'Laundry', 'Take out trash', 'Vacuum', 'Water plants'],
++  };
++
++  Future<void> createFromTemplate(String name) async {
++    final listId = newId();
++    final texts = templates[name]!;
++    await api.pushOps([
++      {
++        'op_id': newId(),
++        'entity_type': 'note',
++        'entity_id': listId,
++        'op': 'upsert',
++        'base_version': 0,
++        'data': {'id': listId, 'title': name, 'body_md': '', 'pinned': false, 'kind': 'checklist'},
++      },
++      for (var i = 0; i < texts.length; i++) _templateItem(listId, texts[i], i),
++    ]);
++  }
++
++  Json _templateItem(String listId, String text, int index) {
++    final id = newId();
++    return {
++      'op_id': newId(),
++      'entity_type': 'checklist_item',
++      'entity_id': id,
++      'op': 'upsert',
++      'base_version': 0,
++      'data': {'id': id, 'note_id': listId, 'text': text, 'done': false, 'position': 'a$index'},
++    };
++  }
++
++  Future<void> setReminder(Json r, {String? status, String? dueAt}) =>
++      api.saveReminder(
++        id: r['id'].toString(),
++        title: r['title']?.toString() ?? '',
++        dueAt: dueAt ?? r['due_at']?.toString() ?? DateTime.now().toUtc().toIso8601String(),
++        urgent: _truthy(r['urgent']),
++        status: status ?? r['status']?.toString() ?? 'active',
++        body: r['body']?.toString(),
++        timezone: r['timezone']?.toString(),
++        rrule: r['rrule']?.toString(),
++      );
++
++  Future<void> snooze(Json r, String kind) {
++    final now = DateTime.now();
++    final target = switch (kind) {
++      '10m' => now.add(const Duration(minutes: 10)),
++      '1h' => now.add(const Duration(hours: 1)),
++      _ => DateTime(now.year, now.month, now.day + 1, 9),
++    };
++    return setReminder(r, dueAt: target.toUtc().toIso8601String(), status: 'active');
++  }
++
++  Future<void> deleteReminder(Json r) =>
++      api.deleteEntities('reminder', [r['id'].toString()]);
++}
++
++// ---------------------------------------------------------------- notes
++class NotesPane extends StatelessWidget {
++  const NotesPane({
++    super.key,
++    required this.notes,
++    required this.pending,
++    required this.canEdit,
++    required this.conflictCount,
++    required this.onNew,
++    required this.onOpen,
++    required this.onConflicts,
++  });
++  final List<Json> notes;
++  final Set<String> pending;
++  final bool canEdit;
++  final int conflictCount;
++  final VoidCallback onNew;
++  final VoidCallback onConflicts;
++  final void Function(Json) onOpen;
++
++  @override
++  Widget build(BuildContext context) {
++    final plain = notes.where((n) => n['kind'] != 'checklist').toList();
++    return Padding(
++      padding: const EdgeInsets.all(16),
++      child: Column(
++        crossAxisAlignment: CrossAxisAlignment.stretch,
++        children: [
++          Row(
++            children: [
++              Expanded(
++                child: Text('Shared notes', style: Theme.of(context).textTheme.headlineSmall),
++              ),
++              if (canEdit)
++                FilledButton.icon(
++                  onPressed: onNew,
++                  icon: const Icon(Icons.add),
++                  label: const Text('New note'),
++                ),
++            ],
++          ),
++          if (conflictCount > 0)
++            Card(
++              color: Theme.of(context).colorScheme.errorContainer,
++              child: ListTile(
++                leading: const Icon(Icons.call_split),
++                title: Text('$conflictCount note conflict(s) need a decision'),
++                trailing: const Icon(Icons.chevron_right),
++                onTap: onConflicts,
++              ),
++            ),
++          const SizedBox(height: 8),
++          Expanded(
++            child: plain.isEmpty
++                ? const Center(child: Text('No shared notes yet. Create the first one.'))
++                : ListView.builder(
++                    itemCount: plain.length,
++                    itemBuilder: (_, i) {
++                      final note = plain[i];
++                      return Card(
++                        child: ListTile(
++                          leading: Icon(_truthy(note['pinned']) ? Icons.push_pin : Icons.note_outlined),
++                          title: Text(note['title']?.toString() ?? 'Untitled'),
++                          subtitle: Text(
++                            note['body_md']?.toString() ?? '',
++                            maxLines: 2,
++                            overflow: TextOverflow.ellipsis,
++                          ),
++                          trailing: _syncBadge(note['_pending'] == true),
++                          onTap: () => onOpen(note),
++                        ),
++                      );
++                    },
++                  ),
++          ),
++        ],
++      ),
++    );
++  }
++}
++
++class NoteEditorPage extends StatefulWidget {
++  const NoteEditorPage({super.key, required this.api, this.note, required this.canEdit});
++  final ViraApi api;
++  final Json? note;
++  final bool canEdit;
++  @override
++  State<NoteEditorPage> createState() => _NoteEditorPageState();
++}
++
++class _NoteEditorPageState extends State<NoteEditorPage> {
++  late final _title = TextEditingController(text: widget.note?['title']?.toString() ?? '');
++  late final _body = TextEditingController(text: widget.note?['body_md']?.toString() ?? '');
++  late bool _pinned = _truthy(widget.note?['pinned']);
++  late final String _id = widget.note?['id']?.toString() ?? newId();
++  bool _saving = false;
++  String? _error;
++
++  void _insert(String left, [String right = '']) {
++    final t = _body.text;
++    final sel = _body.selection;
++    final start = sel.isValid ? sel.start : t.length;
++    final end = sel.isValid ? sel.end : t.length;
++    final mid = t.substring(start, end);
++    _body.value = TextEditingValue(
++      text: t.replaceRange(start, end, '$left$mid$right'),
++      selection: TextSelection.collapsed(offset: start + left.length + mid.length + right.length),
++    );
++  }
++
++  Future<void> _save() async {
++    if (utf8.encode(_body.text).length > 102400) {
++      setState(() => _error = 'Notes are limited to 100 KB.');
++      return;
++    }
++    setState(() {
++      _saving = true;
++      _error = null;
++    });
++    try {
++      final title = _title.text.trim();
++      await widget.api.saveNote(
++        _id,
++        title.isEmpty ? 'Untitled' : title,
++        _body.text,
++        pinned: _pinned,
++        baseVersion: (widget.note?['_version'] as num?)?.toInt() ?? 0,
++      );
++      if (mounted) Navigator.pop(context, true);
++    } on Object catch (e) {
++      if (mounted) setState(() {
++        _saving = false;
++        _error = e.toString();
++      });
++    }
++  }
++
++  Future<void> _delete() async {
++    if (!await _confirm(context, 'Delete this note for everyone?')) return;
++    await widget.api.deleteEntities('note', [_id]);
++    if (mounted) Navigator.pop(context, true);
++  }
++
++  @override
++  Widget build(BuildContext context) => Scaffold(
++    appBar: AppBar(
++      title: Text(widget.note == null ? 'New note' : 'Edit note'),
++      actions: [
++        if (widget.canEdit) ...[
++          IconButton(
++            tooltip: _pinned ? 'Unpin' : 'Pin',
++            icon: Icon(_pinned ? Icons.push_pin : Icons.push_pin_outlined),
++            onPressed: () => setState(() => _pinned = !_pinned),
++          ),
++          if (widget.note != null)
++            IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete_outline), onPressed: _delete),
++          TextButton(onPressed: _saving ? null : _save, child: const Text('Save')),
++        ],
++      ],
++    ),
++    body: Padding(
++      padding: const EdgeInsets.all(16),
++      child: Column(
++        children: [
++          TextField(
++            controller: _title,
++            readOnly: !widget.canEdit,
++            style: Theme.of(context).textTheme.titleLarge,
++            decoration: const InputDecoration(hintText: 'Title', border: InputBorder.none),
++          ),
++          if (widget.canEdit)
++            Wrap(
++              children: [
++                IconButton(tooltip: 'Bold', icon: const Icon(Icons.format_bold), onPressed: () => _insert('**', '**')),
++                IconButton(tooltip: 'Italic', icon: const Icon(Icons.format_italic), onPressed: () => _insert('_', '_')),
++                IconButton(tooltip: 'Heading', icon: const Icon(Icons.title), onPressed: () => _insert('# ')),
++                IconButton(tooltip: 'List', icon: const Icon(Icons.format_list_bulleted), onPressed: () => _insert('- ')),
++                IconButton(tooltip: 'Link', icon: const Icon(Icons.link), onPressed: () => _insert('[', '](https://)')),
++              ],
++            ),
++          if (_error != null)
++            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
++          Expanded(
++            child: TextField(
++              controller: _body,
++              readOnly: !widget.canEdit,
++              maxLines: null,
++              expands: true,
++              textAlignVertical: TextAlignVertical.top,
++              decoration: const InputDecoration(hintText: 'Write in Markdown…', border: OutlineInputBorder()),
++            ),
++          ),
++        ],
++      ),
++    ),
++  );
++}
++
++class ConflictsPage extends StatefulWidget {
++  const ConflictsPage({super.key, required this.api, required this.replica});
++  final ViraApi api;
++  final LocalReplica replica;
++  @override
++  State<ConflictsPage> createState() => _ConflictsPageState();
++}
++
++class _ConflictsPageState extends State<ConflictsPage> {
++  String get _h => widget.api.householdId!;
++  List<Json> get _items => widget.replica.conflicts(_h);
++
++  Future<void> _resolve(Json c, String how) async {
++    final local = Map<String, dynamic>.from(c['local'] as Map? ?? {});
++    final server = Map<String, dynamic>.from(c['server'] as Map? ?? {});
++    final id = c['entity_id'].toString();
++    final title = local['title']?.toString() ?? 'Untitled';
++    final body = local['body_md']?.toString() ?? '';
++    if (how == 'mine') {
++      await widget.api.saveNote(id, title, body,
++          pinned: _truthy(local['pinned']),
++          baseVersion: (server['version'] as num?)?.toInt() ?? 0);
++    } else if (how == 'both') {
++      await widget.api.saveNote(newId(), '$title (conflict copy)', body);
++    }
++    await widget.replica.removeConflict(_h, c['op_id'].toString());
++    if (mounted) setState(() {});
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final items = _items;
++    return Scaffold(
++      appBar: AppBar(title: const Text('Conflicts')),
++      body: items.isEmpty
++          ? const Center(child: Text('No conflicts.'))
++          : ListView(
++              padding: const EdgeInsets.all(16),
++              children: [
++                for (final c in items)
++                  Card(
++                    child: Padding(
++                      padding: const EdgeInsets.all(16),
++                      child: Column(
++                        crossAxisAlignment: CrossAxisAlignment.start,
++                        children: [
++                          Text(
++                            (c['local'] as Map?)?['title']?.toString() ?? 'Note',
++                            style: Theme.of(context).textTheme.titleMedium,
++                          ),
++                          const SizedBox(height: 8),
++                          const Text('Your version', style: TextStyle(fontWeight: FontWeight.bold)),
++                          Text((c['local'] as Map?)?['body_md']?.toString() ?? ''),
++                          const SizedBox(height: 8),
++                          const Text('Server version', style: TextStyle(fontWeight: FontWeight.bold)),
++                          Text((((c['server'] as Map?)?['data']) as Map?)?['body_md']?.toString() ?? ''),
++                          const SizedBox(height: 8),
++                          Wrap(
++                            spacing: 8,
++                            children: [
++                              OutlinedButton(onPressed: () => _resolve(c, 'server'), child: const Text('Keep server')),
++                              OutlinedButton(onPressed: () => _resolve(c, 'mine'), child: const Text('Use mine')),
++                              FilledButton(onPressed: () => _resolve(c, 'both'), child: const Text('Keep both')),
++                            ],
++                          ),
++                        ],
++                      ),
++                    ),
++                  ),
++              ],
++            ),
++    );
++  }
++}
++
++// ------------------------------------------------------------ checklists
++class ChecklistsPane extends StatelessWidget {
++  const ChecklistsPane({
++    super.key,
++    required this.notes,
++    required this.items,
++    required this.canEdit,
++    required this.actions,
++    required this.onChanged,
++    required this.onNewList,
++    required this.onAddItem,
++  });
++  final List<Json> notes;
++  final List<Json> items;
++  final bool canEdit;
++  final FamilyActions actions;
++  final VoidCallback onChanged;
++  final VoidCallback onNewList;
++  final void Function(String listId) onAddItem;
++
++  Future<void> _run(BuildContext context, Future<void> Function() job) async {
++    try {
++      await job();
++      onChanged();
++    } on Object catch (e) {
++      if (context.mounted) {
++        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
++      }
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final lists = notes.where((n) => n['kind'] == 'checklist').toList();
++    return ListView(
++      padding: const EdgeInsets.all(16),
++      children: [
++        Row(
++          children: [
++            Expanded(child: Text('Shared lists', style: Theme.of(context).textTheme.headlineSmall)),
++            if (canEdit) ...[
++              PopupMenuButton<String>(
++                tooltip: 'From template',
++                icon: const Icon(Icons.auto_awesome_outlined),
++                onSelected: (name) => _run(context, () => actions.createFromTemplate(name)),
++                itemBuilder: (_) => [
++                  for (final name in FamilyActions.templates.keys)
++                    PopupMenuItem(value: name, child: Text(name)),
++                ],
++              ),
++              FilledButton.icon(onPressed: onNewList, icon: const Icon(Icons.add), label: const Text('New list')),
++            ],
++          ],
++        ),
++        const SizedBox(height: 12),
++        if (lists.isEmpty)
++          const Card(
++            child: Padding(
++              padding: EdgeInsets.all(20),
++              child: Text('Create a grocery, packing, or chores list for your family.'),
++            ),
++          ),
++        for (final list in lists) _listCard(context, list),
++      ],
++    );
++  }
++
++  Widget _listCard(BuildContext context, Json list) {
++    final mine = items.where((i) => i['note_id'] == list['id']).toList()
++      ..sort((a, b) => '${a['position']}'.compareTo('${b['position']}'));
++    final open = mine.where((i) => !_truthy(i['done'])).toList();
++    final done = mine.where((i) => _truthy(i['done'])).toList();
++    Widget tile(Json item) => ListTile(
++      dense: true,
++      leading: Checkbox(
++        value: _truthy(item['done']),
++        onChanged: canEdit ? (v) => _run(context, () => actions.toggleItem(item, v ?? false)) : null,
++      ),
++      title: Text(
++        item['text']?.toString() ?? '',
++        style: _truthy(item['done']) ? const TextStyle(decoration: TextDecoration.lineThrough) : null,
++      ),
++      trailing: Row(
++        mainAxisSize: MainAxisSize.min,
++        children: [
++          if (item['_pending'] == true) _syncBadge(true),
++          if (canEdit)
++            PopupMenuButton<String>(
++              onSelected: (v) async {
++                if (v == 'edit') {
++                  final text = await _askText(context, 'Edit item', initial: item['text']?.toString() ?? '');
++                  if (text != null && text.trim().isNotEmpty && context.mounted) {
++                    await _run(context, () => actions.renameItem(item, text.trim()));
++                  }
++                } else if (context.mounted) {
++                  await _run(context, () => actions.deleteItems([item]));
++                }
++              },
++              itemBuilder: (_) => const [
++                PopupMenuItem(value: 'edit', child: Text('Edit')),
++                PopupMenuItem(value: 'delete', child: Text('Delete')),
++              ],
++            ),
++        ],
++      ),
++    );
++    return Card(
++      child: ExpansionTile(
++        leading: const Icon(Icons.checklist),
++        title: Text(list['title']?.toString() ?? 'Checklist'),
++        subtitle: Text('${open.length} open · ${done.length} done'),
++        children: [
++          for (final item in open) tile(item),
++          if (canEdit)
++            ListTile(
++              leading: const Icon(Icons.add),
++              title: const Text('Add item'),
++              onTap: () => onAddItem(list['id'].toString()),
++            ),
++          if (done.isNotEmpty)
++            ExpansionTile(
++              title: Text('Done (${done.length})'),
++              trailing: canEdit
++                  ? TextButton(
++                      onPressed: () => _run(context, () => actions.deleteItems(done)),
++                      child: const Text('Clear done'),
++                    )
++                  : null,
++              children: [for (final item in done) tile(item)],
++            ),
++          if (canEdit)
++            TextButton.icon(
++              onPressed: () async {
++                if (await _confirm(context, 'Delete this list and its items?') && context.mounted) {
++                  await _run(context, () => actions.deleteList(list, mine));
++                }
++              },
++              icon: const Icon(Icons.delete_outline),
++              label: const Text('Delete list'),
++            ),
++        ],
++      ),
++    );
++  }
++}
++
++// ------------------------------------------------------------- reminders
++class RemindersPane extends StatelessWidget {
++  const RemindersPane({
++    super.key,
++    required this.reminders,
++    required this.canEdit,
++    required this.actions,
++    required this.onChanged,
++    required this.onNew,
++  });
++  final List<Json> reminders;
++  final bool canEdit;
++  final FamilyActions actions;
++  final VoidCallback onChanged;
++  final VoidCallback onNew;
++
++  Future<void> _run(BuildContext context, Future<void> Function() job) async {
++    try {
++      await job();
++      onChanged();
++    } on Object catch (e) {
++      if (context.mounted) {
++        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
++      }
++    }
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    int byDue(Json a, Json b) => '${a['due_at']}'.compareTo('${b['due_at']}');
++    final active = reminders.where((r) => r['status'] != 'done').toList()..sort(byDue);
++    final done = reminders.where((r) => r['status'] == 'done').toList()..sort(byDue);
++    final now = DateTime.now();
++    Widget tile(Json r) {
++      final due = DateTime.tryParse('${r['due_at']}')?.toLocal();
++      final overdue = r['status'] != 'done' && due != null && due.isBefore(now);
++      return Card(
++        child: ListTile(
++          leading: Icon(
++            r['status'] == 'done'
++                ? Icons.check_circle_outline
++                : _truthy(r['urgent'])
++                ? Icons.priority_high
++                : Icons.notifications_active_outlined,
++            color: overdue ? Theme.of(context).colorScheme.error : null,
++          ),
++          title: Text(r['title']?.toString() ?? 'Reminder'),
++          subtitle: Text(
++            due == null ? 'No due date' : due.toString().substring(0, 16),
++            style: overdue ? TextStyle(color: Theme.of(context).colorScheme.error) : null,
++          ),
++          trailing: Row(
++            mainAxisSize: MainAxisSize.min,
++            children: [
++              if (r['_pending'] == true) _syncBadge(true),
++              if (canEdit)
++                PopupMenuButton<String>(
++                  onSelected: (v) => _run(context, () async {
++                    switch (v) {
++                      case 'done':
++                        await actions.setReminder(r, status: 'done');
++                      case 'reopen':
++                        await actions.setReminder(r, status: 'active');
++                      case 'delete':
++                        await actions.deleteReminder(r);
++                      default:
++                        await actions.snooze(r, v);
++                    }
++                  }),
++                  itemBuilder: (_) => [
++                    if (r['status'] == 'done')
++                      const PopupMenuItem(value: 'reopen', child: Text('Reopen'))
++                    else ...const [
++                      PopupMenuItem(value: 'done', child: Text('Mark done')),
++                      PopupMenuItem(value: '10m', child: Text('Snooze 10 min')),
++                      PopupMenuItem(value: '1h', child: Text('Snooze 1 hour')),
++                      PopupMenuItem(value: 'tomorrow', child: Text('Snooze to tomorrow')),
++                    ],
++                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
++                  ],
++                ),
++            ],
++          ),
++        ),
++      );
++    }
++
++    return ListView(
++      padding: const EdgeInsets.all(16),
++      children: [
++        Row(
++          children: [
++            Expanded(child: Text('Reminders', style: Theme.of(context).textTheme.headlineSmall)),
++            if (canEdit)
++              FilledButton.icon(onPressed: onNew, icon: const Icon(Icons.add_alert), label: const Text('New reminder')),
++          ],
++        ),
++        const SizedBox(height: 12),
++        if (reminders.isEmpty)
++          const Card(
++            child: Padding(
++              padding: EdgeInsets.all(20),
++              child: Text('Create reminders for everyone or a specific family member.'),
++            ),
++          ),
++        for (final r in active) tile(r),
++        if (done.isNotEmpty)
++          ExpansionTile(title: Text('Done (${done.length})'), children: [for (final r in done) tile(r)]),
++      ],
++    );
++  }
++}
++
++// ------------------------------------------------------------------ chat
++class ChatPane extends StatefulWidget {
++  const ChatPane({super.key, required this.api, required this.replica, required this.online});
++  final ViraApi api;
++  final LocalReplica? replica;
++  final bool online;
++  @override
++  State<ChatPane> createState() => _ChatPaneState();
++}
++
++class _ChatPaneState extends State<ChatPane> {
++  final _input = TextEditingController();
++  final _scroll = ScrollController();
++  List<Json> _messages = [];
++  String _progress = '';
++  bool _busy = false;
++  bool _grounded = true;
++
++  @override
++  void initState() {
++    super.initState();
++    final r = widget.replica;
++    if (r != null) {
++      _messages = r.chatHistory(); // browsable offline (CFR-82)
++      _input.text = r.chatDraft;
++    }
++    _input.addListener(() => widget.replica?.setChatDraft(_input.text));
++  }
++
++  @override
++  void dispose() {
++    _input.dispose();
++    _scroll.dispose();
++    super.dispose();
++  }
++
++  void _toEnd() => WidgetsBinding.instance.addPostFrameCallback((_) {
++    if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
++  });
++
++  String _describe(Json e) {
++    final text = e['message'] ?? e['text'] ?? e['tool'] ?? e['name'] ?? e['content'];
++    final type = e['type']?.toString() ?? 'status';
++    return text == null ? type : '$type: $text';
++  }
++
++  Future<void> _send() async {
++    final text = _input.text.trim();
++    if (text.isEmpty || _busy) return;
++    setState(() {
++      _messages.add({'role': 'user', 'text': text});
++      _input.clear();
++      _busy = true;
++      _progress = 'Thinking…';
++    });
++    _toEnd();
++    String answer = '';
++    try {
++      await for (final e in widget.api.chatStream(text, grounded: _grounded)) {
++        final type = e['type'];
++        if (type == 'done') {
++          answer = (e['response'] ?? e['message'] ?? '').toString();
++        } else if (type == 'error') {
++          answer = 'Error: ${e['detail'] ?? 'chat failed'}';
++        } else if (mounted) {
++          setState(() => _progress = _describe(e));
++        }
++      }
++      if (answer.isEmpty) answer = 'No answer received.';
++    } on Object catch (e) {
++      answer = 'Unable to reach VIRA: $e';
++    }
++    _messages.add({'role': 'assistant', 'text': answer});
++    await widget.replica?.saveChatHistory(_messages);
++    if (!mounted) return;
++    setState(() {
++      _busy = false;
++      _progress = '';
++    });
++    _toEnd();
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final scheme = Theme.of(context).colorScheme;
++    return Padding(
++      padding: const EdgeInsets.all(12),
++      child: Column(
++        children: [
++          Expanded(
++            child: _messages.isEmpty
++                ? const Center(child: Text('Ask VIRA something.'))
++                : ListView.builder(
++                    controller: _scroll,
++                    itemCount: _messages.length,
++                    itemBuilder: (_, i) {
++                      final m = _messages[i];
++                      final mine = m['role'] == 'user';
++                      return Align(
++                        alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
++                        child: Container(
++                          margin: const EdgeInsets.symmetric(vertical: 4),
++                          padding: const EdgeInsets.all(12),
++                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
++                          decoration: BoxDecoration(
++                            color: mine ? scheme.primaryContainer : scheme.surfaceContainerHighest,
++                            borderRadius: BorderRadius.circular(12),
++                          ),
++                          child: SelectableText(m['text']?.toString() ?? ''),
++                        ),
++                      );
++                    },
++                  ),
++          ),
++          if (_busy)
++            Padding(
++              padding: const EdgeInsets.symmetric(vertical: 6),
++              child: Row(
++                children: [
++                  const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
++                  const SizedBox(width: 8),
++                  Expanded(child: Text(_progress, maxLines: 1, overflow: TextOverflow.ellipsis)),
++                ],
++              ),
++            ),
++          if (!widget.online)
++            const Padding(
++              padding: EdgeInsets.symmetric(vertical: 4),
++              child: Text('Offline: history is read-only, sending needs a connection.'),
++            ),
++          Row(
++            children: [
++              Tooltip(
++                message: 'Use family notes as context',
++                child: Switch(value: _grounded, onChanged: (v) => setState(() => _grounded = v)),
++              ),
++              Expanded(
++                child: TextField(
++                  controller: _input,
++                  enabled: widget.online && !_busy,
++                  onSubmitted: (_) => _send(),
++                  decoration: const InputDecoration(hintText: 'Message VIRA'),
++                ),
++              ),
++              IconButton(onPressed: widget.online && !_busy ? _send : null, icon: const Icon(Icons.send)),
++            ],
++          ),
++        ],
++      ),
++    );
++  }
++}
++
++// -------------------------------------------------------------- settings
++class SettingsPane extends StatelessWidget {
++  const SettingsPane({
++    super.key,
++    required this.api,
++    required this.replica,
++    required this.households,
++    required this.conflictCount,
++    required this.onSwitch,
++    required this.onChanged,
++    required this.onRefresh,
++    required this.onLogout,
++  });
++  final ViraApi api;
++  final LocalReplica? replica;
++  final List<Json> households;
++  final int conflictCount;
++  final void Function(String id) onSwitch;
++  final VoidCallback onChanged;
++  final VoidCallback onRefresh;
++  final VoidCallback onLogout;
++
++  @override
++  Widget build(BuildContext context) => ListView(
++    padding: const EdgeInsets.all(16),
++    children: [
++      ListTile(
++        leading: const Icon(Icons.language),
++        title: const Text('Connected server'),
++        subtitle: Text(api.baseUrl),
++      ),
++      const Divider(),
++      Text('Household', style: Theme.of(context).textTheme.titleMedium),
++      RadioGroup<String>(
++        groupValue: api.householdId,
++        onChanged: (v) {
++          if (v != null) onSwitch(v);
++        },
++        child: Column(
++          children: [
++            for (final h in households)
++              RadioListTile<String>(
++                value: h['id'].toString(),
++                title: Text(h['name']?.toString() ?? 'Family'),
++                subtitle: Text('${h['my_role'] ?? 'member'} · ${h['member_count'] ?? 1} member(s)'),
++              ),
++          ],
++        ),
++      ),
++      ListTile(
++        leading: const Icon(Icons.add_home_outlined),
++        title: const Text('Create household'),
++        onTap: () async {
++          final name = await _askText(context, 'New household', label: 'Name');
++          if (name == null || name.trim().isEmpty) return;
++          await api.createHousehold(name.trim());
++          onChanged();
++        },
++      ),
++      const Divider(),
++      ListTile(
++        leading: const Icon(Icons.notifications_outlined),
++        title: const Text('Notifications & quiet hours'),
++        onTap: () {
++          final r = replica;
++          if (r == null) return;
++          Navigator.of(context).push(
++            MaterialPageRoute(builder: (_) => NotificationSettingsPage(replica: r, householdId: api.householdId ?? '')),
++          );
++        },
++      ),
++      if (conflictCount > 0)
++        ListTile(
++          leading: const Icon(Icons.call_split),
++          title: Text('Resolve $conflictCount conflict(s)'),
++          onTap: () {
++            final r = replica;
++            if (r == null) return;
++            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ConflictsPage(api: api, replica: r)));
++          },
++        ),
++      ListTile(leading: const Icon(Icons.refresh), title: const Text('Sync now'), onTap: onRefresh),
++      ListTile(leading: const Icon(Icons.logout), title: const Text('Sign out'), onTap: onLogout),
++    ],
++  );
++}
++
++class NotificationSettingsPage extends StatefulWidget {
++  const NotificationSettingsPage({super.key, required this.replica, required this.householdId});
++  final LocalReplica replica;
++  final String householdId;
++  @override
++  State<NotificationSettingsPage> createState() => _NotificationSettingsPageState();
++}
++
++class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
++  static const _categories = {
++    'reminder_due': 'Reminders due',
++    'assigned_to_you': 'Assigned to you',
++    'list_updated': 'List updated',
++    'note_shared': 'Note shared with you',
++    'member_joined': 'Member joined',
++    'vira_suggestion': 'VIRA suggestions',
++    'system': 'System',
++  };
++
++  String _key(String c) => 'notif:${widget.householdId}:$c';
++
++  Future<void> _pick(String key, String fallback) async {
++    final parts = (widget.replica.text(key) ?? fallback).split(':');
++    final picked = await showTimePicker(
++      context: context,
++      initialTime: TimeOfDay(hour: int.tryParse(parts[0]) ?? 22, minute: int.tryParse(parts[1]) ?? 0),
++    );
++    if (picked == null) return;
++    await widget.replica.setText(
++      key,
++      '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}',
++    );
++    if (mounted) setState(() {});
++  }
++
++  @override
++  Widget build(BuildContext context) {
++    final r = widget.replica;
++    return Scaffold(
++      appBar: AppBar(title: const Text('Notifications')),
++      body: ListView(
++        children: [
++          const ListTile(
++            subtitle: Text('Preferences are saved on this device and applied by the notification service.'),
++          ),
++          for (final e in _categories.entries)
++            SwitchListTile(
++              title: Text(e.value),
++              value: r.flag(_key(e.key)),
++              onChanged: (v) async {
++                await r.setFlag(_key(e.key), v);
++                setState(() {});
++              },
++            ),
++          const Divider(),
++          SwitchListTile(
++            title: const Text('Quiet hours'),
++            subtitle: const Text('Urgent reminders may still ring'),
++            value: r.flag('quiet:enabled', fallback: false),
++            onChanged: (v) async {
++              await r.setFlag('quiet:enabled', v);
++              setState(() {});
++            },
++          ),
++          ListTile(
++            title: const Text('From'),
++            trailing: Text(r.text('quiet:start') ?? '22:00'),
++            onTap: () => _pick('quiet:start', '22:00'),
++          ),
++          ListTile(
++            title: const Text('Until'),
++            trailing: Text(r.text('quiet:end') ?? '07:00'),
++            onTap: () => _pick('quiet:end', '07:00'),
++          ),
++        ],
++      ),
++    );
++  }
++}
+diff -ruN pa/client/lib/vira_api.dart pb/client/lib/vira_api.dart
+--- pa/client/lib/vira_api.dart	2026-11-04 20:15:55.637723969 +0000
++++ pb/client/lib/vira_api.dart	2026-11-04 20:15:55.639009312 +0000
+@@ -238,37 +238,54 @@
+     String title,
+     String body, {
+     String kind = 'note',
++    bool pinned = false,
++    int baseVersion = 0,
+   }) async {
+     if (householdId == null) {
+       throw StateError('Select a household before saving');
+     }
++    // A fresh op_id per edit: the server de-duplicates by op_id, so reusing the
++    // entity id made every edit after the first a silent "duplicate".
+     await pushOps([
+       {
+-        'op_id': id,
++        'op_id': newId(),
+         'entity_type': 'note',
+         'entity_id': id,
+         'op': 'upsert',
+-        'base_version': 0,
++        'base_version': baseVersion,
+         'data': {
+           'id': id,
+           'title': title,
+           'body_md': body,
+-          'pinned': false,
++          'pinned': pinned,
+           'kind': kind,
+         },
+       },
+     ]);
+   }
+ 
++  Future<void> deleteEntities(String entityType, List<String> ids) async {
++    if (ids.isEmpty) return;
++    await pushOps([
++      for (final id in ids)
++        {
++          'op_id': newId(),
++          'entity_type': entityType,
++          'entity_id': id,
++          'op': 'delete',
++          'base_version': 0,
++        },
++    ]);
++  }
++
+   Future<Map<String, dynamic>> pushOps(List<Map<String, dynamic>> ops) async {
+     if (householdId == null) {
+       throw StateError('Select a household before syncing');
+     }
+-
+     final replica = _replica ??= await LocalReplica.open();
+-    await Future.wait(
+-      ops.map((operation) => replica.enqueue(householdId!, operation)),
+-    );
++    for (final operation in ops) {
++      await replica.enqueue(householdId!, operation);
++    }
+     try {
+       final result = Map<String, dynamic>.from(
+         await _request(
+@@ -277,19 +294,44 @@
+           body: {'household_id': householdId, 'ops': ops},
+         ),
+       );
+-      final results = (result['results'] as List? ?? [])
+-          .whereType<Map>()
+-          .where(
+-            (item) =>
+-                item['status'] == 'applied' || item['status'] == 'duplicate',
+-          )
+-          .map((item) => item['op_id']?.toString())
+-          .whereType<String>()
+-          .toSet();
+-      await replica.removePending(householdId!, results);
++      final settled = <String>{};
++      for (final item in (result['results'] as List? ?? []).whereType<Map>()) {
++        final opId = item['op_id']?.toString();
++        if (opId == null) continue;
++        final status = item['status'];
++        if (status == 'applied' || status == 'duplicate') {
++          settled.add(opId);
++        } else if (status == 'conflict') {
++          // Keep both versions: the server copy wins, ours becomes a copy.
++          final local = ops.firstWhere(
++            (o) => o['op_id'] == opId,
++            orElse: () => <String, dynamic>{},
++          );
++          await replica.addConflict(householdId!, {
++            'op_id': opId,
++            'entity_id': item['entity_id'] ?? local['entity_id'],
++            'local': local['data'],
++            'server': item['server'],
++          });
++          settled.add(opId);
++        } else if (status == 'rejected') {
++          settled.add(opId); // permanent failure: do not retry forever
++        }
++      }
++      await replica.removePending(householdId!, settled);
+       return result;
+-    } catch (_) {
+-      rethrow;
++    } on ViraException catch (error) {
++      // Auth / validation problems are real errors; everything else is
++      // "offline" and the op simply stays in the outbox.
++      if (error.statusCode >= 400 &&
++          error.statusCode < 500 &&
++          error.statusCode != 408 &&
++          error.statusCode != 429) {
++        rethrow;
++      }
++      return {'results': [], 'queued': true};
++    } on Object {
++      return {'results': [], 'queued': true};
+     }
+   }
+ 
+@@ -311,9 +353,10 @@
+     required String noteId,
+     required String text,
+     required bool done,
++    String position = 'a0',
+   }) async => pushOps([
+     {
+-      'op_id': id,
++      'op_id': newId(),
+       'entity_type': 'checklist_item',
+       'entity_id': id,
+       'op': 'upsert',
+@@ -323,7 +366,7 @@
+         'note_id': noteId,
+         'text': text,
+         'done': done,
+-        'position': 'a0',
++        'position': position,
+       },
+     },
+   ]);
+@@ -333,9 +376,13 @@
+     required String title,
+     required String dueAt,
+     bool urgent = false,
++    String status = 'active',
++    String? body,
++    String? timezone,
++    String? rrule,
+   }) async => pushOps([
+     {
+-      'op_id': id,
++      'op_id': newId(),
+       'entity_type': 'reminder',
+       'entity_id': id,
+       'op': 'upsert',
+@@ -345,11 +392,98 @@
+         'title': title,
+         'due_at': dueAt,
+         'urgent': urgent,
+-        'status': 'active',
++        'status': status,
++        if (body != null) 'body': body,
++        if (timezone != null) 'timezone': timezone,
++        if (rrule != null) 'rrule': rrule,
+       },
+     },
+   ]);
+ 
++  // ---- sync paging, long-poll, households, connectivity ----------------
++  Future<Map<String, dynamic>> changesPage({int cursor = 0}) async {
++    if (householdId == null) {
++      throw StateError('Select a household before syncing');
++    }
++    return Map<String, dynamic>.from(
++      await _request(
++        'GET',
++        '/api/v1/sync/changes?household_id=$householdId&cursor=$cursor',
++      ),
++    );
++  }
++
++  /// Long-poll hint (CFR-61/97): returns when something changed or after
++  /// ~25 s. Works behind proxies that break SSE.
++  Future<Map<String, dynamic>> waitForChanges(int cursor) async =>
++      Map<String, dynamic>.from(
++        await _request(
++          'GET',
++          '/api/v1/sync/wait?household_id=$householdId&cursor=$cursor&timeout=25',
++        ),
++      );
++
++  Future<Map<String, dynamic>> createHousehold(String name) async =>
++      Map<String, dynamic>.from(
++        await _request('POST', '/api/v1/households', body: {'name': name}),
++      );
++
++  Future<Duration?> ping() async {
++    final started = DateTime.now();
++    try {
++      await config().timeout(const Duration(seconds: 5));
++      return DateTime.now().difference(started);
++    } on Object {
++      return null;
++    }
++  }
++
++  /// Streams NDJSON events from /chat/stream (CFR-80). The household id is
++  /// sent in `metadata` so the server can ground answers (CFR-81).
++  Stream<Map<String, dynamic>> chatStream(
++    String message, {
++    bool grounded = true,
++  }) async* {
++    final headers = <String, String>{
++      'Content-Type': 'application/json',
++      'X-Vira-Client': 'flutter/1.0.0 proto/1',
++      'Idempotency-Key': 'flutter-${newId()}',
++    };
++    if (_cookie != null) addCookieHeader(headers, _cookie!);
++    final request = http.Request('POST', Uri.parse('$baseUrl/chat/stream'))
++      ..headers.addAll(headers)
++      ..body = jsonEncode({
++        'message': message,
++        'metadata': {
++          if (grounded && householdId != null) 'household_id': householdId,
++        },
++      });
++    final response = await _client.send(request);
++    if (response.statusCode < 200 || response.statusCode >= 300) {
++      final text = await response.stream.bytesToString();
++      var detail = text;
++      try {
++        final decoded = jsonDecode(text);
++        if (decoded is Map && decoded['detail'] != null) {
++          detail = decoded['detail'].toString();
++        }
++      } on Object {
++        // keep raw text
++      }
++      throw ViraException(detail, response.statusCode);
++    }
++    await for (final line
++        in response.stream.transform(utf8.decoder).transform(const LineSplitter())) {
++      if (line.trim().isEmpty) continue;
++      try {
++        final decoded = jsonDecode(line);
++        if (decoded is Map) yield Map<String, dynamic>.from(decoded);
++      } on Object {
++        // ignore a partial line
++      }
++    }
++  }
++
+   Future<Map<String, dynamic>> chat(String message) async {
+     final idempotencyKey =
+         'flutter-${DateTime.now().toUtc().microsecondsSinceEpoch}-${message.hashCode}';

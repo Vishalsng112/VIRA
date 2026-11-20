@@ -22,6 +22,7 @@ the same allow-list, deduplication and retention.
 | Agents | Router passes `device_id`/`actor_user_id`; scheduler queues events instead of dropping them; `ChatAgent` is re-entrant (no per-request instance state); a failed event no longer disables an agent; `AutonomousAgent` keeps baselines per device | `agent_orchestration/*`, `agent/*` |
 | API conventions | `/api/v1` aliases for legacy routes, error body `{detail, error:{code,message,correlation_id}}`, server-side `X-Correlation-ID`, cursor pagination | `api/deps.py` |
 | Client | Reference endpoint client: enroll, secure credential file, offline SQLite queue, backoff, heartbeat | `clients/endpoint_agent.py` |
+| Flutter client | VIRA Link: device enrollment, modular capture, offline outbox, heartbeat, batch sync, device management. Targets Android, iOS, web, Linux and Windows. | `client/` |
 
 ## Requirement traceability (implemented)
 
@@ -37,13 +38,12 @@ NFR-REL-01, NFR-OBS-01, NFR-COMP-01 map to the tests in
 * TLS termination, `https_only` cookies and CSRF protection are deployment/config work.
 * Hard user deletion / retention workflow (delete is a tombstone; conversations and memories are kept).
 * A web UI for user/device administration (use the API).
-* Android/iOS clients (only the reference Python client).
 * The unversioned legacy routes remain as adapters; the web UI still uses them.
 * `docs/SYSTEM_DESIGN.md` / `VIRA_DOCS.md` / diagrams were not rewritten.
 
 ## Operating notes
 
 * After upgrading, existing users are kept (all are `admin`); each gets a `public_id`. Run once; migrations are idempotent.
-* Create users: `POST /api/v1/admin/users`. Enrol a laptop: `python -m vira.clients.endpoint_agent enroll --server http://HOST:8000 --username alice`.
+* Create users: `POST /api/v1/admin/users`. Enrol a laptop: `python -m vira.clients.endpoint_agent enroll --server http://HOST:8000 --username alice`, or use the Flutter companion in `client/` (VIRA Link) on Android, iOS, web, Linux or Windows.
 * Set `auth.secret_key` and serve behind TLS before exposing remote devices.
 * Run tests: `python -m unittest vira.tests.test_multi_device -v`.

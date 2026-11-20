@@ -256,9 +256,6 @@ class AgentOrchestratorModule(ViraModule):
                     "config": item["config"],
                 })
             # agents_cfg = agents_cfg + persisted_agents #TODO: I will make it configurable in future
-            # `swarm:` entries become N independent persona agents (one script, N agents)
-            from vira.swarm.personas import expand_swarm_entries
-            agents_cfg = expand_swarm_entries(agents_cfg)
             allowed_modules = self._config_manager.get(
                 "agent_policy.allowed_modules",
                 ["vira.agent", "vira.modules"],
