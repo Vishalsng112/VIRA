@@ -74,6 +74,16 @@ tools:
   workspace_root: .
 
 security:
+  # Destructive tool calls (shell, filesystem writes, sandbox writes/exec/install)
+  # create a single-use approval request instead of executing immediately.
+  # Approve or deny through /api/v1/approvals.
+  approvals:
+    enabled: true
+    ttl_minutes: 30
+    # Force every operation of these tools through approval:
+    # destructive_tools: ["mcp_server.custom_shell"]
+    # Always allow these even if their category looks destructive:
+    # safe_tools: ["filesystem"]
   default_permissions:
     - "event.publish.*"
     - "command.execute.command.agent.run"

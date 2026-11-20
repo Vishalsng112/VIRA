@@ -7,7 +7,7 @@
 # Deploy:     mike deploy --push --update-aliases <version> latest
 site_name: VIRA
 site_author: VIRA contributors
-site_description: Local-first AI server and extensible agent platform
+site_description: Self-hosted, local-first context and tool server for AI agents
 site_url: https://vishalsng112.github.io/VIRA/
 repo_url: https://github.com/Vishalsng112/VIRA
 repo_name: Vishalsng112/VIRA
@@ -56,6 +56,9 @@ nav:
           - One-command install: user/install/one-command.md
           - Docker and deployment: user/install/docker.md
       - VIRA Link client: user/client.md
+      - Five-minute proof: user/demo.md
+      - Choose a local model: user/models.md
+      - Security overview: user/security.md
       - Troubleshooting: user/troubleshooting.md
   - Developer manual:
       - dev/index.md
@@ -73,7 +76,13 @@ nav:
           - Multi-device implementation: dev/designs/multi-device-implementation.md
           - P4 ecosystem and scale: dev/designs/p4-ecosystem.md
           - Wayland sensor design: dev/designs/wayland-sensor.md
+      - Security:
+          - Threat model: dev/security/threat-model.md
+          - Backup and restore drill: dev/runbooks/backup-restore.md
+      - Benchmarks:
+          - Tool-use benchmark: dev/benchmarks/tool-use.md
       - Roadmap:
+          - Product roadmap: roadmap.md
           - Server roadmap: dev/roadmap/server.md
           - Client roadmap: dev/roadmap/client.md
   - Reference:

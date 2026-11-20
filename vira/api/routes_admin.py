@@ -1,11 +1,17 @@
 """Administrator routes: user lifecycle, fleet view, audit (design 7.2)."""
+import csv
+import io
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from vira import errors
 from vira.auth import database
+from vira.security.redaction import redact
 from vira.auth.admin import UserAdminService
 from vira.auth.principals import UserPrincipal
 from vira.devices import store as device_store
@@ -91,6 +97,59 @@ def build_admin_router(kernel, deps: dict, stream_manager) -> APIRouter:
     async def audit(limit: int = 100, before_id: Optional[int] = None,
                     actor: UserPrincipal = Depends(admin)):
         return {"audit": database.list_audit(limit, before_id)}
+
+    @router.get("/admin/audit/export")
+    async def export_audit(format: str = "json", kind: str = "all",
+                           limit: int = 1000, since: Optional[str] = None,
+                           until: Optional[str] = None,
+                           actor: UserPrincipal = Depends(admin)):
+        """Redacted audit/tool-call export for administrators.
+
+        ``format`` is ``json`` or ``csv``; ``kind`` is ``audit``, ``tool_calls``
+        or ``all``. Secret-looking keys and token-shaped values are replaced
+        before serialization. Session hashes and raw payloads are not exported.
+        """
+        if format.lower() not in ("json", "csv"):
+            raise errors.ValidationFailed("format must be json or csv")
+        if kind.lower() not in ("audit", "tool_calls", "all"):
+            raise errors.ValidationFailed("kind must be audit, tool_calls or all")
+
+        rows = []
+        if kind.lower() in ("audit", "all"):
+            rows += [
+                {**redact(row), "export_kind": "audit"}
+                for row in database.list_audit_export(limit, since, until)
+            ]
+        if kind.lower() in ("tool_calls", "all"):
+            rows += [
+                {**redact(row), "export_kind": "tool_call"}
+                for row in database.list_tool_calls_export(limit, since, until)
+            ]
+        rows.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+
+        database.record_auth_audit(
+            "audit", "audit.export", True, user_id=actor.user_id,
+            details=f"kind={kind.lower()} format={format.lower()} rows={len(rows)}",
+        )
+        if format.lower() == "csv":
+            buffer = io.StringIO()
+            fieldnames = sorted({key for row in rows for key in row})
+            writer = csv.DictWriter(buffer, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({
+                    key: json.dumps(value, default=str) if isinstance(value, (dict, list)) else value
+                    for key, value in row.items()
+                })
+            return Response(
+                buffer.getvalue(), media_type="text/csv",
+                headers={"Content-Disposition": "attachment; filename=vira-audit.csv"},
+            )
+        return JSONResponse(
+            {"exported_at": datetime.now(timezone.utc).isoformat(),
+             "kind": kind.lower(), "count": len(rows), "rows": rows},
+            headers={"Content-Disposition": "attachment; filename=vira-audit.json"},
+        )
 
     @router.get("/admin/jobs")
     async def job_status(status: Optional[str] = None, limit: int = 100,

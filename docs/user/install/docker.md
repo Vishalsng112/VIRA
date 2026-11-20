@@ -267,6 +267,34 @@ Before exposing the server beyond localhost:
 - review device consent, tool permissions and quotas
 - back up the master key separately
 
+## Container hardening and host sensing
+
+The default Compose services already apply:
+
+- non-root user (`VIRA_UID` / `VIRA_GID`);
+- `no-new-privileges: true`;
+- all Linux capabilities dropped;
+- a read-only root filesystem;
+- a small `noexec` `/tmp` tmpfs;
+- process limits;
+- no Docker socket mount and no `privileged` mode.
+
+Runtime state lives on the `vira-data` volume. If you add a feature that writes
+outside that volume, mount an explicit path instead of disabling the read-only
+root filesystem.
+
+Docker limits host sensing. The server container sees its own CPU, memory,
+process, filesystem and network view, not the full host. App usage, focus,
+battery and health signals come from **VIRA Link** on phones and desktops. See
+the [security overview](../security.md#what-host-sensing-looks-like-inside-docker)
+for the exact boundaries.
+
+Verify the flags Compose will apply:
+
+```bash
+docker compose config | grep -E 'privileged|cap_drop|read_only|no-new-privileges|docker.sock'
+```
+
 ## Developer workflow
 
 ### Run the working tree in the container

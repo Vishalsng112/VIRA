@@ -39,6 +39,8 @@ from vira.api.deps import (
 from vira.api.streams import EventStreamManager
 from vira.ratelimit import RateLimitMiddleware
 from vira.agent.progress import hub as progress_hub
+from vira.llm import catalog as model_catalog
+from vira.llm import guidance as model_guidance
 from vira.api.routes_account import build_account_router
 from vira.api.routes_admin import build_admin_router
 from vira.api.routes_notifications import build_notification_router
@@ -50,6 +52,7 @@ from vira.api.routes_organizations import build_organization_router
 from vira.api.routes_storage import build_storage_router
 from vira.api.routes_usage import build_usage_router
 from vira.api.routes_updates import build_update_router
+from vira.api.routes_approvals import build_approval_router
 from vira.api.routes_devices import build_device_router
 from vira.api.routes_client import build_client_router
 from vira.family import store as family_store
@@ -105,6 +108,8 @@ class ChatRequest(BaseModel):
     metadata: Dict[str, Any] = {}
     # Optional device context: validated against the caller's device grants.
     device_id: Optional[str] = None
+    # Retry an existing run without duplicating the user's message.
+    retry_run_id: Optional[str] = None
 
 
 class PasswordChangeRequest(BaseModel):
@@ -136,9 +141,38 @@ class AgentStateRequest(BaseModel):
     enabled: bool
 
 
+class ModelSelectRequest(BaseModel):
+    model: str
+
+
 stream_manager = EventStreamManager()
 
 _SECRET_MARKERS = ("secret", "api_key", "password", "token")
+
+
+def _error_text(detail: Any) -> str:
+    if isinstance(detail, dict):
+        return str(detail.get("message") or detail.get("detail") or detail)
+    return str(detail)
+
+
+def _chat_http_error(status_code: int, detail: Any, *, stage: str,
+                     run_id: Optional[str] = None,
+                     conversation_id: Optional[str] = None,
+                     user_message: Optional[str] = None,
+                     recoverable: bool = True,
+                     next_steps: Optional[List[str]] = None) -> HTTPException:
+    """HTTPException carrying the recovery context the chat UI needs."""
+    exc = HTTPException(status_code=status_code, detail=detail)
+    exc.chat_context = {
+        "stage": stage,
+        "run_id": run_id,
+        "conversation_id": conversation_id,
+        "user_message": user_message,
+        "recoverable": recoverable,
+        "next_steps": next_steps or [],
+    }
+    return exc
 
 
 def _redact(value):
@@ -636,6 +670,125 @@ def create_app(kernel: Kernel) -> FastAPI:
             },
         }
 
+    # --- Model discovery and switching (first-run recovery) -------------
+    def _ollama_runtime():
+        config = kernel.config_manager.get_all()
+        base_url = model_catalog.configured_ollama_url(config)
+        default_model = model_catalog.configured_model(config)
+        orchestrator = getattr(kernel, "agent_orchestrator", None)
+        runtime = getattr(orchestrator, "runtime", None)
+        llm = getattr(runtime, "_llm", None) if runtime else None
+        current = default_model
+        if llm is not None:
+            for provider in getattr(llm, "_providers", {}).values():
+                if provider.__class__.__name__ == "OllamaProvider":
+                    current = getattr(provider, "model", None) or current
+                    break
+        return config, base_url, default_model, current, llm
+
+    @app.get("/api/v1/models")
+    async def list_models(user: auth.Principal = Depends(get_current_user)):
+        """Installed Ollama models plus the configured and active model."""
+        config, base_url, default_model, current_model, _llm = _ollama_runtime()
+        reachable = True
+        error = None
+        try:
+            installed = await asyncio.to_thread(model_catalog.list_ollama_models, base_url, 3.0)
+        except Exception as exc:  # noqa: BLE001 - surface a helpful state, not a 500
+            installed = []
+            reachable = False
+            error = str(exc)
+        names = {item["name"] for item in installed}
+        if default_model and default_model not in names:
+            installed.append({
+                "name": default_model,
+                "size": None,
+                "parameter_size": None,
+                "quantization": None,
+                "family": None,
+                "modified_at": None,
+                "installed": False,
+            })
+            names.add(default_model)
+        for item in installed:
+            item.setdefault("installed", reachable)
+            item["current"] = item["name"] == current_model
+            item["configured"] = item["name"] == default_model
+        ram = model_guidance.hardware_ram_gb()
+        return {
+            "provider": "ollama",
+            "ollama_url": base_url,
+            "reachable": reachable,
+            "error": error,
+            "default_model": default_model,
+            "current_model": current_model,
+            "num_ctx": model_catalog.configured_context(config),
+            "models": installed,
+            "can_select": bool(getattr(user, "is_admin", False)),
+            "guidance": model_guidance.recommend(ram),
+            "cloud_fallback": model_guidance.cloud_fallback(),
+        }
+
+    @app.post("/api/v1/models/select")
+    async def select_model(request: ModelSelectRequest,
+                            user: auth.Principal = Depends(require_admin)):
+        """Switch the active Ollama model without restarting the server."""
+        chosen = (request.model or "").strip()
+        if not chosen:
+            raise HTTPException(status_code=400, detail="model is required")
+        config, base_url, default_model, current_model, llm = _ollama_runtime()
+        try:
+            installed = await asyncio.to_thread(model_catalog.list_ollama_models, base_url, 3.0)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "model_unreachable",
+                    "message": f"Ollama is not reachable at {base_url}: {exc}",
+                    "next_steps": [
+                        "Start Ollama (`ollama serve`) or fix VIRA_OLLAMA_URL.",
+                        "Run `python -m vira doctor` to re-check the endpoint.",
+                    ],
+                },
+            ) from exc
+        names = {item["name"] for item in installed}
+        if chosen not in names:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "model_not_installed",
+                    "message": f"'{chosen}' is not installed in Ollama.",
+                    "available": sorted(names),
+                    "next_steps": [f"Run `ollama pull {chosen}`, then retry."],
+                },
+            )
+
+        llm_config = config.setdefault("llm", {})
+        llm_config["default_model"] = chosen
+        for entry in llm_config.get("models", []) or []:
+            if entry.get("provider") == "ollama":
+                entry["model"] = chosen
+        kernel.config_manager.save(config)
+
+        if llm is not None:
+            for provider_name, provider in getattr(llm, "_providers", {}).items():
+                if provider.__class__.__name__ == "OllamaProvider":
+                    provider.model = chosen
+                    routing = llm._routing_config.setdefault(chosen, [])
+                    if provider_name not in routing:
+                        routing.append(provider_name)
+        registry = getattr(getattr(kernel, "agent_orchestrator", None), "registry", None)
+        for agent in getattr(registry, "_agent_instances", {}).values():
+            if getattr(agent, "model", None) is not None:
+                agent.model = chosen
+        logger.info("Active chat model switched from {} to {}", current_model, chosen)
+        return {
+            "status": "updated",
+            "model": chosen,
+            "previous_model": current_model,
+            "default_model": default_model,
+        }
+
     @app.get("/agents")
     async def list_agents(user: auth.Principal = Depends(require_admin)):
         orchestrator = getattr(kernel, "agent_orchestrator", None)
@@ -864,14 +1017,24 @@ def create_app(kernel: Kernel) -> FastAPI:
         orchestrator = getattr(kernel, "agent_orchestrator", None)
         registry = getattr(orchestrator, "registry", None) if orchestrator else None
         if not registry or not await registry.find_by_event("user.message"):
-            raise HTTPException(
-                status_code=503,
-                detail="No chat agent is available. Enable the Chatbot agent and restart VIRA.",
+            raise _chat_http_error(
+                503,
+                "No chat agent is available. Enable the Chatbot agent and restart VIRA.",
+                stage="agent",
+                user_message=request.message,
+                next_steps=[
+                    "Run `python -m vira doctor` and fix the Chatbot check.",
+                    "Set agents[].enabled: true for the Chatbot in config.yaml.",
+                    "Restart VIRA after changing config.yaml.",
+                ],
             )
         correlation_id = correlation_id_of(http_request)
         idempotency_key = http_request.headers.get("Idempotency-Key")
-        if not idempotency_key:
-            raise HTTPException(status_code=400, detail="Idempotency-Key header is required")
+        if not idempotency_key and not request.retry_run_id:
+            raise _chat_http_error(
+                400, "Idempotency-Key header is required", stage="request",
+                user_message=request.message, recoverable=False,
+            )
         # Optional device context: accepted only for a device the caller may use.
         device_id = None
         if request.device_id:
@@ -881,31 +1044,59 @@ def create_app(kernel: Kernel) -> FastAPI:
             conversation_id = auth_database.create_conversation(user.user_id)
         conversation = auth_database.get_conversation(conversation_id, user.user_id)
         if not conversation:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise _chat_http_error(
+                404, "Conversation not found", stage="request",
+                conversation_id=conversation_id, user_message=request.message,
+                recoverable=False,
+            )
 
-        existing = auth_database.get_message_by_idempotency(user.user_id, idempotency_key)
-        if existing:
-            return {
-                "conversation_id": existing["conversation_id"],
-                "message_id": existing["id"],
-                "run_id": existing["run_id"],
-                "status": "queued",
-                "correlation_id": existing["correlation_id"],
-            }
-        user_message = auth_database.append_message(
-            conversation_id,
-            user.user_id,
-            "user",
-            request.message,
-            correlation_id=correlation_id,
-            idempotency_key=idempotency_key,
-            metadata=request.metadata,
-            created_by_device_id=device_id,
-        )
+        retry_run = None
+        if request.retry_run_id:
+            retry_run = auth_database.get_run(request.retry_run_id, user.user_id)
+            if not retry_run or retry_run.get("conversation_id") != conversation_id:
+                raise _chat_http_error(
+                    404, "Run not found in this conversation", stage="request",
+                    conversation_id=conversation_id, user_message=request.message,
+                    recoverable=False,
+                )
+            original = auth_database.get_message(retry_run["input_message_id"], user.user_id)
+            if not original:
+                raise _chat_http_error(
+                    404, "The original message for this run no longer exists",
+                    stage="request", conversation_id=conversation_id,
+                    run_id=request.retry_run_id, user_message=request.message,
+                    recoverable=False,
+                )
+            user_message = original
+            message_text = str(original["content"])
+            idempotency_key = None
+        else:
+            existing = auth_database.get_message_by_idempotency(user.user_id, idempotency_key)
+            if existing:
+                return {
+                    "conversation_id": existing["conversation_id"],
+                    "message_id": existing["id"],
+                    "run_id": existing["run_id"],
+                    "status": "queued",
+                    "correlation_id": existing["correlation_id"],
+                }
+            message_text = request.message
+            user_message = auth_database.append_message(
+                conversation_id,
+                user.user_id,
+                "user",
+                message_text,
+                correlation_id=correlation_id,
+                idempotency_key=idempotency_key,
+                metadata=request.metadata,
+                created_by_device_id=device_id,
+            )
         history_rows = auth_database.list_messages(conversation_id, user.user_id, limit=20)
         history = [{"role": row["role"], "content": row["content"]} for row in history_rows]
         run_id = auth_database.create_run(
-            conversation_id, user.user_id, user_message["id"], request.agent_id, correlation_id
+            conversation_id, user.user_id, user_message["id"],
+            request.agent_id or (retry_run.get("agent_id") if retry_run else None),
+            correlation_id,
         )
 
         response_future = Future()
@@ -929,7 +1120,7 @@ def create_app(kernel: Kernel) -> FastAPI:
             event = Event(
                 type="user.message",
                 data={
-                    "message": request.message,
+                    "message": message_text,
                     "conversation_id": conversation_id,
                     "history": history,
                     "run_id": run_id,
@@ -966,10 +1157,37 @@ def create_app(kernel: Kernel) -> FastAPI:
             }
         except AsyncTimeoutError:
             auth_database.update_run(run_id, "failed", error="Agent did not respond")
-            raise HTTPException(status_code=504, detail="Agent did not respond")
+            raise _chat_http_error(
+                504,
+                "The model did not answer in time. The local model may still be loading.",
+                stage="model_timeout",
+                run_id=run_id,
+                conversation_id=conversation_id,
+                user_message=message_text,
+                next_steps=[
+                    "Retry after the model has finished loading.",
+                    "Run `python -m vira doctor` to check the model and its context size.",
+                    "Switch to a smaller local model or a cloud provider if this repeats.",
+                ],
+            )
+        except HTTPException:
+            raise
         except Exception as exc:
             auth_database.update_run(run_id, "failed", error=str(exc))
-            raise
+            logger.exception("chat run failed")
+            raise _chat_http_error(
+                500,
+                f"The agent failed: {type(exc).__name__}. Your message was saved.",
+                stage="model",
+                run_id=run_id,
+                conversation_id=conversation_id,
+                user_message=message_text,
+                next_steps=[
+                    "Retry the message; the conversation and run are preserved.",
+                    "Run `python -m vira doctor` to check Ollama, the model and the database.",
+                    "Switch models from the recovery panel, or use a cloud provider.",
+                ],
+            )
         finally:
             progress_hub.end(run_id)  # no-op if already collected
             kernel.event_bus.unsubscribe_all(on_response)
@@ -996,10 +1214,27 @@ def create_app(kernel: Kernel) -> FastAPI:
                 result = await _submit_chat(request, http_request, user, progress_queue=queue)
                 await queue.put({"type": "done", **result})
             except HTTPException as exc:
-                await queue.put({"type": "error", "status": exc.status_code, "detail": str(exc.detail)})
+                payload = {
+                    "type": "error",
+                    "status": exc.status_code,
+                    "detail": _error_text(exc.detail),
+                    "code": (exc.detail.get("code") if isinstance(exc.detail, dict) else None),
+                    **getattr(exc, "chat_context", {}),
+                }
+                if isinstance(exc.detail, dict):
+                    payload["available"] = exc.detail.get("available")
+                await queue.put(payload)
             except Exception as exc:
                 logger.exception("chat stream failed")
-                await queue.put({"type": "error", "status": 500, "detail": str(exc) or "Chat failed"})
+                await queue.put({
+                    "type": "error",
+                    "status": 500,
+                    "detail": str(exc) or "Chat failed",
+                    "stage": "unknown",
+                    "recoverable": True,
+                    "user_message": request.message,
+                    "next_steps": ["Retry the message.", "Run `python -m vira doctor`."],
+                })
             finally:
                 await queue.put(None)
 
@@ -1053,6 +1288,7 @@ def create_app(kernel: Kernel) -> FastAPI:
     app.include_router(build_storage_router(get_current_user))
     app.include_router(build_usage_router(auth_deps["require_admin"], get_current_user))
     app.include_router(build_update_router(auth_deps["require_admin"], get_current_user))
+    app.include_router(build_approval_router(get_current_user, auth_deps["require_admin"]))
     plugin_manager = getattr(kernel, "plugin_manager", None)
     for plugin_id, plugin_router in (plugin_manager.collect_routers() if plugin_manager else []):
         app.include_router(plugin_router, prefix=f"/api/v1/ext/{plugin_id}")

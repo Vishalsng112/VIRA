@@ -6,9 +6,12 @@ required.
 ## Contents
 
 - [Getting started](getting-started.md) — install the server and open the dashboard
+- [Five-minute proof](demo.md) — chat, live tool calls and the database boundary
 - [One-command install](install/one-command.md) — Linux, macOS and Windows installers
 - [Docker and deployment](install/docker.md) — Compose, Ollama, GPU and operations
 - [VIRA Link client](client.md) — the device companion app
+- [Choose a local model](models.md) — tiers by RAM/GPU, cloud fallback and the tool-use warning
+- [Security overview](security.md) — controls, evidence and limits
 - [Troubleshooting](troubleshooting.md) — common install and runtime problems
 
 ## What you need

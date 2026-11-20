@@ -1,0 +1,20 @@
+# Gitleaks configuration for VIRA.
+#
+# Use the upstream rules, then allowlist test fixtures and documentation
+# examples that intentionally contain fake credentials. Real runtime data,
+# cookies and .env files are already ignored by .gitignore.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Intentional test fixtures and documentation examples"
+paths = [
+  '''vira/tests/.*''',
+  '''docs/.*''',
+  '''examples/.*''',
+]
+regexes = [
+  '''change-this-to-a-random-secret-key-in-production''',
+  '''\\$\\{OPENAI_API_KEY\\}''',
+  '''\\$\\{ANTHROPIC_API_KEY\\}''',
+]

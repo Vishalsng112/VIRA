@@ -1,9 +1,9 @@
 # VIRA Documentation
 
-**VIRA** is a local-first AI server and extensible agent platform for your devices,
-tools and knowledge. It gives you a control center, a chat workspace, persistent
-memory, permissioned tools, retrieval-augmented knowledge, durable workflows and
-specialist agents that can work on real tasks.
+**VIRA** is a self-hosted, local-first context and tool server for AI agents. It
+gives agents private access to your devices, memory, data and MCP tools, with
+permissions and an audit trail in your hands. It also ships a control center, chat
+workspace, memory, durable workflows and specialist agents.
 
 ![VIRA Server and VIRA Link](assets/VIRA_server_client.svg)
 
@@ -12,7 +12,7 @@ specialist agents that can work on real tasks.
 | Piece | What it is | Where it runs |
 |---|---|---|
 | **VIRA Server** | API, dashboard, chat, agents, tools, memory, database, scheduler, admin | Docker container (Linux, macOS, Windows) |
-| **VIRA Link** | Device companion: collectors, offline ledgers, sync, command polling | Native app on phones and desktops, or its web build |
+| **VIRA Link** | Device companion: collectors, offline ledgers, sync, command polling | Android, iOS, web/PWA, Linux and Windows. No native macOS client yet; use the web/PWA build there. |
 
 The browser dashboard and chat are served by VIRA Server and need no separate
 install. VIRA Link is only needed on devices whose signals you want to collect.
@@ -20,6 +20,15 @@ install. VIRA Link is only needed on devices whose signals you want to collect.
 ## Start here
 
 <div class="grid cards" markdown>
+
+-   **I want to see it work**
+
+    ---
+
+    Run the reproducible five-minute demo: chat, live tool calls and a read-only
+    database boundary.
+
+    [:octicons-arrow-right-24: Five-minute proof](user/demo.md)
 
 -   **I want to run VIRA**
 
@@ -29,6 +38,14 @@ install. VIRA Link is only needed on devices whose signals you want to collect.
 
     [:octicons-arrow-right-24: Getting started](user/getting-started.md)
 
+-   **I want to trust it**
+
+    ---
+
+    Authentication, consent, encryption, sandboxing and known limitations.
+
+    [:octicons-arrow-right-24: Security overview](user/security.md)
+
 -   **I want to build on VIRA**
 
     ---
@@ -37,13 +54,13 @@ install. VIRA Link is only needed on devices whose signals you want to collect.
 
     [:octicons-arrow-right-24: Developer manual](dev/index.md)
 
--   **I want to look up an API**
+-   **I want to know the plan**
 
     ---
 
-    HTTP endpoints, event types and configuration keys.
+    Maturity phases, acceptance criteria and deferred research.
 
-    [:octicons-arrow-right-24: Reference](reference/api.md)
+    [:octicons-arrow-right-24: Product roadmap](roadmap.md)
 
 </div>
 

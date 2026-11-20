@@ -6,6 +6,9 @@ const state = {
   sending: false,
   agentId: "",
   search: "",
+  abort: null,
+  retryRunId: null,
+  canSelectModel: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -282,6 +285,121 @@ function userArticle(content) {
   return article;
 }
 
+// ---- Failure recovery: retry, inspect, or switch model ---------------------
+function errorArticle({ detail, nextSteps = [], runId = null, message = "" }) {
+  const article = document.createElement("article");
+  article.className = "message assistant";
+  article.innerHTML = `
+    <div class="message-avatar">!</div>
+    <div class="message-content">
+      <div class="message-role">error</div>
+      <div class="answer"></div>
+      <div class="recovery">
+        <p class="recovery-title">What to do next</p>
+        <p class="recovery-hint">Your message is preserved. Retry it, inspect the run, or switch to another model.</p>
+        <div class="recovery-actions">
+          <button type="button" class="primary" data-recovery-retry>Retry</button>
+          <button type="button" data-recovery-switch>Switch model &amp; retry</button>
+          ${runId ? '<button type="button" data-recovery-details>Show what failed</button>' : ""}
+        </div>
+        <div class="recovery-models" hidden></div>
+        <div class="recovery-details" hidden></div>
+      </div>
+    </div>`;
+  article.querySelector(".answer").textContent = detail || "The request failed.";
+  const steps = article.querySelector(".recovery-details");
+  if (nextSteps.length) {
+    steps.innerHTML = `<p class="recovery-title">Suggested steps</p><ol>${
+      nextSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>`;
+  }
+  return article;
+}
+
+async function showRunDetails(article, runId, detailsBox) {
+  detailsBox.hidden = false;
+  detailsBox.innerHTML = '<p class="recovery-hint">Loading the run trace…</p>';
+  try {
+    const data = await api(`/api/v1/runs/${encodeURIComponent(runId)}/events?limit=80`);
+    const events = data.events || [];
+    const lines = events.map((event) => {
+      const payload = event.data || {};
+      if (event.event_type === "tool_start") return `→ ${payload.tool || "tool"} ${payload.params ? JSON.stringify(payload.params) : ""}`;
+      if (event.event_type === "tool_end") return `  ${payload.ok === false ? "✗" : "✓"} ${payload.tool || "tool"}${payload.ms != null ? ` (${payload.ms} ms)` : ""}`;
+      if (event.event_type === "check") return `! ${payload.text || "check"}`;
+      if (event.event_type === "status") return `… ${payload.label || "status"}`;
+      if (event.event_type === "thought") return `◌ ${payload.text || "thought"}`;
+      return `${event.event_type}`;
+    });
+    detailsBox.innerHTML = lines.length
+      ? `<p class="recovery-title">Run trace</p><pre>${escapeHtml(lines.join("\n"))}</pre>`
+      : '<p class="recovery-hint">No run events were recorded for this failure.</p>';
+  } catch (error) {
+    detailsBox.innerHTML = `<p class="recovery-hint">Could not load the trace: ${escapeHtml(error.message)}</p>`;
+  }
+}
+
+async function showModelPicker(article, modelsBox, onSelected) {
+  modelsBox.hidden = false;
+  modelsBox.innerHTML = '<span class="recovery-hint">Loading installed models…</span>';
+  try {
+    const data = await api("/api/v1/models");
+    state.canSelectModel = Boolean(data.can_select);
+    if (!data.can_select) {
+      modelsBox.innerHTML = '<span class="recovery-hint">Only an administrator can switch models. Ask an administrator to change the Chatbot model, or try a smaller prompt.</span>';
+      return;
+    }
+    if (!data.reachable) {
+      modelsBox.innerHTML = `<span class="recovery-hint">Ollama is not reachable at ${escapeHtml(data.ollama_url || "")}. Start it, then retry.</span>`;
+      return;
+    }
+    const models = data.models || [];
+    if (!models.length) {
+      modelsBox.innerHTML = '<span class="recovery-hint">No models are installed. Run <code>ollama pull</code> first.</span>';
+      return;
+    }
+    modelsBox.innerHTML = `
+      <select aria-label="Choose a model">
+        ${models.map((item) => `<option value="${escapeHtml(item.name)}" ${item.current ? "selected" : ""}>${escapeHtml(item.name)}${item.installed === false ? " (not installed)" : ""}</option>`).join("")}
+      </select>
+      <button type="button" data-recovery-apply>Use model &amp; retry</button>`;
+    modelsBox.querySelector("[data-recovery-apply]").addEventListener("click", async () => {
+      const select = modelsBox.querySelector("select");
+      const chosen = select.value;
+      try {
+        await api("/api/v1/models/select", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: chosen }),
+        });
+        modelsBox.innerHTML = `<span class="recovery-hint">Switched to ${escapeHtml(chosen)}. Retrying…</span>`;
+        onSelected();
+      } catch (error) {
+        modelsBox.innerHTML = `<span class="recovery-hint">Could not switch: ${escapeHtml(error.message)}</span>`;
+      }
+    });
+  } catch (error) {
+    modelsBox.innerHTML = `<span class="recovery-hint">Could not load models: ${escapeHtml(error.message)}</span>`;
+  }
+}
+
+function bindRecovery(article, { detail, nextSteps, runId, message }) {
+  const detailsBox = article.querySelector(".recovery-details");
+  const modelsBox = article.querySelector(".recovery-models");
+  article.querySelector("[data-recovery-retry]")?.addEventListener("click", () => {
+    article.remove();
+    retryMessage(message, runId);
+  });
+  article.querySelector("[data-recovery-switch]")?.addEventListener("click", () => {
+    showModelPicker(article, modelsBox, () => {
+      article.remove();
+      retryMessage(message, runId);
+    });
+  });
+  article.querySelector("[data-recovery-details]")?.addEventListener("click", () => {
+    showRunDetails(article, runId, detailsBox);
+  });
+}
+
 function renderConversations() {
   const list = $("#conversation-list");
   const query = state.search.trim().toLowerCase();
@@ -415,10 +533,11 @@ async function deleteConversation(id) {
   }
 }
 
-async function streamChat(payload, onEvent) {
+async function streamChat(payload, onEvent, signal) {
   const response = await fetch("/chat/stream", {
     method: "POST",
     credentials: "include",
+    signal,
     headers: { "Content-Type": "application/json", "Idempotency-Key": newIdempotencyKey() },
     body: JSON.stringify(payload),
   });
@@ -443,15 +562,23 @@ async function streamChat(payload, onEvent) {
   }
 }
 
-async function sendMessage(event) {
-  event.preventDefault();
-  const input = $("#message-input");
-  const message = input.value.trim();
+function defaultNextSteps(error) {
+  if (error?.name === "AbortError") {
+    return ["Retry when you are ready; the server may still save the answer."];
+  }
+  return [
+    "Retry the message; the conversation is preserved.",
+    "Run `python -m vira doctor` in the VIRA directory to check Ollama and the model.",
+    "Switch to another model from this panel, or use a cloud provider.",
+  ];
+}
+
+async function submitMessage(message, { appendUser = true, retryRunId = null } = {}) {
   if (!message || state.sending) return;
   state.sending = true;
+  state.abort = new AbortController();
   $("#send-button").disabled = true;
-  input.value = "";
-  input.style.height = "auto";
+  $("#stop-button").hidden = false;
 
   const list = $("#message-list");
   let pending = null;
@@ -467,20 +594,31 @@ async function sendMessage(event) {
     }
 
     $("#welcome-state").hidden = true;
-    list.appendChild(userArticle(message));
+    if (appendUser) list.appendChild(userArticle(message));
     const live = newLive([], true);
     pending = assistantArticle({ live });
     list.appendChild(pending);
     follow(true);
 
     let answer = null;
-    await streamChat({ conversation_id: state.conversationId, message, agent_id: state.agentId || null }, (evt) => {
+    let errorEvent = null;
+    await streamChat({
+      conversation_id: state.conversationId,
+      message,
+      agent_id: state.agentId || null,
+      retry_run_id: retryRunId || null,
+    }, (evt) => {
       if (evt.type === "done") { answer = evt.response || ""; return; }
-      if (evt.type === "error") throw new Error(evt.detail || "Chat failed");
+      if (evt.type === "error") { errorEvent = evt; return; }
       live.events.push(evt);
       pending._setTrace();
       follow();
-    });
+    }, state.abort.signal);
+    if (errorEvent) {
+      const failure = new Error(errorEvent.detail || "Chat failed");
+      failure.payload = errorEvent;
+      throw failure;
+    }
     if (answer === null) throw new Error("The connection closed before VIRA answered.");
 
     live.running = false;
@@ -498,15 +636,47 @@ async function sendMessage(event) {
     }
     await loadConversations();
     $("#chat-title").textContent = state.conversations.find((item) => item.id === state.conversationId)?.title || "Chat";
+    $("#message-input").value = "";
+    $("#message-input").style.height = "auto";
   } catch (error) {
     pending?.remove();
-    list.appendChild(assistantArticle({ answer: error.message, error: true }));
+    const payload = error.payload || {};
+    const detail = payload.detail || error.message;
+    const runId = payload.run_id || null;
+    const nextSteps = payload.next_steps?.length ? payload.next_steps : defaultNextSteps(error);
+    const article = errorArticle({ detail, nextSteps, runId, message });
+    list.appendChild(article);
+    bindRecovery(article, { detail, nextSteps, runId, message });
+    if (!$("#message-input").value.trim()) {
+      $("#message-input").value = message;
+      $("#message-input").style.height = "auto";
+    }
+    if (error.name === "AbortError") {
+      setStatus("Stopped. The server may still finish and save the answer.");
+    }
     follow();
   } finally {
     state.sending = false;
+    state.abort = null;
     $("#send-button").disabled = false;
-    input.focus();
+    $("#stop-button").hidden = true;
+    $("#message-input").focus();
   }
+}
+
+async function retryMessage(message, runId) {
+  if (!message || state.sending) return;
+  await submitMessage(message, { appendUser: !runId, retryRunId: runId });
+}
+
+function sendMessage(event) {
+  event.preventDefault();
+  const input = $("#message-input");
+  const message = input.value.trim();
+  if (!message || state.sending) return;
+  input.value = "";
+  input.style.height = "auto";
+  submitMessage(message, { appendUser: true });
 }
 
 function applyTheme(theme) {
@@ -550,6 +720,9 @@ $("#context-close").addEventListener("click", () => {
   $("#context-toggle").setAttribute("aria-expanded", "false");
 });
 $("#composer").addEventListener("submit", sendMessage);
+$("#stop-button").addEventListener("click", () => {
+  state.abort?.abort();
+});
 $("#message-scroller").addEventListener("scroll", () => {
   const el = $("#message-scroller");
   pinnedToBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;

@@ -422,6 +422,30 @@ CREATE TABLE IF NOT EXISTS agent_run_events (
     UNIQUE(run_id, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_run_events_run ON agent_run_events(run_id, seq);
+CREATE TABLE IF NOT EXISTS agent_approvals (
+    id TEXT PRIMARY KEY,
+    run_id TEXT,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    agent_id TEXT,
+    tool_name TEXT NOT NULL,
+    action TEXT NOT NULL DEFAULT 'execute',
+    fingerprint TEXT NOT NULL,
+    arguments TEXT NOT NULL DEFAULT '{}',
+    reason TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'denied', 'expired')),
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    decided_at TEXT,
+    decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    decision_note TEXT,
+    consumed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_approvals_user_status
+    ON agent_approvals(user_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_approvals_match
+    ON agent_approvals(user_id, tool_name, fingerprint, status);
+CREATE INDEX IF NOT EXISTS idx_approvals_run ON agent_approvals(run_id);
 CREATE TABLE IF NOT EXISTS workflows (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

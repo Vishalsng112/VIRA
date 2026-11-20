@@ -243,7 +243,7 @@ class ChatAgent(BaseAgent):
         }]
 
     async def _delegate(self, params: Dict[str, Any], user_id, on_event=None,
-                        device_id=None, organization_id=None) -> str:
+                        device_id=None, organization_id=None, run_id=None) -> str:
         definition = self.definitions.get(str(params.get("agent", "")))
         task = str(params.get("task", "")).strip()
         if not definition:
@@ -264,7 +264,7 @@ class ChatAgent(BaseAgent):
             catalog=sub_catalog,
         )
         result = await sub.run(task, user_id=user_id, device_id=device_id,
-                               organization_id=organization_id)
+                               organization_id=organization_id, run_id=run_id)
         return clip(result.text, 2500)
 
     async def act(self, plan: List[Dict], **kwargs) -> LoopResult:
@@ -284,7 +284,7 @@ class ChatAgent(BaseAgent):
 
         async def delegate(params):
             return await self._delegate(params, user_id, on_event, device_id,
-                                         organization_id)
+                                         organization_id, run_id)
 
         def make_loop() -> AgentLoop:
             hints = [name for name, _ in self._suggest_tools(message, 3)]
@@ -300,7 +300,7 @@ class ChatAgent(BaseAgent):
 
         result = await make_loop().run(
             message, thought["history"], thought["lessons"], user_id, device_id,
-            organization_id)
+            organization_id, run_id=run_id)
 
         # Safety net: answered without any tool although tools exist and the answer
         # is empty/hedging, or a strongly matching tool was never used -> retry once.
@@ -314,7 +314,7 @@ class ChatAgent(BaseAgent):
                       f"({names}) to get or verify the answer, then reply using its result.]")
             retry = await make_loop().run(
                 nudged, thought["history"], thought["lessons"], user_id,
-                device_id, organization_id)
+                device_id, organization_id, run_id=run_id)
             if self._n_calls(retry) > 0 or not self._unanswered(retry.text):
                 result = retry
 

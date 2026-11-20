@@ -28,6 +28,16 @@ server and worker, pulls the model and prints the dashboard URL.
 Open the printed URL — by default <http://localhost:8000> — and create your
 account on first run.
 
+Before the first chat, check the whole path:
+
+```bash
+python -m vira doctor
+```
+
+It verifies Docker, Ollama, the selected model and context, the port, the
+Chatbot, the database and the master key. If the model is too small for your
+hardware, see [Choose a local model](models.md).
+
 !!! info "Review before you run"
     The installers are plain shell and PowerShell scripts in
     [`scripts/`](https://github.com/Vishalsng112/VIRA/tree/main/scripts). Read

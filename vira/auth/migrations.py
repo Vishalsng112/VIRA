@@ -638,6 +638,43 @@ def _m010_p4_ecosystem(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_updates_lookup ON update_releases(product, channel, published_at)")
 
 
+def _m012_agent_approvals(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_approvals (
+            id TEXT PRIMARY KEY,
+            run_id TEXT,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            agent_id TEXT,
+            tool_name TEXT NOT NULL,
+            action TEXT NOT NULL DEFAULT 'execute',
+            fingerprint TEXT NOT NULL,
+            arguments TEXT NOT NULL DEFAULT '{}',
+            reason TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'approved', 'denied', 'expired')),
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            decided_at TEXT,
+            decided_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            decision_note TEXT,
+            consumed_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_approvals_user_status "
+        "ON agent_approvals(user_id, status, created_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_approvals_match "
+        "ON agent_approvals(user_id, tool_name, fingerprint, status)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_approvals_run ON agent_approvals(run_id)"
+    )
+
+
 def _m011_device_installation(conn: sqlite3.Connection) -> None:
     _add_column(conn, "devices", "installation_id", "TEXT")
     conn.execute(
@@ -659,6 +696,7 @@ MIGRATIONS: List[Tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (9, "rag_vectors", _m009_rag_vectors),
     (10, "p4_ecosystem", _m010_p4_ecosystem),
     (11, "device_installation_identity", _m011_device_installation),
+    (12, "agent_approvals", _m012_agent_approvals),
 ]
 
 

@@ -255,11 +255,13 @@ class AgentLoop:
         user_token = tool_context.caller_user_id.set(user_id)
         org_token = tool_context.organization_id.set(
             getattr(self, "_organization_id", None))
+        run_token = tool_context.run_id.set(getattr(self, "_run_id", None))
         try:
             step = await self._run_tool_inner(name, params, ident, user_id)
         finally:
             tool_context.caller_user_id.reset(user_token)
             tool_context.organization_id.reset(org_token)
+            tool_context.run_id.reset(run_token)
         self._emit("tool_end", id=call_id, tool=name, ok=step.ok,
                    ms=int((time.monotonic() - started) * 1000), preview=clip(step.observation, 700))
         return step
@@ -299,9 +301,11 @@ class AgentLoop:
 
     async def run(self, user_message: str, history: Optional[List[Dict]] = None,
                   lessons: Optional[List[str]] = None, user_id=None,
-                  device_id=None, organization_id=None) -> LoopResult:
+                  device_id=None, organization_id=None,
+                  run_id=None) -> LoopResult:
         self._user_id = user_id
         self._organization_id = organization_id
+        self._run_id = run_id
         steps: List[Step] = []
         seen = set()
         nudged = False

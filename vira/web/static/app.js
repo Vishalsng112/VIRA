@@ -31,7 +31,7 @@
   const $ = (id) => document.getElementById(id);
 
   const state = {
-    health: null, metrics: null, orchestration: null, security: null, modules: null,
+    health: null, metrics: null, orchestration: null, security: null, approvals: null, modules: null,
     plugins: null, mcpServers: null, marketplace: null, mcpTools: null, usage: null,
     devices: null, deviceInsight: null, ragDocs: null, workflows: null, orgs: null,
     objects: null, releases: null, selectedDevice: null,
@@ -267,6 +267,11 @@
   async function loadSecurity() {
     const r = await fetchJson("/security");
     state.security = r.ok ? r.data : null;
+  }
+
+  async function loadApprovals() {
+    const r = await fetchJson("/api/v1/admin/approvals?status=pending&limit=50");
+    state.approvals = r.ok ? (r.data?.approvals || []) : null;
   }
 
   async function loadModules() {
@@ -552,6 +557,34 @@
 
     setHtml("security-notices", (s.visibility_limits || []).map((n) =>
       `<li><svg class="icon"><use href="#i-info"/></svg><span>${esc(n)}</span></li>`).join("") || '<li class="empty">Nothing to report.</li>');
+
+    renderApprovals();
+  }
+
+  function renderApprovals() {
+    const items = state.approvals;
+    if (!items) {
+      setPill($("approval-count"), "Unavailable", "bad");
+      setHtml("approval-list", '<li class="empty">Could not load approvals.</li>');
+      return;
+    }
+    setPill($("approval-count"), `${items.length} pending`, items.length ? "warn" : "ok");
+    setHtml("approval-list", items.length ? items.map((a) => {
+      let args = "";
+      try { args = JSON.stringify(a.arguments || {}); } catch (e) { args = ""; }
+      return `<li class="warn">
+        <svg class="icon"><use href="#i-warn"/></svg>
+        <div>
+          <strong>${esc(a.tool_name)} · ${esc(a.action || "execute")}</strong>
+          <span>${esc(a.reason || "Destructive tool call")} · expires ${esc(a.expires_at || "")}</span>
+          <span class="mono">${esc(args.slice(0, 500))}</span>
+          <span style="display:flex;gap:.4rem;margin-top:.45rem">
+            <button class="btn btn-ghost" type="button" data-approval-id="${esc(a.id)}" data-approval-decision="approve">Approve</button>
+            <button class="btn btn-ghost" type="button" data-approval-id="${esc(a.id)}" data-approval-decision="deny">Deny</button>
+          </span>
+        </div>
+      </li>`;
+    }).join("") : '<li class="empty">No pending approvals.</li>');
   }
 
   /* ---------- render: modules ---------- */
@@ -940,7 +973,7 @@
     await Promise.allSettled([
       load("user", loadUser), load("health", loadHealth), load("metrics", loadMetrics),
       load("context", loadContext), load("config", loadConfig), load("orchestration", loadOrchestration),
-      load("security", loadSecurity), load("modules", loadModules), load("plugins", loadPlugins),
+      load("security", loadSecurity), load("approvals", loadApprovals), load("modules", loadModules), load("plugins", loadPlugins),
       load("mcp", loadMcp), load("usage", loadUsage), load("devices", loadDevices),
       load("knowledge", loadKnowledge), load("workflows", loadWorkflows),
       load("organizations", loadOrganizations), load("objects", loadObjects),
@@ -1186,11 +1219,19 @@
   });
 
   document.addEventListener("click", async (event) => {
-    const target = event.target.closest("[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp]");
+    const target = event.target.closest("[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id]");
     if (!target) return;
 
     try {
-      if (target.dataset.deviceSelect) {
+      if (target.dataset.approvalId) {
+        const r = await fetchJson(`/api/v1/approvals/${encodeURIComponent(target.dataset.approvalId)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ approved: target.dataset.approvalDecision === "approve" }),
+        });
+        if (!r.ok) throw new Error("Approval decision failed");
+        await loadApprovals(); renderSecurity();
+      } else if (target.dataset.deviceSelect) {
         state.selectedDevice = target.dataset.deviceSelect;
         await loadDevices();
         renderDevices();

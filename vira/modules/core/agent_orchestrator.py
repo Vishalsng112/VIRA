@@ -96,7 +96,11 @@ class AgentOrchestratorModule(ViraModule):
         try:
             # Create tool registry and executor
             self.tool_registry = ToolRegistry()
-            self.tool_executor = ToolExecutor(self.tool_registry, self._security_manager)
+            approval_config = self._config_manager.get("security.approvals", {}) or {}
+            self.tool_executor = ToolExecutor(
+                self.tool_registry, self._security_manager,
+                approval_config=approval_config,
+            )
             tool_root = (self._config_manager.get("tools", {}) or {}).get("workspace_root", ".")
             builtins = self.tool_registry.register_builtins(tool_root)
             logger.info("Registered built-in tools: {}", builtins)

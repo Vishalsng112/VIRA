@@ -8,14 +8,17 @@ from vira.auth import database
 from vira.tools.base import text_result
 from vira.tools.registry import ToolRegistry
 from vira.tools import context as tool_context
+from vira import security
 
 
 class ToolExecutor:
     """Resolve, authorize, execute, and durably record tool calls."""
 
-    def __init__(self, registry: ToolRegistry, security_manager):
+    def __init__(self, registry: ToolRegistry, security_manager,
+                 approval_config: Optional[dict] = None):
         self._registry = registry
         self._security = security_manager
+        self._approval_config = approval_config or {}
 
     @staticmethod
     def _serialize(result):
@@ -135,6 +138,38 @@ class ToolExecutor:
                          started, correlation_id=correlation_id, agent_id=agent_id)
             return result
         permission_allowed = True
+
+        # Destructive local actions require a human approval. Approved requests
+        # are single-use and matched on the exact tool/action/arguments tuple.
+        reason = security.approval_reason(
+            tool_name, required_action, kwargs, self._approval_config)
+        if reason:
+            approved = security.find_approved(
+                caller_user_id, tool_name, required_action,
+                {k: v for k, v in kwargs.items() if k != "user_id"},
+            )
+            if not approved:
+                request = security.request_approval(
+                    tool_name, required_action,
+                    {k: v for k, v in kwargs.items() if k != "user_id"},
+                    user_id=caller_user_id,
+                    agent_id=agent_id,
+                    run_id=tool_context.run_id.get(),
+                    reason=reason,
+                    ttl_minutes=self._approval_config.get("ttl_minutes"),
+                )
+                result = text_result(
+                    f"APPROVAL_REQUIRED: '{tool_name}' needs explicit approval "
+                    f"({reason}). Ask the user to approve it in VIRA, then call "
+                    f"the same tool again. approval_id={request.get('id')}",
+                    is_error=True,
+                )
+                self._record(tool_name, kwargs, result, "approval_required", False,
+                             required_action, started, correlation_id=correlation_id,
+                             agent_id=agent_id)
+                logger.info("Approval required for {} ({}): {}",
+                            tool_name, caller_user_id, request.get("id"))
+                return result
 
         try:
             # Sandbox tools need the caller identity for workspace ownership checks.

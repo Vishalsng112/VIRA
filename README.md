@@ -2,26 +2,63 @@
 
 # VIRA
 
-**A local-first AI server and extensible agent platform for your devices, tools and knowledge.**
+**A self-hosted, local-first context and tool server for AI agents.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](#license)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#quick-start)
 [![Server: Docker](https://img.shields.io/badge/server-Docker-blue.svg)](#quick-start)
 [![Model: ornith-1.5:9b](https://img.shields.io/badge/default%20model-ornith--1.5%3A9b-green.svg)](#the-default-model)
 
-[Quick start](#quick-start) · [Docs](#documentation) · [Contributing](#contributing)
+[Quick start](#quick-start) · [Five-minute proof](#see-it-working) · [Product roadmap](ROADMAP.md) · [Security](docs/user/security.md) · [Docs](#documentation)
 
 </div>
 
-VIRA gives you a control center, a chat workspace, persistent memory, permissioned
-tools, retrieval-augmented knowledge, durable workflows, and specialist agents that
-can work on real tasks. The server runs once as a Linux container on Linux, macOS or
-Windows; VIRA Link can be installed on phones and desktops to collect consented
-device signals. Ollama is the default provider; cloud models are optional.
+VIRA gives AI agents private access to your devices, memory, data and MCP tools.
+It runs on your own hardware, keeps permissions and audit in your hands, and ships
+a dashboard, chat workspace, agent runtime and device companion. Ollama is the
+default provider; cloud models are optional.
 
-VIRA is the platform underneath your own agents: it handles conversations, device
-events, memory, retrieval, permissions, tool execution, workflow persistence and
-observability, so you can focus on agent logic.
+### What works today
+
+- **Self-hosted server** with authenticated dashboard, chat, memory, agents,
+  workflows, RAG, users, MCP tools and audit.
+- **Device context** through VIRA Link on Android, iOS, web/PWA, Linux and Windows,
+  with per-collector consent and offline sync.
+- **Agent tools** including web research, filesystem/shell with permissions, RAG,
+  insights, MCP servers and read-only database queries.
+- **Operational controls**: non-root, capability-dropped Docker deployment,
+  field-level encryption for sensitive values, rate limits, approval gates for
+  destructive tools, a Bubblewrap sandbox, a redacted audit export and a tested
+  backup/restore drill.
+- **Published releases** with Android, iOS (unsigned), web, Linux AppImage and
+  Windows artifacts.
+
+### What is not built yet
+
+- Verified AI-generated tools or agents. This remains research.
+- A native macOS VIRA Link client. macOS users can use the web/PWA client.
+- A hosted SaaS version. VIRA is local-first.
+
+See the **[product roadmap](ROADMAP.md)** for the maturity plan and acceptance
+criteria.
+
+### See it working
+
+The fastest proof is the reproducible five-minute demo: sign in, ask about your
+own devices, watch the agent call a database tool, and verify that write queries
+are rejected.
+
+```bash
+cd ~/vira
+VIRA_USERNAME="your-user" VIRA_PASSWORD="your-password" python3 scripts/demo.py
+```
+
+[![VIRA five-minute demo](docs/assets/demo.gif)](docs/assets/demo.mp4)
+
+*Click the demo to watch the MP4. The terminal transcript is also in the
+[five-minute proof guide](docs/user/demo.md).*
+
+Full guide: **[Five-minute proof](docs/user/demo.md)**.
 
 The one-command installer gets a local server running in minutes. The source
 workflow remains available for development.
@@ -180,6 +217,42 @@ ollama pull ornith-1.5:9b
 You can still use other Ollama models, OpenAI or Anthropic. Change
 `llm.default_model` and the `llm.models` list in `config.yaml`.
 
+Local model tiers, by memory:
+
+| RAM | Model | Tool reliability |
+|---|---|---|
+| 8–16 GB | `ornith-1.5:9b` (default) | Good |
+| 16–32 GB | `qwen2.5:14b` | Better |
+| 32 GB+ | `qwen2.5:32b` | Best local |
+| 4–8 GB | `llama3.2:3b` | Experimental |
+
+Tool use may be unreliable below about 8 GB RAM or a 7B-parameter model. A
+cloud provider is a supported fallback, and administrators can switch the active
+Ollama model from the chat recovery panel after a failure.
+
+Check the whole first-run path with the doctor:
+
+```bash
+python -m vira doctor
+```
+
+It checks Docker/Compose, Ollama, the selected model and context size, port
+conflicts, the Chatbot agent, database writability and the master key, and prints
+a fix for each problem. Full guidance: **[Choose a local model](docs/user/models.md)**.
+
+The deterministic tool-use benchmark runs without a model; the live layer
+measures a real one:
+
+```bash
+python3 scripts/benchmark.py --offline
+VIRA_USERNAME=you VIRA_PASSWORD=... python3 scripts/benchmark.py --runs 10
+```
+
+Current results: 7/7 deterministic scenarios, and 39/40 live runs on the
+recommended local model (device 10/10, database 10/10, RAG 9/10, web 10/10).
+See the **[tool-use benchmark](docs/dev/benchmarks/tool-use.md)** and the
+**[live result](docs/dev/benchmarks/tool-use-live.md)**.
+
 ---
 
 ## What you can do
@@ -227,6 +300,10 @@ Linux and Windows. It signs in as a VIRA user, enrolls the device, captures only
 the signals you enable, stores every event in a local outbox, and sends bounded
 batches to the server when it is reachable. Offline capture keeps working; the
 queue drains automatically on reconnect.
+
+There is **no native macOS client yet**. On macOS, use the web/PWA client in a
+browser; the server itself runs natively through Docker. Native macOS packaging is
+tracked in the [roadmap](ROADMAP.md).
 
 ```bash
 cd client
@@ -290,7 +367,14 @@ The documentation is built as a website and as PDF manuals from the Markdown in
 Start with:
 
 - [Getting started](docs/user/getting-started.md) — install and run VIRA
+- [Five-minute proof](docs/user/demo.md) — see the agent, tools and database boundary work
+- [Choose a local model](docs/user/models.md) — tiers by RAM/GPU, cloud fallback and the tool-use warning
+- [Tool-use benchmark](docs/dev/benchmarks/tool-use.md) — reproducible device, database, RAG and recovery results
+- [Security overview](docs/user/security.md) — controls, evidence and limits
+- [Threat model](docs/dev/security/threat-model.md) — assets, boundaries, threats and residual risk
+- [Backup/restore drill](docs/dev/runbooks/backup-restore.md) — tested RPO/RTO evidence
 - [Docker and deployment](docs/user/install/docker.md) — server/client, Ollama, GPU, operations
+- [Product roadmap](ROADMAP.md) — maturity phases and acceptance criteria
 - [Developer manual](docs/dev/index.md) — architecture, plugin SDK and design docs
 - [API reference](docs/reference/api.md) — generated from the FastAPI schema
 - [Architecture diagram](docs/assets/VIRA_architecture.svg)
@@ -314,24 +398,46 @@ The dashboard can edit it and reload the runtime.
 
 Before exposing VIRA beyond localhost: set a random `auth.secret_key`, enable
 `auth.https_only` behind TLS, review tool permissions, and keep port 8000 behind a
-reverse proxy.
+reverse proxy. The default Compose file publishes port 8000 on `0.0.0.0`; set
+`VIRA_BIND_ADDRESS=127.0.0.1` for local-only access.
 
 The Bubblewrap sandbox is for development workloads, not hostile code. Use a
 container or VM for a stronger boundary.
+
+Read the full **[security and privacy overview](docs/user/security.md)** for
+implemented controls, evidence commands and known limitations. The engineering
+detail is in the **[threat model](docs/dev/security/threat-model.md)**, and the
+latest **[backup/restore drill](docs/dev/runbooks/backup-restore.md)** records
+RPO/RTO evidence. Report vulnerabilities through [SECURITY.md](SECURITY.md).
 
 ---
 
 ## Development status
 
-This is a real system with rough edges, not a finished product. Linux is the primary
-platform. APIs and config keys can still move.
+VIRA is an early, actively developed system with rough edges. APIs, config keys
+and UI details can still change.
 
 Working: kernel, sensors, events, state, metrics, authenticated dashboard, chat,
 memory, runs, agent lifecycle, local/MCP tools with permissions and auditing,
-and multi-user accounts and devices.
+multi-user accounts and devices, Docker deployment on Linux/macOS/Windows, and
+VIRA Link on Android, iOS, web/PWA, Linux and Windows.
 
-Still open: better memory retrieval, run recovery, OS-native sensing, stronger
-isolation, generated agents/tools with approval gates, and Windows/macOS packaging.
+Still open: native macOS client, approval gates for generated agents/tools,
+stronger isolation, evaluation tooling, better memory retrieval and run recovery.
+The [product roadmap](ROADMAP.md) defines the phases and acceptance criteria.
+
+## How to give feedback
+
+Feedback is most useful when it is based on the current release or `main` and
+includes evidence:
+
+- VIRA version or commit, installation method and OS;
+- what you expected, what happened and the exact steps;
+- relevant logs or screenshots with secrets, tokens and personal data removed;
+- whether the Chatbot agent and a model were available.
+
+Open a GitHub issue with that context. For security problems, use
+[SECURITY.md](SECURITY.md) instead of a public issue.
 
 ---
 

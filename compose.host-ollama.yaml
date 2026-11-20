@@ -42,6 +42,12 @@ services:
       retries: 5
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    pids_limit: 512
 
   worker:
     image: vira:latest
@@ -62,6 +68,12 @@ services:
       disable: true
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    pids_limit: 256
 
 volumes:
   vira-data:

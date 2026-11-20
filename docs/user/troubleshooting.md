@@ -1,5 +1,26 @@
 # Troubleshooting
 
+## Run the doctor
+
+Before changing anything, run the first-run health check from the VIRA directory:
+
+```bash
+python -m vira doctor
+```
+
+Or, if you only want a machine-readable report:
+
+```bash
+python -m vira doctor --json
+```
+
+It checks Docker and Compose, Ollama reachability, the selected model and its
+context size, port conflicts, the Chatbot agent, database writability and the
+master key. Every warning or failure prints a suggested fix.
+
+If the Chatbot is slow or makes poor tool choices, read
+[Choose a local model](models.md) before concluding the server is broken.
+
 ## Docker is missing on Windows
 
 Install Docker Desktop, enable WSL2 if prompted, reboot, start Docker Desktop,

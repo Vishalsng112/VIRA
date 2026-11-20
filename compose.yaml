@@ -40,8 +40,16 @@ services:
       timeout: 5s
       start_period: 30s
       retries: 5
+    # Defence in depth: no Linux capabilities, a read-only root filesystem and a
+    # small writable /tmp. Runtime state lives on the vira-data volume.
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    pids_limit: 512
 
   worker:
     image: vira:latest
@@ -62,6 +70,12 @@ services:
       disable: true
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    pids_limit: 256
 
   ollama:
     image: ollama/ollama:latest

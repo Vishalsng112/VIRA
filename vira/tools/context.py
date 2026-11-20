@@ -4,3 +4,4 @@ from typing import Optional
 
 caller_user_id: ContextVar[Optional[int]] = ContextVar("vira_caller_user_id", default=None)
 organization_id: ContextVar[Optional[str]] = ContextVar("vira_organization_id", default=None)
+run_id: ContextVar[Optional[str]] = ContextVar("vira_run_id", default=None)

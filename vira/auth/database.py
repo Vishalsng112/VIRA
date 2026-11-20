@@ -666,6 +666,25 @@ def list_audit(limit: int = 100, before_id: Optional[int] = None) -> List[Dict[s
         return [dict(row) for row in rows]
 
 
+def list_audit_export(limit: int = 1000, since: Optional[str] = None,
+                      until: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Audit rows for redacted administrator export (newest first)."""
+    clauses, values = [], []
+    if since:
+        clauses.append("created_at >= ?")
+        values.append(since)
+    if until:
+        clauses.append("created_at <= ?")
+        values.append(until)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    values.append(min(max(int(limit), 1), 5000))
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM auth_audit {where} ORDER BY id DESC LIMIT ?", values
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def enqueue_outbox_event(event: Dict[str, Any]) -> None:
     """Persist a durable event before it is delivered to in-process consumers."""
     now = _utc_now()
@@ -895,6 +914,24 @@ def list_tool_calls(limit: int = 100) -> list[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+def list_tool_calls_export(limit: int = 1000, since: Optional[str] = None,
+                            until: Optional[str] = None) -> List[Dict[str, Any]]:
+    clauses, values = [], []
+    if since:
+        clauses.append("created_at >= ?")
+        values.append(since)
+    if until:
+        clauses.append("created_at <= ?")
+        values.append(until)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    values.append(min(max(int(limit), 1), 5000))
+    with get_connection() as conn:
+        rows = conn.execute(
+            f"SELECT * FROM tool_calls {where} ORDER BY created_at DESC LIMIT ?", values
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def create_conversation(
     user_id: int,
     title: str = "New conversation",
@@ -1054,6 +1091,25 @@ def append_message(
         "idempotency_key": idempotency_key, "metadata": metadata or {}, "created_at": now,
         "created_by_device_id": created_by_device_id,
     }
+
+
+def get_message(message_id: str, user_id: int) -> Optional[Dict[str, Any]]:
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT *, 0 AS incognito FROM messages WHERE id = ? AND user_id = ? "
+            "UNION ALL "
+            "SELECT *, 1 AS incognito FROM incognito_messages WHERE id = ? AND user_id = ? "
+            "LIMIT 1",
+            (message_id, user_id, message_id, user_id),
+        ).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    try:
+        item["metadata"] = json.loads(item.get("metadata") or "{}")
+    except (TypeError, ValueError):
+        item["metadata"] = {}
+    return item
 
 
 def get_message_by_idempotency(user_id: int, idempotency_key: str) -> Optional[Dict[str, Any]]:

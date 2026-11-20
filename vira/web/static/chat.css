@@ -310,7 +310,45 @@ button { cursor: pointer; }
 }
 .send-button:hover { background: var(--accent-hover); transform: translateY(-1px); }
 .send-button:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+.composer-actions { display: flex; align-items: center; gap: 0.4rem; }
+.stop-button {
+  pointer-events: auto; z-index: 1;
+  display: grid; place-items: center;
+  width: 2.25rem; height: 2.25rem;
+  border: 1px solid var(--border-strong); border-radius: 50%;
+  background: var(--panel-solid); color: var(--text); font-size: 0.7rem; line-height: 1;
+  cursor: pointer;
+}
+.stop-button:hover { border-color: var(--accent); color: var(--accent); }
 .typing { color: var(--muted); font-style: italic; }
+
+/* ---------- Failure recovery ---------- */
+.recovery {
+  margin-top: 0.65rem; padding: 0.8rem 0.9rem;
+  border: 1px solid color-mix(in srgb, #ff9f0a 35%, var(--border));
+  border-radius: 14px; background: color-mix(in srgb, #ff9f0a 7%, var(--panel));
+}
+.recovery-title { margin: 0; font-size: 0.82rem; font-weight: 650; }
+.recovery-hint { margin: 0.25rem 0 0; color: var(--muted); font-size: 0.75rem; line-height: 1.5; }
+.recovery-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.6rem; }
+.recovery-actions button, .recovery-models button {
+  padding: 0.32rem 0.7rem; border: 1px solid var(--border-strong); border-radius: 9px;
+  background: var(--panel-solid); color: var(--text); font-size: 0.72rem; cursor: pointer;
+}
+.recovery-actions button:hover, .recovery-models button:hover { border-color: var(--accent); color: var(--accent); }
+.recovery-actions button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.recovery-models { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem; }
+.recovery-models select {
+  min-width: 12rem; max-width: 100%; padding: 0.32rem 0.5rem;
+  border: 1px solid var(--border-strong); border-radius: 9px;
+  background: var(--panel-solid); color: var(--text); font-size: 0.72rem;
+}
+.recovery-details { margin-top: 0.55rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.recovery-details pre {
+  max-height: 12rem; margin: 0.35rem 0 0; overflow: auto;
+  font: 0.7rem/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--muted);
+}
+.recovery-details ol { margin: 0.35rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: 0.73rem; line-height: 1.55; }
 
 /* ---------- Markdown ---------- */
 .md > :first-child { margin-top: 0; }

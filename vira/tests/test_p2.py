@@ -108,6 +108,16 @@ class RunEventTests(unittest.TestCase):
         self.assertEqual(events[0]["seq"], 1)
         self.assertEqual(events[1]["seq"], 2)
 
+    def test_retry_can_recover_the_original_message(self):
+        auth.create_admin("retry-user", "retrypass1")
+        user_id = 1
+        conversation_id = database.create_conversation(user_id, "Retry test")
+        message = database.append_message(conversation_id, user_id, "user", "keep me")
+        run_id = database.create_run(conversation_id, user_id, message["id"], None, "corr")
+        recovered = database.get_message(message["id"], user_id)
+        self.assertEqual(recovered["content"], "keep me")
+        self.assertEqual(database.get_run(run_id, user_id)["input_message_id"], message["id"])
+
 
 if __name__ == "__main__":
     unittest.main()
