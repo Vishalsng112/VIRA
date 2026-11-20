@@ -2,74 +2,105 @@
 
 # VIRA
 
-**A local-first AI runtime and agent framework you can run on your own machine.**
+**A local-first AI server and extensible agent platform for your devices, tools and knowledge.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](#license)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#quick-start)
-[![Platform: Linux](https://img.shields.io/badge/platform-Linux-blue.svg)](#requirements)
+[![Server: Docker](https://img.shields.io/badge/server-Docker-blue.svg)](#quick-start)
 [![Model: ornith-1.5:9b](https://img.shields.io/badge/default%20model-ornith--1.5%3A9b-green.svg)](#the-default-model)
 
 [Quick start](#quick-start) · [Docs](#documentation) · [Contributing](#contributing)
 
 </div>
 
-![VIRA dashboard](docs/VIRA_UI.png)
+VIRA gives you a control center, a chat workspace, persistent memory, permissioned
+tools, retrieval-augmented knowledge, durable workflows, and specialist agents that
+can work on real tasks. The server runs once as a Linux container on Linux, macOS or
+Windows; VIRA Link can be installed on phones and desktops to collect consented
+device signals. Ollama is the default provider; cloud models are optional.
 
-VIRA gives you a dashboard, a chat workspace, persistent memory, permissioned tools,
-and a group of agents that can work on real tasks. Everything runs locally by default.
-Ollama is the default provider. Cloud models are optional.
+VIRA is the platform underneath your own agents: it handles conversations, device
+events, memory, retrieval, permissions, tool execution, workflow persistence and
+observability, so you can focus on agent logic.
 
-VIRA is the runtime underneath your own agents: it handles the conversation, memory,
-event routing, permissions and tool execution so you can focus on the agent logic.
-
-If you already have Ollama, the source quick start takes about five minutes.
-
----
-
-## Try it
-
-The fastest way is the AppImage. It is a pre-release build of the current `main` branch.
-
-1. Download `VIRA-<version>-build<N>-x86_64.AppImage` and its `.sha256` from
-   [Releases](https://github.com/Vishalsng112/VIRA/releases) or the latest
-   *Build AppImage* Actions run.
-2. Run it:
-
-```bash
-sha256sum -c VIRA-*-x86_64.AppImage.sha256   # optional
-chmod +x VIRA-*-x86_64.AppImage
-./VIRA-*-x86_64.AppImage
-```
-
-3. Open <http://localhost:8000> and create the admin account.
-
-You still need Ollama running for local inference:
-
-```bash
-ollama pull ornith-1.5:9b
-ollama serve
-```
-
-Your data and `config.yaml` live in `~/.local/share/vira`, outside the AppImage, so
-they survive upgrades.
-
-If the build is missing a feature you see here, run from source instead.
+The one-command installer gets a local server running in minutes. The source
+workflow remains available for development.
 
 ---
 
 ## Quick start
 
-### Requirements
+VIRA has two pieces:
+
+- **VIRA Server** — the API, dashboard, chat, agents, tools, memory and scheduler.
+  This is the part that runs as a Linux container and works on Linux, macOS and
+  Windows through Docker.
+- **VIRA Link** — the native device companion that collects usage, focus, battery
+  and health signals. It connects to VIRA Server. You can use the dashboard and
+  chat without installing VIRA Link.
+
+[![VIRA Server and VIRA Link client](docs/VIRA_server_client.svg)](docs/VIRA_server_client.svg)
+
+*VIRA Server is installed once — usually in Docker on a computer or NAS. VIRA Link
+is installed only on devices whose signals you want to collect: phones, tablets
+and desktops. The dashboard and chat open in any browser and do not require the
+client.*
+
+### One-command install (recommended)
+
+Linux / macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Vishalsng112/VIRA/main/scripts/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/Vishalsng112/VIRA/main/scripts/install.ps1 | iex
+```
+
+The installer detects the OS, architecture, RAM, disk and GPU; installs/checks
+Docker; chooses an Ollama model; downloads VIRA; starts the server and worker;
+and pulls the model.
+
+Open <http://localhost:8000> when it finishes. The first visit creates the admin
+account. Full install options and safety notes: **[docs/INSTALL.md](docs/INSTALL.md)**.
+
+### Manual Docker install
+
+Requirements: Docker Engine or Docker Desktop with Compose v2, and about 8 GB RAM.
+
+```bash
+git clone https://github.com/Vishalsng112/VIRA.git
+cd VIRA
+cp .env.example .env
+
+docker compose up -d --build
+docker compose --profile setup run --rm model-pull
+```
+
+Open <http://localhost:8000>. The first visit creates the admin account.
+
+This starts VIRA Server, the durable worker and a bundled Ollama service. Edit
+`.env` if you want a different model, port or bind address. To use Ollama that is
+already installed on the host — recommended on macOS for Metal acceleration — use:
+
+```bash
+docker compose -f compose.host-ollama.yaml up -d --build
+```
+
+Full install, server/client, native-Ollama, GPU, backup and troubleshooting
+instructions: **[docs/DOCKER.md](docs/DOCKER.md)**.
+
+### Run from source (development)
+
+Requirements:
 
 - Python 3.11+
 - Git
 - [Ollama](https://ollama.com/download)
 - Bubblewrap (`bubblewrap`) if you want agent sandboxes
-
-Linux is the primary platform right now. Windows and macOS support is planned through
-containers.
-
-### Run from source
 
 ```bash
 git clone https://github.com/Vishalsng112/VIRA.git
@@ -207,7 +238,16 @@ See [client/README.md](client/README.md) for the module layout and API contract.
 
 ---
 
+[![VIRA system architecture](docs/VIRA_architecture.svg)](docs/VIRA_architecture.svg)
+
+---
+
 ## How it fits together
+
+*The complete architecture diagram at the top of this README shows VIRA Link and
+the web console at the edge, the authenticated API and device plane, the kernel
+event runtime, the agent and workflow platform, local-first intelligence and
+memory, tools and extensions, persistence domains, and deployment operations.*
 
 ```
 intent -> conversation + memory -> agent reasoning -> permissioned tools -> result
@@ -234,6 +274,8 @@ vira/web/static/            dashboard and chat pages
 client/                     VIRA Link device companion (Flutter)
 config.yaml                 runtime configuration
 run.py                      start VIRA
+Dockerfile / compose*.yaml  production server and Ollama deployment
+docs/DOCKER.md              server/client install and operations guide
 ```
 
 ## Documentation
@@ -246,7 +288,10 @@ run.py                      start VIRA
 - [docs/P4_ECOSYSTEM.md](docs/P4_ECOSYSTEM.md) — marketplace, organizations, storage, quotas and scale-out
 - [docs/MULTI_DEVICE_IMPLEMENTATION.md](docs/MULTI_DEVICE_IMPLEMENTATION.md) and
   [VIRA_MULTI_DEVICE_DESIGN.md](VIRA_MULTI_DEVICE_DESIGN.md)
-- [docs/VIRA_architecture.svg](docs/VIRA_architecture.svg) — diagram
+- [docs/INSTALL.md](docs/INSTALL.md) — one-command Linux/macOS/Windows installer
+- [docs/VIRA_server_client.svg](docs/VIRA_server_client.svg) — server vs client overview
+- [docs/DOCKER.md](docs/DOCKER.md) — server/client installation, Docker, Ollama, GPU and operations
+- [docs/VIRA_architecture.svg](docs/VIRA_architecture.svg) — complete system architecture diagram
 
 ---
 

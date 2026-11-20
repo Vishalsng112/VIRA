@@ -36,7 +36,7 @@ class SignalAwareServer(uvicorn.Server):
 
 
 async def main():
-    kernel = Kernel(config_path="config.yaml")
+    kernel = Kernel(config_path=os.getenv("VIRA_CONFIG", "config.yaml"))
     await kernel.boot()
 
     app = create_app(kernel)

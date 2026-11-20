@@ -519,6 +519,11 @@ def create_app(kernel: Kernel) -> FastAPI:
     async def get_metrics(user: auth.Principal = Depends(require_admin)):
         return kernel.metrics_manager.get_metrics()
 
+    @app.get("/livez")
+    async def livez():
+        """Unauthenticated liveness probe for containers and load balancers."""
+        return {"status": "ok", "service": "vira-server"}
+
     @app.get("/health")
     async def health(user: auth.Principal = Depends(require_admin)):
         health_status = await kernel.health_check()

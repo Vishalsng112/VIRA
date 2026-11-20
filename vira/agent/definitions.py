@@ -20,13 +20,6 @@ from typing import Dict, Iterable, List, Optional
 import yaml
 
 BUILTIN_DIR = Path(__file__).parent / "definitions"
-_REGISTERED: Dict[str, AgentDefinition] = {}
-_OWNERS: Dict[str, str] = {}
-_VERSION = 0
-
-
-def definitions_version() -> int:
-    return _VERSION
 
 
 @dataclass
@@ -40,6 +33,15 @@ class AgentDefinition:
     temperature: Optional[float] = None
     version: str = "1.0.0"
     source: str = field(default="", repr=False)
+
+
+_REGISTERED: Dict[str, AgentDefinition] = {}
+_OWNERS: Dict[str, str] = {}
+_VERSION = 0
+
+
+def definitions_version() -> int:
+    return _VERSION
 
 
 def parse_definition(text: str, source: str = "") -> Optional[AgentDefinition]:

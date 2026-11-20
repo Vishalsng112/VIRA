@@ -24,9 +24,18 @@ def create_provider(provider_config: dict):
             **{k: v for k, v in provider_config.items() if k not in ["provider", "api_key", "model"]}
         )
     elif provider_type == "ollama":
+        # Ollama is an HTTP service.  In Docker its URL is usually
+        # http://ollama:11434 (bundled) or http://host.docker.internal:11434
+        # (native Ollama on the host), never localhost inside VIRA's container.
+        base_url = (
+            os.environ.get("VIRA_OLLAMA_URL")
+            or provider_config.get("base_url")
+            or "http://localhost:11434"
+        )
+        model = os.environ.get("VIRA_OLLAMA_MODEL") or provider_config["model"]
         return OllamaProvider(
-            model=provider_config["model"],
-            base_url=provider_config.get("base_url", "http://localhost:11434"),
+            model=model,
+            base_url=base_url,
             **{k: v for k, v in provider_config.items() if k not in ["provider", "model", "base_url"]}
         )
     else:

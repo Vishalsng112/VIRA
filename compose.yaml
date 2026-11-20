@@ -1,0 +1,99 @@
+# =============================================================================
+# VIRA Server — turnkey local deployment
+#
+#   cp .env.example .env
+#   docker compose up -d --build
+#   docker compose --profile setup run --rm model-pull
+#
+# VIRA Server: http://localhost:8000
+# Ollama is bundled as a separate service and is not exposed to the host.
+# =============================================================================
+name: vira
+
+services:
+  vira:
+    build:
+      context: .
+      args:
+        VIRA_UID: ${VIRA_UID:-1000}
+        VIRA_GID: ${VIRA_GID:-1000}
+    image: vira:latest
+    container_name: vira-server
+    restart: unless-stopped
+    ports:
+      - "${VIRA_BIND_ADDRESS:-0.0.0.0}:${VIRA_PORT:-8000}:8000"
+    environment:
+      VIRA_HOST: 0.0.0.0
+      VIRA_PORT: 8000
+      VIRA_CONFIG: /app/config.yaml
+      VIRA_OLLAMA_URL: ${VIRA_OLLAMA_URL:-http://ollama:11434}
+      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-ornith-1.5:9b}
+    volumes:
+      - vira-data:/app/data
+      - ./config.yaml:/app/config.yaml
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/livez >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+
+  worker:
+    image: vira:latest
+    container_name: vira-worker
+    restart: unless-stopped
+    command: ["python", "-m", "vira.worker"]
+    environment:
+      VIRA_CONFIG: /app/config.yaml
+      VIRA_OLLAMA_URL: ${VIRA_OLLAMA_URL:-http://ollama:11434}
+      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-ornith-1.5:9b}
+    volumes:
+      - vira-data:/app/data
+      - ./config.yaml:/app/config.yaml
+    depends_on:
+      vira:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    security_opt:
+      - no-new-privileges:true
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: vira-ollama
+    restart: unless-stopped
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 8s
+      start_period: 20s
+      retries: 10
+    security_opt:
+      - no-new-privileges:true
+
+  # One-shot helper: docker compose --profile setup run --rm model-pull
+  model-pull:
+    image: ollama/ollama:latest
+    profiles: ["setup"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/ollama"]
+    command: ["pull", "${VIRA_OLLAMA_MODEL:-ornith-1.5:9b}"]
+    restart: "no"
+
+volumes:
+  vira-data:
+  ollama-models:

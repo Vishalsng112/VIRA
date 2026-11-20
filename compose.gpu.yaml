@@ -1,0 +1,7 @@
+# Optional NVIDIA GPU override for bundled Ollama.
+# Requires the NVIDIA Container Toolkit on the host.
+#
+#   docker compose -f compose.yaml -f compose.gpu.yaml up -d --build
+services:
+  ollama:
+    gpus: all

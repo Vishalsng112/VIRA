@@ -1,0 +1,26 @@
+# Build context hygiene: only the server runtime sources are needed in the image.
+.git
+.github
+.gitignore
+client
+data
+docs
+packaging
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.log
+*.sqlite3
+*.sqlite3-*
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.venv
+venv
+.env
+.env.*
+!.env.example
+cookies.ck
+devices.png

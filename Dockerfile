@@ -1,53 +1,72 @@
-FROM ubuntu:22.04
+# syntax=docker/dockerfile:1.7
+#
+# Production image for the VIRA server.
+# Ollama is intentionally a separate service (see compose.yaml).
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim AS wheels
 
-ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    sudo bash build-essential git curl wget pkg-config \
-    ca-certificates software-properties-common \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libcups2-dev \
+        libdbus-1-dev \
+        libx11-dev \
+        libxext-dev \
+        libxrandr-dev \
+        libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Accept host UID/GID as build args so files are owned by the host user
-ARG USERNAME=developer
-ARG UID=1000
-ARG GID=1000
+WORKDIR /wheels
+COPY requirements.txt .
+RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
-# Create group and user once, set up passwordless sudo
-RUN groupadd --gid ${GID} ${USERNAME} && \
-    useradd \
-      --uid ${UID} \
-      --gid ${GID} \
-      --create-home \
-      --shell /bin/bash \
-      ${USERNAME} && \
-    usermod -aG sudo ${USERNAME} && \
-    mkdir -p /etc/sudoers.d && \
-    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${USERNAME} && \
-    chmod 0440 /etc/sudoers.d/${USERNAME}
 
-# Switch to the user BEFORE installing uv and Python
-# so everything lands in the correct home directory
-USER ${USERNAME}
+# ---------------------------------------------------------------------------
+FROM python:3.11-slim AS runtime
 
-# Install uv into the user's home
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    VIRA_HOST=0.0.0.0 \
+    VIRA_PORT=8000
 
-ENV PATH="/home/${USERNAME}/.local/bin:${PATH}"
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        tini \
+        libcups2 \
+        libdbus-1-3 \
+        libx11-6 \
+        libxext6 \
+        libxrandr2 \
+        libpq5 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Python 3.11 and pin it as the uv default
-RUN uv python install 3.11
-ENV UV_PYTHON=3.11
+ARG VIRA_UID=1000
+ARG VIRA_GID=1000
+
+RUN groupadd --gid "${VIRA_GID}" vira \
+    && useradd --uid "${VIRA_UID}" --gid vira --create-home \
+       --home-dir /home/vira --shell /usr/sbin/nologin vira
 
 WORKDIR /app
 
+COPY --from=wheels /wheels /wheels
+RUN pip install --no-cache-dir /wheels/*.whl \
+    && rm -rf /wheels
 
-COPY requirements.txt .
-RUN uv venv --python 3.11
-ENV VIRTUAL_ENV=/home/${USERNAME}/.venv
-RUN uv venv $VIRTUAL_ENV --python 3.11
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-RUN uv pip install -r requirements.txt
+COPY --chown=vira:vira . .
+RUN mkdir -p /app/data && chown -R vira:vira /app/data
 
-CMD ["/bin/bash"]
+USER vira
 
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8000/livez >/dev/null || exit 1
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["python", "run.py"]

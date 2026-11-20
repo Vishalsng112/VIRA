@@ -1,0 +1,19 @@
+# Developer override: run the working tree inside the container.
+#
+#   docker compose -f compose.yaml -f compose.dev.yaml up -d --build
+#   docker compose -f compose.yaml -f compose.dev.yaml logs -f vira
+#   docker compose -f compose.yaml -f compose.dev.yaml run --rm vira python -m pytest -q
+#
+# The source tree is mounted over /app; the named data volume still wins for
+# /app/data, so database and master-key state persist across rebuilds.
+services:
+  vira:
+    volumes:
+      - .:/app
+      - vira-data:/app/data
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+  worker:
+    volumes:
+      - .:/app
+      - vira-data:/app/data
