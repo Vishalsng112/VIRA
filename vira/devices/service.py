@@ -177,6 +177,7 @@ class DeviceService:
         client_version: Optional[str] = None,
         capabilities: Optional[Iterable[str]] = None,
         correlation_id: Optional[str] = None,
+        installation_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         display_name = self._clean_text(display_name, "display_name", 100, required=True)
         if platform not in PLATFORMS:
@@ -185,18 +186,51 @@ class DeviceService:
             raise errors.ValidationFailed(f"device_type must be one of {list(DEVICE_TYPES)}")
         os_version = self._clean_text(os_version, "os_version", 100)
         client_version = self._clean_text(client_version, "client_version", 50)
+        installation_id = self._clean_text(installation_id, "installation_id", 100) or None
         caps = self._clean_capabilities(capabilities)
         token = store.new_credential_token()
         with database.transaction() as conn:
-            # The server picks every authoritative field: id, owner, state, scope.
-            device_id = store.insert_device(
-                conn, display_name, platform, device_type, os_version, client_version,
-                caps, status="pending", created_by_user_id=actor.user_id,
-            )
-            credential_id = store.insert_credential(
-                conn, device_id, token, DEFAULT_SCOPES, self._credential_expiry()
-            )
-            store.grant_access(conn, actor.user_id, device_id, "owner", actor.user_id)
+            # A stable installation id (or, for old clients, the same visible
+            # identity) means "this is the same endpoint", not a new device.
+            existing = None
+            if installation_id:
+                existing = store.get_device_by_installation(
+                    conn, actor.user_id, installation_id)
+            if existing is not None and existing["status"] in ("revoked", "retired"):
+                # Never silently un-revoke an endpoint. Release the unique key
+                # so a deliberate re-enrollment can create a fresh record.
+                store.update_device_fields(conn, existing["id"], installation_id=None)
+                existing = None
+            if existing is None and installation_id:
+                existing = store.find_reusable_device(
+                    conn, actor.user_id, display_name, platform, device_type)
+            if existing is not None:
+                device_id = existing["id"]
+                store.update_device_fields(
+                    conn, device_id,
+                    display_name=display_name,
+                    os_version=os_version,
+                    client_version=client_version,
+                    capabilities=caps,
+                    installation_id=installation_id,
+                )
+                old_ids = store.revoke_credentials(conn, device_id)
+                credential_id = store.insert_credential(
+                    conn, device_id, token, DEFAULT_SCOPES, self._credential_expiry(),
+                    rotated_from=old_ids[-1] if old_ids else None,
+                )
+                store.grant_access(conn, actor.user_id, device_id, "owner", actor.user_id)
+            else:
+                # The server picks every authoritative field: id, owner, state, scope.
+                device_id = store.insert_device(
+                    conn, display_name, platform, device_type, os_version, client_version,
+                    caps, status="pending", created_by_user_id=actor.user_id,
+                    installation_id=installation_id,
+                )
+                credential_id = store.insert_credential(
+                    conn, device_id, token, DEFAULT_SCOPES, self._credential_expiry()
+                )
+                store.grant_access(conn, actor.user_id, device_id, "owner", actor.user_id)
             expires_at = conn.execute(
                 "SELECT expires_at FROM device_credentials WHERE id = ?", (credential_id,)
             ).fetchone()["expires_at"]

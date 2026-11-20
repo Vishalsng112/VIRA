@@ -16,6 +16,8 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 import time
 
 from vira.agent.toolcalls import clip, extract_tool_call, render_tool, split_reasoning
+from vira.tools.catalog import ToolCatalog
+from vira.tools import context as tool_context
 
 try:
     from loguru import logger
@@ -92,6 +94,7 @@ class AgentLoop:
         extra_specs: Optional[List[Dict[str, Any]]] = None,
         on_event: Optional[ProgressCallback] = None,
         source: Optional[str] = None,
+        catalog: Optional[ToolCatalog] = None,
     ):
         self.on_event = on_event
         self.source = source  # e.g. a sub-agent name, shown next to its events
@@ -102,12 +105,42 @@ class AgentLoop:
         self.cfg = config or LoopConfig()
         self.model, self.temperature, self.max_tokens = model, temperature, max_tokens
         self.extra_tools = extra_tools or {}
+        self.catalog = catalog
         self.specs = list(tools) + list(extra_specs or [])
+        self.tool_names: List[str] = []
+        self._props: Dict[str, set] = {}
+        if catalog is not None:
+            self._add_spec({
+                "name": "tool_search",
+                "description": (
+                    "Search available tools by task, app or domain (for example "
+                    "photoshop, davinci resolve, video, web, files, insights). "
+                    "Call this when the needed tool is not listed, then use a returned tool."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["query"],
+                },
+            })
         self.tool_names = [t["name"] for t in self.specs if t.get("name")]
         self._props = {
             t["name"]: set((t.get("parameters") or {}).get("properties", {}) or {})
             for t in self.specs if t.get("name")
         }
+
+    def _add_spec(self, spec: Dict[str, Any]) -> None:
+        name = spec.get("name")
+        if not name:
+            return
+        self.specs = [item for item in self.specs if item.get("name") != name]
+        self.specs.append(spec)
+        if name not in self.tool_names:
+            self.tool_names.append(name)
+        self._props[name] = set((spec.get("parameters") or {}).get("properties", {}) or {})
 
     # ---- prompt -----------------------------------------------------------
     def _header(self, lessons: List[str]) -> str:
@@ -124,6 +157,10 @@ class AgentLoop:
                 "Tools:",
                 *[render_tool(t) for t in self.specs],
             ]
+            if self.catalog is not None:
+                lines.append(
+                    "If a needed tool is not listed, call tool_search with a task/app query first."
+                )
         else:
             lines.append("\nNo tools are available. Answer in plain text.")
         if lessons:
@@ -183,12 +220,17 @@ class AgentLoop:
         resp = await self.runtime.call_llm(
             agent_id=self.agent_id, prompt=prompt, model=self.model,
             temperature=self.temperature, max_tokens=self.max_tokens,
+            user_id=getattr(self, "_user_id", None),
+            organization_id=getattr(self, "_organization_id", None),
         )
         return llm_text(resp)
 
-    async def _run_tool(self, name: str, params: Dict[str, Any], user_id) -> Step:
+    async def _run_tool(self, name: str, params: Dict[str, Any], user_id,
+                        device_id=None) -> Step:
         params = {k: v for k, v in params.items() if k != "user_id"}
         ident = {"user_id": user_id}  # local tools read it; MCP tools must not receive it
+        if device_id:
+            ident["device_id"] = device_id
         if "." in name:  # MCP tools: send only declared arguments, never framework ids
             props = self._props.get(name)
             if props:
@@ -201,13 +243,35 @@ class AgentLoop:
         call_id = f"{self.source or 'main'}-{self._tool_seq}"
         started = time.monotonic()
         self._emit("tool_start", id=call_id, tool=name, params=_preview_params(params))
-        step = await self._run_tool_inner(name, params, ident, user_id)
+        user_token = tool_context.caller_user_id.set(user_id)
+        org_token = tool_context.organization_id.set(
+            getattr(self, "_organization_id", None))
+        try:
+            step = await self._run_tool_inner(name, params, ident, user_id)
+        finally:
+            tool_context.caller_user_id.reset(user_token)
+            tool_context.organization_id.reset(org_token)
         self._emit("tool_end", id=call_id, tool=name, ok=step.ok,
                    ms=int((time.monotonic() - started) * 1000), preview=clip(step.observation, 700))
         return step
 
     async def _run_tool_inner(self, name: str, params: Dict[str, Any], ident: Dict[str, Any], user_id) -> Step:
         try:
+            if name == "tool_search" and self.catalog is not None:
+                query = str(params.get("query", "")).strip()
+                try:
+                    limit = int(params.get("limit", 8))
+                except (TypeError, ValueError):
+                    limit = 8
+                matches = self.catalog.search(query, limit=limit)
+                for spec in matches:
+                    self._add_spec(spec.as_dict())
+                text = json.dumps([
+                    {"name": spec.name, "description": spec.description,
+                     "category": spec.category, "tags": spec.tags}
+                    for spec in matches
+                ], ensure_ascii=False)
+                return Step("tool", name, params, text, ok=True)
             if name in self.extra_tools:
                 coro = self.extra_tools[name](params)
             else:
@@ -225,7 +289,10 @@ class AgentLoop:
             return Step("tool", name, params, f"ERROR: {type(exc).__name__}: {exc}", ok=False)
 
     async def run(self, user_message: str, history: Optional[List[Dict]] = None,
-                  lessons: Optional[List[str]] = None, user_id=None) -> LoopResult:
+                  lessons: Optional[List[str]] = None, user_id=None,
+                  device_id=None, organization_id=None) -> LoopResult:
+        self._user_id = user_id
+        self._organization_id = organization_id
         steps: List[Step] = []
         seen = set()
         nudged = False
@@ -265,7 +332,7 @@ class AgentLoop:
                                   "otherwise use that result.", ok=False))
                 continue
             seen.add(sig)
-            steps.append(await self._run_tool(name, params, user_id))
+            steps.append(await self._run_tool(name, params, user_id, device_id))
         # budget exhausted while still calling tools: one last forced answer
         self._emit("check", level="warn", text="Step limit reached; writing the best answer from what I found.")
         text = (await self._generate(self._prompt(user_message, history, lessons, steps, True))).strip()

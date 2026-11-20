@@ -4,6 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from vira.auth.principals import UserPrincipal
 from vira.family import store
+from vira.event_schemas import SCHEMAS
+from vira.agent.definitions import load_definitions
 
 
 class HouseholdCreate(BaseModel):
@@ -36,8 +38,24 @@ def build_client_router(user_dep, kernel) -> APIRouter:
                     "ingest_path": "/api/v1/devices/{device_id}/events:batch",
                     "batch_size": 100,
                     "heartbeat_seconds": 30,
-                    "event_types": ["device.telemetry.*", "sensor.*", "file.*"],
+                    "event_types": ["device.*", "sensor.*", "file.*"],
                 }}
+
+    @router.get("/event-schemas")
+    async def event_schemas(user: UserPrincipal = Depends(user_dep)):
+        return {"schemas": [
+            {"event_type": event_type, "version": 1, **schema}
+            for event_type, schema in SCHEMAS.items()
+        ]}
+
+    @router.get("/agent-definitions")
+    async def agent_definitions(user: UserPrincipal = Depends(user_dep)):
+        definitions = load_definitions()
+        return {"definitions": [
+            {"name": d.name, "description": d.description, "version": d.version,
+             "tools": d.tools, "max_steps": d.max_steps}
+            for d in definitions.values()
+        ]}
 
     @router.get("/households")
     async def households(user: UserPrincipal = Depends(user_dep)):

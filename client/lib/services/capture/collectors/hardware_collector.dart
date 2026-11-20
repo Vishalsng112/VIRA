@@ -6,7 +6,7 @@ import '../platform_probe_base.dart';
 
 /// CPU and memory where the platform exposes them (currently Linux). Other
 /// platforms return null and the capability is reported as unavailable.
-class HardwareCollector implements Collector {
+class HardwareCollector extends Collector {
   @override
   String get id => collectorHardware;
   @override
@@ -25,10 +25,20 @@ class HardwareCollector implements Collector {
   bool get enabledByDefault => true;
 
   @override
-  Future<List<CapturedEvent>> collect(PlatformProbe probe) async {
+  bool get canRequestAccess => false;
+
+  @override
+  Future<bool> requestAccess() async => false;
+
+  @override
+  Future<CollectorResult> collect(PlatformProbe probe) async {
     final snapshot = await probe.hardwareSnapshot();
-    if (snapshot == null || snapshot.isEmpty) return const [];
-    return [
+    if (snapshot == null || snapshot.isEmpty) {
+      return const CollectorResult.unavailable(
+        'This platform does not expose the signal yet.',
+      );
+    }
+    return CollectorResult.available([
       CapturedEvent(
         eventId: newUuidV4(),
         type: eventType,
@@ -36,6 +46,6 @@ class HardwareCollector implements Collector {
         sourceComponent: sourceComponent,
         payload: snapshot,
       ),
-    ];
+    ]);
   }
 }

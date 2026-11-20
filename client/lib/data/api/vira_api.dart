@@ -183,6 +183,7 @@ class ViraApi {
     required String displayName,
     required DeviceProfile profile,
     required List<String> capabilities,
+    required String installationId,
   }) async {
     final response = await _send(
       'POST',
@@ -195,6 +196,7 @@ class ViraApi {
         'os_version': profile.osVersion,
         'client_version': clientVersion,
         'capabilities': capabilities,
+        'installation_id': installationId,
       },
     );
     final body = await _decode(response);
@@ -297,6 +299,161 @@ class ViraApi {
 
   Future<Map<String, dynamic>> deviceState(String id) async =>
       _decode(await _send('GET', '/api/v1/devices/$id/state', user: true));
+
+  Future<List<Map<String, dynamic>>> pendingCommands() async {
+    if (deviceId == null) return const [];
+    final body = await _decode(
+      await _send(
+        'GET',
+        '/api/v1/devices/$deviceId/commands/pending',
+        device: true,
+      ),
+    );
+    return ((body['commands'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<void> completeCommand(
+    String id, {
+    String status = 'completed',
+    Object? result,
+  }) async {
+    if (deviceId == null) return;
+    await _decode(
+      await _send(
+        'POST',
+        '/api/v1/devices/$deviceId/commands/$id/result',
+        device: true,
+        body: {'status': status, 'result': result},
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> health() async =>
+      _decode(await _send('GET', '/health', user: true));
+
+  Future<Map<String, dynamic>> metrics() async =>
+      _decode(await _send('GET', '/metrics', user: true));
+
+  Future<Map<String, dynamic>> orchestration() async =>
+      _decode(await _send('GET', '/orchestration', user: true));
+
+  Future<Map<String, dynamic>> agents() async =>
+      _decode(await _send('GET', '/agents', user: true));
+
+  Future<void> setAgentEnabled(String id, bool enabled) async {
+    await _decode(
+      await _send(
+        'PATCH',
+        '/agents/$id',
+        user: true,
+        body: {'enabled': enabled},
+      ),
+    );
+  }
+
+  Future<void> unregisterAgent(String id) async {
+    await _decode(await _send('DELETE', '/agents/$id', user: true));
+  }
+
+  Future<List<Map<String, dynamic>>> adminUsers({
+    bool includeDeleted = false,
+  }) async {
+    final body = await _decode(
+      await _send(
+        'GET',
+        '/api/v1/admin/users?include_deleted=$includeDeleted',
+        user: true,
+      ),
+    );
+    return ((body['users'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> createAdminUser({
+    required String username,
+    required String role,
+    String? password,
+  }) async => _decode(
+    await _send(
+      'POST',
+      '/api/v1/admin/users',
+      user: true,
+      body: {
+        'username': username,
+        'role': role,
+        if (password != null && password.isNotEmpty) 'password': password,
+      },
+    ),
+  );
+
+  Future<Map<String, dynamic>> updateAdminUser(
+    String id, {
+    String? role,
+    String? status,
+  }) async => _decode(
+    await _send(
+      'PATCH',
+      '/api/v1/admin/users/$id',
+      user: true,
+      body: {
+        'role': ?role,
+        'status': ?status,
+      },
+    ),
+  );
+
+  Future<void> deleteAdminUser(String id) async {
+    await _decode(
+      await _send('DELETE', '/api/v1/admin/users/$id', user: true),
+    );
+  }
+
+  Future<Map<String, dynamic>> adminDevices() async =>
+      _decode(await _send('GET', '/api/v1/admin/devices', user: true));
+
+  Future<Map<String, dynamic>> auditLog() async =>
+      _decode(await _send('GET', '/api/v1/admin/audit', user: true));
+
+  Future<Map<String, dynamic>> insightFleet() async =>
+      _decode(await _send('GET', '/api/v1/insights/fleet', user: true));
+
+  Future<Map<String, dynamic>> sensors() async =>
+      _decode(await _send('GET', '/ops/sensors', user: true));
+
+  Future<Map<String, dynamic>> eventLag() async =>
+      _decode(await _send('GET', '/ops/events/lag', user: true));
+
+  Future<Map<String, dynamic>> modules() async =>
+      _decode(await _send('GET', '/modules', user: true));
+
+  Future<Map<String, dynamic>> adminJobs({String? status}) async =>
+      _decode(
+        await _send(
+          'GET',
+          '/api/v1/admin/jobs${status == null ? '' : '?status=$status'}',
+          user: true,
+        ),
+      );
+
+  Future<void> retryJob(String id) async {
+    await _decode(
+      await _send('POST', '/api/v1/admin/jobs/$id/retry', user: true),
+    );
+  }
+
+  Future<Map<String, dynamic>> adminBackups() async =>
+      _decode(await _send('GET', '/api/v1/admin/backups', user: true));
+
+  Future<Map<String, dynamic>> createBackup() async =>
+      _decode(await _send('POST', '/api/v1/admin/backups', user: true));
+
+  Future<Map<String, dynamic>> alerts() async =>
+      _decode(await _send('GET', '/ops/alerts', user: true));
 
   void close() => _client.close();
 

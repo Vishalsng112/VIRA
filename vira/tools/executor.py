@@ -7,6 +7,7 @@ from mcp.types import CallToolResult
 from vira.auth import database
 from vira.tools.base import text_result
 from vira.tools.registry import ToolRegistry
+from vira.tools import context as tool_context
 
 
 class ToolExecutor:
@@ -52,9 +53,15 @@ class ToolExecutor:
         required_action: str = "execute",
         agent_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
+        caller_user_id: Optional[int] = None,
+        organization_id: Optional[str] = None,
         **kwargs,
     ) -> CallToolResult:
         started = time.perf_counter()
+        if caller_user_id is None:
+            caller_user_id = tool_context.caller_user_id.get()
+        if organization_id is None:
+            organization_id = tool_context.organization_id.get()
         permission_allowed = False
         logger.debug("Executing tool {}", tool_name)
         tool = self._registry.get(tool_name)
@@ -94,6 +101,30 @@ class ToolExecutor:
             self._record(tool_name, kwargs, result, "denied", False, required_action,
                          started, correlation_id=correlation_id, agent_id=agent_id)
             return result
+
+        # MCP tools are additionally governed by server allow-list policies.
+        server_name = getattr(tool, "server_name", None)
+        if server_name:
+            from vira.mcp import policy as mcp_policy
+            from vira.mcp import store as mcp_store
+            record = mcp_store.get_server_by_name(server_name)
+            if record is not None:
+                roles = ()
+                if caller_user_id is not None:
+                    user = database.get_user_by_id(int(caller_user_id))
+                    roles = (user.get("role"),) if user and user.get("role") else ()
+                if not mcp_policy.is_allowed(
+                    record, tool.name, user_id=caller_user_id, roles=roles,
+                    organization_id=organization_id,
+                ):
+                    result = text_result(
+                        f"Permission denied: MCP tool '{server_name}.{tool.name}' is not allowed "
+                        "for this caller.",
+                        is_error=True,
+                    )
+                    self._record(tool_name, kwargs, result, "denied", False, required_action,
+                                 started, correlation_id=correlation_id, agent_id=agent_id)
+                    return result
 
         if self._security and not self._security.authorize(f"tool.execute.{tool_name}"):
             result = text_result(

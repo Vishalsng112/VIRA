@@ -15,11 +15,26 @@ class ViraLinkApp extends StatefulWidget {
   State<ViraLinkApp> createState() => _ViraLinkAppState();
 }
 
-class _ViraLinkAppState extends State<ViraLinkApp> {
+class _ViraLinkAppState extends State<ViraLinkApp>
+    with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      widget.controller.onAppResumed();
+    }
   }
 
   @override

@@ -51,9 +51,10 @@ class AgentRuntime:
         return AgentContext(kernel_context=kernel_ctx, session_metadata=session, agent_id=agent_id)
 
     async def call_llm(self, agent_id: str, prompt: str, **kwargs) -> str:
-        """Invoke LLM with permission checks."""
+        """Invoke LLM with permission checks, usage accounting and quotas."""
         if not self._security.authorize(f"llm.call.{agent_id}"):
             raise PermissionError(f"Agent {agent_id} not allowed to call LLM")
+        kwargs.setdefault("agent_id", agent_id)
         return await self._llm.generate(prompt, **kwargs)
 
     async def use_tool(self, agent_id: str, tool_name: str, **kwargs) -> Any:

@@ -10,6 +10,7 @@ class StoredCredentials {
     this.sessionId,
     this.deviceId,
     this.deviceToken,
+    this.isAdmin = false,
   });
 
   final String? serverUrl;
@@ -17,6 +18,7 @@ class StoredCredentials {
   final String? sessionId;
   final String? deviceId;
   final String? deviceToken;
+  final bool isAdmin;
 
   bool get hasDevice => serverUrl != null && deviceId != null && deviceToken != null;
   bool get hasSession => sessionId != null;
@@ -31,6 +33,7 @@ class CredentialStore {
   static const _sessionKey = 'vira_link.session_id';
   static const _deviceIdKey = 'vira_link.device_id';
   static const _deviceTokenKey = 'vira_link.device_token';
+  static const _isAdminKey = 'vira_link.is_admin';
 
   final FlutterSecureStorage _storage;
 
@@ -40,6 +43,7 @@ class CredentialStore {
     sessionId: await _storage.read(key: _sessionKey),
     deviceId: await _storage.read(key: _deviceIdKey),
     deviceToken: await _storage.read(key: _deviceTokenKey),
+    isAdmin: (await _storage.read(key: _isAdminKey)) == 'true',
   );
 
   Future<void> save({
@@ -48,6 +52,7 @@ class CredentialStore {
     required String sessionId,
     required String deviceId,
     required String deviceToken,
+    bool isAdmin = false,
   }) async {
     await Future.wait([
       _storage.write(key: _serverKey, value: serverUrl),
@@ -55,6 +60,7 @@ class CredentialStore {
       _storage.write(key: _sessionKey, value: sessionId),
       _storage.write(key: _deviceIdKey, value: deviceId),
       _storage.write(key: _deviceTokenKey, value: deviceToken),
+      _storage.write(key: _isAdminKey, value: isAdmin ? 'true' : 'false'),
     ]);
   }
 
@@ -65,6 +71,7 @@ class CredentialStore {
       _storage.delete(key: _sessionKey),
       _storage.delete(key: _deviceIdKey),
       _storage.delete(key: _deviceTokenKey),
+      _storage.delete(key: _isAdminKey),
     ]);
   }
 }

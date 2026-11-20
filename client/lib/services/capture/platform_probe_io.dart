@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import '../../core/models/device_info.dart';
@@ -31,6 +32,135 @@ class PlatformProbeIo implements PlatformProbe {
         'platform': Platform.operatingSystem,
         'logical_cores': Platform.numberOfProcessors,
       };
+    } on Object {
+      return null;
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>?> batterySnapshot() async {
+    if (!Platform.isLinux) return null;
+    try {
+      final supplies = Directory('/sys/class/power_supply');
+      if (!await supplies.exists()) return null;
+      await for (final entity in supplies.list()) {
+        final name = entity.path.split('/').last;
+        if (!name.startsWith('BAT')) continue;
+        final capacity = await _readInt('${entity.path}/capacity');
+        if (capacity == null) continue;
+        final status = await _readText('${entity.path}/status');
+        final powerNow = await _readInt('${entity.path}/power_now');
+        final energyNow = await _readInt('${entity.path}/energy_now');
+        double? temperature;
+        final temp = await _readInt('${entity.path}/temp');
+        if (temp != null && temp > 0) temperature = temp / 10.0;
+        return {
+          'level_percent': capacity,
+          'charging': status?.toLowerCase() == 'charging',
+          'temperature_c': ?temperature,
+          'plugged': status?.toLowerCase(),
+          if (powerNow != null && energyNow != null && powerNow > 0)
+            'minutes_remaining': (energyNow / powerNow * 60).round(),
+        };
+      }
+    } on Object {
+      return null;
+    }
+    return null;
+  }
+
+  @override
+  Future<Map<String, dynamic>?> healthSnapshot() async {
+    if (Platform.isWindows) return _windowsHealth();
+    if (!Platform.isLinux && !Platform.isMacOS) return null;
+    try {
+      final result = <String, dynamic>{};
+      final df = await Process.run('df', ['-k', '/']);
+      if (df.exitCode == 0) {
+        final lines = (df.stdout?.toString() ?? '').trim().split('\n');
+        if (lines.length >= 2) {
+          final parts = lines.last.trim().split(RegExp(r'\s+'));
+          if (parts.length >= 4) {
+            final totalKb = int.tryParse(parts[1]);
+            final freeKb = int.tryParse(parts[3]);
+            if (totalKb != null) result['storage_total_bytes'] = totalKb * 1024;
+            if (freeKb != null) result['storage_free_bytes'] = freeKb * 1024;
+          }
+        }
+      }
+      if (Platform.isLinux) {
+        final memory = await _memory();
+        if (memory['total_bytes'] != null) {
+          result['memory_total_bytes'] = memory['total_bytes'];
+        }
+        if (memory['available_bytes'] != null) {
+          result['memory_available_bytes'] = memory['available_bytes'];
+        }
+        final thermal = await _thermal();
+        if (thermal != null) result['thermal_c'] = thermal;
+      }
+      return result.isEmpty ? null : result;
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<double?> _thermal() async {
+    try {
+      final root = Directory('/sys/class/thermal');
+      if (!await root.exists()) return null;
+      double? hottest;
+      await for (final entity in root.list()) {
+        final name = entity.path.split('/').last;
+        if (!name.startsWith('thermal_zone')) continue;
+        final raw = await _readInt('${entity.path}/temp');
+        if (raw == null) continue;
+        var celsius = raw > 1000 ? raw / 1000.0 : raw.toDouble();
+        if (celsius < -20 || celsius > 150) continue;
+        if (hottest == null || celsius > hottest) hottest = celsius;
+      }
+      return hottest;
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _windowsHealth() async {
+    const script = r'''
+$os = Get-CimInstance Win32_OperatingSystem
+$drive = Get-PSDrive C
+@{ storage_free_bytes = $drive.Free; storage_total_bytes = ($drive.Used + $drive.Free); memory_available_bytes = ($os.FreePhysicalMemory * 1024); memory_total_bytes = ($os.TotalVisibleMemorySize * 1024) } | ConvertTo-Json -Compress
+''';
+    for (final command in ['powershell.exe', 'powershell', 'pwsh']) {
+      try {
+        final result = await Process.run(command, [
+          '-NoProfile',
+          '-NonInteractive',
+          '-Command',
+          script,
+        ]).timeout(const Duration(seconds: 8));
+        if (result.exitCode != 0) continue;
+        final text = result.stdout?.toString() ?? '';
+        final start = text.indexOf('{');
+        final end = text.lastIndexOf('}');
+        if (start < 0 || end <= start) continue;
+        final decoded = jsonDecode(text.substring(start, end + 1));
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } on Object {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  Future<int?> _readInt(String path) async {
+    final text = await _readText(path);
+    return text == null ? null : int.tryParse(text);
+  }
+
+  Future<String?> _readText(String path) async {
+    try {
+      return (await File(path).readAsString()).trim();
     } on Object {
       return null;
     }

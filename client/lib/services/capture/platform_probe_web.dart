@@ -19,4 +19,10 @@ class PlatformProbeWeb implements PlatformProbe {
 
   @override
   Future<Map<String, dynamic>?> networkSnapshot() async => null;
+
+  @override
+  Future<Map<String, dynamic>?> batterySnapshot() async => null;
+
+  @override
+  Future<Map<String, dynamic>?> healthSnapshot() async => null;
 }

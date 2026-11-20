@@ -7,6 +7,9 @@ from pydantic import BaseModel
 
 from vira import errors
 from vira.auth.principals import DevicePrincipal, UserPrincipal
+from vira.devices import commands as command_store
+from vira.devices import pairing as pairing_store
+from vira.devices import consent as consent_store
 from .deps import correlation_id_of
 
 
@@ -17,6 +20,7 @@ class DeviceRegisterRequest(BaseModel):
     os_version: Optional[str] = None
     client_version: Optional[str] = None
     capabilities: List[str] = []
+    installation_id: Optional[str] = None
 
 
 class DeviceUpdateRequest(BaseModel):
@@ -30,6 +34,38 @@ class RotateRequest(BaseModel):
 class AccessGrantRequest(BaseModel):
     user_id: str            # users.public_id
     access_role: str = "viewer"
+
+
+class PairRequest(BaseModel):
+    code: str
+    display_name: str
+    platform: str
+    device_type: str
+    os_version: Optional[str] = None
+    client_version: Optional[str] = None
+    capabilities: List[str] = []
+
+
+class PairingCodeRequest(BaseModel):
+    ttl_minutes: int = 10
+
+
+class CommandRequest(BaseModel):
+    kind: str
+    payload: Dict[str, Any] = {}
+    ttl_hours: int = 24
+
+
+class CommandResultRequest(BaseModel):
+    status: str = "completed"
+    result: Any = None
+
+
+class ConsentRequest(BaseModel):
+    collector: str
+    enabled: bool = True
+    purpose: str = "device_insights"
+    retention_hours: Optional[int] = None
 
 
 class HeartbeatRequest(BaseModel):
@@ -48,6 +84,22 @@ def build_device_router(kernel, deps: dict, stream_manager) -> APIRouter:
     def svc():
         return kernel.device_service
 
+    # ---------------- pairing ---------------- #
+    @router.post("/devices/pairing-code", status_code=201)
+    async def pairing_code(body: PairingCodeRequest,
+                           user: UserPrincipal = Depends(user_dep)):
+        return pairing_store.create_code(user.user_id, body.ttl_minutes)
+
+    @router.post("/devices/pair", status_code=201)
+    async def pair_device(body: PairRequest):
+        try:
+            return pairing_store.redeem(
+                body.code, body.display_name, body.platform, body.device_type,
+                body.os_version, body.client_version, body.capabilities,
+            )
+        except ValueError as exc:
+            raise errors.ValidationFailed(str(exc), code="pairing_failed") from exc
+
     # ---------------- user-facing device management ---------------- #
     @router.post("/devices", status_code=201)
     async def register_device(body: DeviceRegisterRequest, request: Request,
@@ -55,7 +107,8 @@ def build_device_router(kernel, deps: dict, stream_manager) -> APIRouter:
         # Client-supplied id/owner/state/scope are not part of the contract.
         return svc().register_device(
             user, body.display_name, body.platform, body.device_type, body.os_version,
-            body.client_version, body.capabilities, correlation_id_of(request))
+            body.client_version, body.capabilities, correlation_id_of(request),
+            installation_id=body.installation_id)
 
     @router.get("/devices")
     async def list_devices(limit: int = 50, cursor: Optional[str] = None,
@@ -118,6 +171,78 @@ def build_device_router(kernel, deps: dict, stream_manager) -> APIRouter:
     @router.get("/devices/{device_id}/state")
     async def latest_state(device_id: str, user: UserPrincipal = Depends(user_dep)):
         return svc().latest_state(user, device_id)
+
+    @router.get("/devices/{device_id}/consent")
+    async def list_consent(device_id: str, user: UserPrincipal = Depends(user_dep)):
+        kernel.device_service.authorize(user, device_id, roles=("owner", "operator"),
+                                        allow_admin=True)
+        return {"device_id": device_id, "consent": consent_store.list_for_device(device_id)}
+
+    @router.put("/devices/{device_id}/consent")
+    async def set_consent(device_id: str, body: ConsentRequest,
+                          user: UserPrincipal = Depends(user_dep)):
+        kernel.device_service.authorize(user, device_id, roles=("owner", "operator"),
+                                        allow_admin=True)
+        try:
+            item = consent_store.set_consent(
+                device_id, body.collector, body.enabled, body.purpose,
+                body.retention_hours, user.user_id,
+            )
+        except ValueError as exc:
+            raise errors.ValidationFailed(str(exc), code="invalid_collector") from exc
+        return {"device_id": device_id, "consent": item}
+
+    @router.delete("/devices/{device_id}/consent/{collector}", status_code=204)
+    async def revoke_consent(device_id: str, collector: str,
+                             user: UserPrincipal = Depends(user_dep)):
+        kernel.device_service.authorize(user, device_id, roles=("owner", "operator"),
+                                        allow_admin=True)
+        try:
+            consent_store.set_consent(device_id, collector, False, user_id=user.user_id)
+        except ValueError as exc:
+            raise errors.ValidationFailed(str(exc), code="invalid_collector") from exc
+        return Response(status_code=204)
+
+    @router.post("/devices/{device_id}/commands", status_code=201)
+    async def create_command(device_id: str, body: CommandRequest,
+                             user: UserPrincipal = Depends(user_dep)):
+        kernel.device_service.authorize(user, device_id, roles=("owner", "operator"),
+                                        allow_admin=True)
+        try:
+            return command_store.create(device_id, body.kind, body.payload,
+                                        user.user_id, body.ttl_hours)
+        except ValueError as exc:
+            raise errors.ValidationFailed(str(exc), code="invalid_command") from exc
+
+    @router.get("/devices/{device_id}/commands")
+    async def list_commands(device_id: str, limit: int = 50,
+                            user: UserPrincipal = Depends(user_dep)):
+        kernel.device_service.authorize(user, device_id, roles=("owner", "operator"),
+                                        allow_admin=True)
+        return {"commands": command_store.list_for_device(device_id, limit)}
+
+    @router.get("/devices/{device_id}/commands/pending")
+    async def pending_commands(device_id: str,
+                               principal: DevicePrincipal = Depends(device_dep)):
+        if principal.device_id != device_id:
+            raise errors.Forbidden("Credential does not belong to this device",
+                                   code="device_mismatch")
+        return {"commands": command_store.claim_pending(device_id)}
+
+    @router.post("/devices/{device_id}/commands/{command_id}/result")
+    async def command_result(device_id: str, command_id: str,
+                             body: CommandResultRequest,
+                             principal: DevicePrincipal = Depends(device_dep)):
+        if principal.device_id != device_id:
+            raise errors.Forbidden("Credential does not belong to this device",
+                                   code="device_mismatch")
+        try:
+            changed = command_store.complete(device_id, command_id, body.status, body.result)
+        except ValueError as exc:
+            raise errors.ValidationFailed(str(exc), code="invalid_command") from exc
+        if not changed:
+            raise errors.NotFound("Command not found or already completed")
+        return {"command_id": command_id, "status": body.status}
 
     # ---------------- device-authenticated endpoints ---------------- #
     @router.post("/devices/{device_id}/heartbeat")

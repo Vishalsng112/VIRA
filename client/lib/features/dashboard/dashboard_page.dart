@@ -125,6 +125,8 @@ class DashboardPage extends StatelessWidget {
                 sent: snapshot.sentTotal,
                 lastSync: snapshot.lastSync,
                 collectors: '$activeCollectors active',
+                batteryLevel: controller.battery?.levelPercent,
+                batteryCharging: controller.battery?.charging,
               ),
               const SizedBox(height: 16),
               LayoutBuilder(
@@ -208,12 +210,16 @@ class _Stats extends StatelessWidget {
     required this.sent,
     required this.lastSync,
     required this.collectors,
+    required this.batteryLevel,
+    required this.batteryCharging,
   });
 
   final int pending;
   final int sent;
   final DateTime? lastSync;
   final String collectors;
+  final int? batteryLevel;
+  final bool? batteryCharging;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -251,6 +257,18 @@ class _Stats extends StatelessWidget {
           value: collectors,
           caption: 'Capture modules',
         ),
+        StatCard(
+          icon: batteryCharging == true
+              ? Icons.battery_charging_full
+              : Icons.battery_std,
+          label: 'Battery',
+          value: batteryLevel == null ? '—' : '$batteryLevel%',
+          caption: batteryLevel == null
+              ? 'Not available'
+              : batteryCharging == true
+              ? 'Charging'
+              : 'On battery',
+        ),
       ];
       return Wrap(
         spacing: spacing,
@@ -267,6 +285,41 @@ class _CaptureCard extends StatelessWidget {
   const _CaptureCard({required this.controller});
 
   final AppController controller;
+
+  Future<void> _confirmClear(
+    BuildContext context,
+    CollectorState state,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Clear ${state.collector.title.toLowerCase()} history?'),
+        content: Text(
+          'This deletes the local data kept by this collector. It does not delete events already sent to the VIRA server.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await controller.clearCollectorData(state.collector.id);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${state.collector.title} history cleared.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -286,6 +339,11 @@ class _CaptureCard extends StatelessWidget {
               state: state,
               onChanged: (value) =>
                   controller.setCollectorEnabled(state.collector.id, value),
+              onRequestAccess: () =>
+                  controller.requestCollectorAccess(state.collector.id),
+              onClearData: state.collector.hasLocalData
+                  ? () => _confirmClear(context, state)
+                  : null,
             ),
           ),
           if (collectors.isEmpty)
@@ -300,10 +358,17 @@ class _CaptureCard extends StatelessWidget {
 }
 
 class _CollectorTile extends StatelessWidget {
-  const _CollectorTile({required this.state, required this.onChanged});
+  const _CollectorTile({
+    required this.state,
+    required this.onChanged,
+    required this.onRequestAccess,
+    this.onClearData,
+  });
 
   final CollectorState state;
   final ValueChanged<bool> onChanged;
+  final VoidCallback onRequestAccess;
+  final VoidCallback? onClearData;
 
   @override
   Widget build(BuildContext context) {
@@ -352,9 +417,45 @@ class _CollectorTile extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (state.lastError != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    state.lastError!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: state.status == 'permission_denied'
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.error,
+                    ),
+                  ),
+                ],
+                if (state.status == 'permission_denied' &&
+                    state.collector.canRequestAccess) ...[
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: onRequestAccess,
+                      icon: const Icon(Icons.lock_open_outlined, size: 18),
+                      label: const Text('Grant access'),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
+          if (onClearData != null)
+            PopupMenuButton<String>(
+              tooltip: 'Collector options',
+              onSelected: (value) {
+                if (value == 'clear') onClearData!();
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'clear',
+                  child: Text('Clear local data'),
+                ),
+              ],
+            ),
           Switch(value: state.enabled, onChanged: onChanged),
         ],
       ),

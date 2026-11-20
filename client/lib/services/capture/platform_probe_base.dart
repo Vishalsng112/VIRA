@@ -11,4 +11,8 @@ abstract class PlatformProbe {
   Future<Map<String, dynamic>?> hardwareSnapshot();
 
   Future<Map<String, dynamic>?> networkSnapshot();
+
+  Future<Map<String, dynamic>?> batterySnapshot();
+
+  Future<Map<String, dynamic>?> healthSnapshot();
 }

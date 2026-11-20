@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 import asyncio
 import json
+import time
 import uuid
 from asyncio import Future, TimeoutError as AsyncTimeoutError
 
@@ -36,8 +37,19 @@ from vira.api.deps import (
     install_error_handling,
 )
 from vira.api.streams import EventStreamManager
+from vira.ratelimit import RateLimitMiddleware
 from vira.agent.progress import hub as progress_hub
+from vira.api.routes_account import build_account_router
 from vira.api.routes_admin import build_admin_router
+from vira.api.routes_notifications import build_notification_router
+from vira.api.routes_workflows import build_workflow_router
+from vira.api.routes_rag import build_rag_router
+from vira.api.routes_plugins import build_plugin_router
+from vira.api.routes_mcp import build_mcp_router
+from vira.api.routes_organizations import build_organization_router
+from vira.api.routes_storage import build_storage_router
+from vira.api.routes_usage import build_usage_router
+from vira.api.routes_updates import build_update_router
 from vira.api.routes_devices import build_device_router
 from vira.api.routes_client import build_client_router
 from vira.family import store as family_store
@@ -144,8 +156,31 @@ def _redact(value):
 def create_app(kernel: Kernel) -> FastAPI:
     set_kernel(kernel)
 
-    app = FastAPI(title="VIRA Server API", version="0.3.0")
+    app = FastAPI(title="VIRA Server API", version="0.4.0")
     install_error_handling(app)
+
+    @app.middleware("http")
+    async def request_observability(request: Request, call_next):
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            try:
+                kernel.metrics_manager.record_error("http_500", request.url.path)
+            except Exception:
+                pass
+            raise
+        duration = time.perf_counter() - started
+        route = request.scope.get("route")
+        path = getattr(route, "path", request.url.path)
+        try:
+            labels = {"method": request.method, "path": path, "status": str(response.status_code)}
+            kernel.metrics_manager.increment_counter("http_requests_total", labels=labels)
+            kernel.metrics_manager.observe_histogram("http_request_duration_seconds", duration, labels=labels)
+        except Exception:
+            pass
+        response.headers["X-Response-Time-ms"] = f"{duration * 1000:.1f}"
+        return response
 
     # --- Session Middleware ---
     secret_key = kernel.config_manager.get("auth.secret_key", "default-secret-change-me")
@@ -165,6 +200,11 @@ def create_app(kernel: Kernel) -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+    rate_config = kernel.config_manager.get("rate_limits", {}) or {}
+    app.add_middleware(
+        RateLimitMiddleware,
+        enabled=bool(rate_config.get("enabled", True)),
+    )
 
     # --- Static files ---
     static_dir = Path(__file__).parent.parent / "web" / "static"
@@ -692,6 +732,14 @@ def create_app(kernel: Kernel) -> FastAPI:
             raise HTTPException(status_code=404, detail="Run not found")
         return run
 
+    @app.get("/runs/{run_id}/events")
+    async def get_run_events(run_id: str, after: int = 0, limit: int = 500,
+                             user: auth.Principal = Depends(get_current_user)):
+        if not auth_database.get_run(run_id, user.user_id):
+            raise HTTPException(status_code=404, detail="Run not found")
+        from vira.agent_runtime.run_store import list_events
+        return {"events": list_events(run_id, after, limit)}
+
     @app.post("/memories")
     async def create_memory(
         request: MemoryCreateRequest,
@@ -981,6 +1029,7 @@ def create_app(kernel: Kernel) -> FastAPI:
     app.add_api_route("/api/v1/conversations/{conversation_id}", delete_conversation, methods=["DELETE"])
     app.add_api_route("/api/v1/conversations/{conversation_id}/messages", list_messages, methods=["GET"])
     app.add_api_route("/api/v1/runs/{run_id}", get_run, methods=["GET"])
+    app.add_api_route("/api/v1/runs/{run_id}/events", get_run_events, methods=["GET"])
     app.add_api_route("/api/v1/memories", create_memory, methods=["POST"])
     app.add_api_route("/api/v1/memories", search_memories, methods=["GET"])
     app.add_api_route("/api/v1/memories/{memory_id}", delete_memory, methods=["DELETE"])
@@ -989,4 +1038,19 @@ def create_app(kernel: Kernel) -> FastAPI:
     app.include_router(build_device_router(kernel, auth_deps, stream_manager))
     app.include_router(build_client_router(get_current_user, kernel))
     app.include_router(build_admin_router(kernel, auth_deps, stream_manager))
+    app.include_router(build_account_router(get_current_user))
+    app.include_router(build_notification_router(get_current_user, auth_deps['get_device_principal']))
+    app.include_router(build_workflow_router(kernel, get_current_user))
+    app.include_router(build_rag_router(get_current_user))
+    app.include_router(build_plugin_router(kernel, auth_deps["require_admin"], get_current_user))
+    app.include_router(build_mcp_router(kernel, auth_deps["require_admin"], get_current_user))
+    app.include_router(build_organization_router(get_current_user))
+    app.include_router(build_storage_router(get_current_user))
+    app.include_router(build_usage_router(auth_deps["require_admin"], get_current_user))
+    app.include_router(build_update_router(auth_deps["require_admin"], get_current_user))
+    plugin_manager = getattr(kernel, "plugin_manager", None)
+    for plugin_id, plugin_router in (plugin_manager.collect_routers() if plugin_manager else []):
+        app.include_router(plugin_router, prefix=f"/api/v1/ext/{plugin_id}")
+    from .routes_insights import build_insights_router
+    app.include_router(build_insights_router(kernel, get_current_user))
     return app

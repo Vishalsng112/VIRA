@@ -17,6 +17,40 @@ except ImportError:  # launched as a script: python vira/tools/mcp_server.py
 
 server = FastMCP("example-tools")
 
+# Catalogue used by search_tools so MCP clients can request only relevant tools.
+TOOL_CATALOG = [
+    {"name": "web_search", "category": "web", "tags": ["web", "search", "news", "current-events"],
+     "description": "Search the web and return titles, URLs and snippets."},
+    {"name": "web_research", "category": "web", "tags": ["web", "research", "news", "sources"],
+     "description": "Search, open top pages and return sourced text."},
+    {"name": "web_browse", "category": "web", "tags": ["web", "browse", "url", "page"],
+     "description": "Open a public URL and return readable text."},
+    {"name": "execute_shell", "category": "runtime", "tags": ["shell", "system", "runtime", "read-only"],
+     "description": "Run an approved read-only system command."},
+]
+
+
+@server.tool()
+async def search_tools(query: str, limit: int = 8) -> str:
+    """Find relevant tools by task, app or domain before calling them.
+
+    Examples: "photoshop export", "davinci resolve render", "web news",
+    "system disk usage". Returns matching tool names, categories, tags and
+    descriptions. Load only the tools you need.
+    """
+    tokens = {token for token in query.lower().replace("-", " ").split() if token}
+    scored = []
+    for tool in TOOL_CATALOG:
+        haystack = f"{tool['name']} {tool['description']} {tool['category']} {' '.join(tool['tags'])}".lower()
+        score = sum(3 for token in tokens if token in tool["name"].lower())
+        score += sum(1 for token in tokens if token in haystack)
+        if score:
+            scored.append((score, tool))
+    scored.sort(key=lambda item: (-item[0], item[1]["name"]))
+    result = [tool for _, tool in scored[:max(1, min(limit, 50))]]
+    return json.dumps(result, ensure_ascii=False)
+
+
 
 class _ReadableTextParser(HTMLParser):
     """Extract readable text while dropping page chrome and executable content."""

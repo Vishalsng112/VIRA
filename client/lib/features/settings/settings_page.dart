@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_controller.dart';
@@ -156,6 +157,43 @@ class SettingsPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 SectionCard(
+                  title: 'Privacy and data',
+                  subtitle:
+                      'Local data stays on this device unless you export or sync it.',
+                  child: Column(
+                    children: [
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.download_outlined),
+                        title: const Text('Export local data'),
+                        subtitle: const Text(
+                          'Copy a JSON snapshot of local insights, settings and the outbox. Credentials are never included.',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _exportLocalData(context, controller),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          Icons.delete_sweep_outlined,
+                          color: theme.colorScheme.error,
+                        ),
+                        title: Text(
+                          'Clear local insights',
+                          style: TextStyle(color: theme.colorScheme.error),
+                        ),
+                        subtitle: const Text(
+                          'Delete the local app-usage and screen-session ledgers. Queued events are not affected.',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _clearLocalInsights(context, controller),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SectionCard(
                   title: 'Device lifecycle',
                   subtitle: 'Revocation takes effect on the server immediately.',
                   child: Column(
@@ -264,7 +302,6 @@ class SettingsPage extends StatelessWidget {
         ],
       ),
     );
-    text.dispose();
     if (name == null || !context.mounted) return;
     final id = controller.deviceId;
     if (id == null) return;
@@ -353,6 +390,85 @@ class SettingsPage extends StatelessWidget {
     );
     username.dispose();
     password.dispose();
+  }
+
+  Future<void> _exportLocalData(
+    BuildContext context,
+    AppController controller,
+  ) async {
+    final json = await controller.exportLocalData();
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Local data export'),
+        content: SizedBox(
+          width: 640,
+          height: 420,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              json,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+          FilledButton.icon(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: json));
+              if (!dialogContext.mounted) return;
+              Navigator.pop(dialogContext);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Local data copied to clipboard.')),
+                );
+              }
+            },
+            icon: const Icon(Icons.copy_outlined),
+            label: const Text('Copy JSON'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearLocalInsights(
+    BuildContext context,
+    AppController controller,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear local insights?'),
+        content: const Text(
+          'This deletes app-usage and screen-session summaries stored on this device. Events already sent to the server are not affected.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    await controller.clearLocalHistory();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Local insights cleared.')),
+      );
+    }
   }
 
   Future<void> _disconnect(

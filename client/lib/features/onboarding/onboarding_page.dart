@@ -161,9 +161,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
         ),
       ),
     );
-    username.dispose();
-    password.dispose();
-    confirmation.dispose();
   }
 
   @override

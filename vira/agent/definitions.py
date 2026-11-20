@@ -20,6 +20,13 @@ from typing import Dict, Iterable, List, Optional
 import yaml
 
 BUILTIN_DIR = Path(__file__).parent / "definitions"
+_REGISTERED: Dict[str, AgentDefinition] = {}
+_OWNERS: Dict[str, str] = {}
+_VERSION = 0
+
+
+def definitions_version() -> int:
+    return _VERSION
 
 
 @dataclass
@@ -31,6 +38,7 @@ class AgentDefinition:
     max_steps: int = 5
     model: Optional[str] = None
     temperature: Optional[float] = None
+    version: str = "1.0.0"
     source: str = field(default="", repr=False)
 
 
@@ -60,12 +68,33 @@ def parse_definition(text: str, source: str = "") -> Optional[AgentDefinition]:
         prompt=parts[2].strip(), tools=tools, max_steps=max_steps,
         model=meta.get("model"),
         temperature=float(temperature) if isinstance(temperature, (int, float)) else None,
+        version=str(meta.get("version", "1.0.0")),
         source=source,
     )
 
 
+def register_definition(definition: AgentDefinition, owner: str = "") -> None:
+    """Register a runtime (plugin-contributed) agent definition."""
+    global _VERSION
+    _VERSION += 1
+    _REGISTERED[definition.name] = definition
+    if owner:
+        _OWNERS[definition.name] = owner
+
+
+def unregister_definitions(owner: str) -> int:
+    global _VERSION
+    names = [name for name, value in _OWNERS.items() if value == owner]
+    if names:
+        _VERSION += 1
+    for name in names:
+        _REGISTERED.pop(name, None)
+        _OWNERS.pop(name, None)
+    return len(names)
+
+
 def load_definitions(extra_dirs: Iterable[str] = ()) -> Dict[str, AgentDefinition]:
-    found: Dict[str, AgentDefinition] = {}
+    found: Dict[str, AgentDefinition] = dict(_REGISTERED)
     for directory in [BUILTIN_DIR, *(Path(d).expanduser() for d in extra_dirs if d)]:
         if not directory.is_dir():
             continue

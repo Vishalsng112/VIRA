@@ -81,6 +81,11 @@ void main() {
         hostname: 'test',
       ),
       capabilities: ['device_status'],
+      installationId: 'install-abc',
+    );
+    expect(
+      (jsonDecode(seen['POST /api/v1/devices']!.body) as Map)['installation_id'],
+      'install-abc',
     );
     expect(device.deviceId, 'device-1');
     expect(token, 'vdc_token');

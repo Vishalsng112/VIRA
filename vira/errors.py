@@ -55,6 +55,11 @@ class PayloadTooLarge(ViraError):
     code = "payload_too_large"
 
 
+class ServiceUnavailable(ViraError):
+    status_code = 503
+    code = "service_unavailable"
+
+
 class RateLimited(ViraError):
     status_code = 429
     code = "rate_limited"

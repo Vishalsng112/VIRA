@@ -46,7 +46,6 @@ class _DevicesPageState extends State<DevicesPage> {
         ],
       ),
     );
-    text.dispose();
     if (name == null || !mounted) return;
     final error = await controller.renameDevice(device.deviceId, name);
     if (error != null && mounted) {

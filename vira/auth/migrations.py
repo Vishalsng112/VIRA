@@ -195,10 +195,470 @@ def _m003_provenance_columns(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_device ON memories(device_id)")
 
 
+def _m004_jobs_and_rollups(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS jobs (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            payload TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'running', 'done', 'failed', 'dead')),
+            priority INTEGER NOT NULL DEFAULT 0,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 5,
+            available_at TIMESTAMP NOT NULL,
+            locked_at TIMESTAMP,
+            locked_by TEXT,
+            last_error TEXT,
+            dedupe_key TEXT,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL,
+            completed_at TIMESTAMP
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_ready ON jobs(status, available_at, priority)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_kind ON jobs(kind, status)")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedupe_active "
+        "ON jobs(dedupe_key) WHERE dedupe_key IS NOT NULL AND status IN ('pending','running')"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS insight_daily (
+            device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            day TEXT NOT NULL,
+            app_ms INTEGER NOT NULL DEFAULT 0,
+            screen_ms INTEGER NOT NULL DEFAULT 0,
+            unlocks INTEGER NOT NULL DEFAULT 0,
+            focus_ms INTEGER NOT NULL DEFAULT 0,
+            distraction_ms INTEGER NOT NULL DEFAULT 0,
+            focus_sessions INTEGER NOT NULL DEFAULT 0,
+            focus_score INTEGER NOT NULL DEFAULT 0,
+            top_apps TEXT NOT NULL DEFAULT '[]',
+            categories TEXT NOT NULL DEFAULT '[]',
+            warnings TEXT NOT NULL DEFAULT '[]',
+            updated_at TIMESTAMP NOT NULL,
+            PRIMARY KEY (device_id, day)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_insight_daily_day ON insight_daily(day)")
+
+
+def _m005_consent_schemas_commands_pairing(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS device_consents (
+            device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            collector TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            purpose TEXT NOT NULL DEFAULT 'device_insights',
+            retention_hours INTEGER,
+            updated_at TEXT NOT NULL,
+            updated_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            revoked_at TEXT,
+            PRIMARY KEY (device_id, collector)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_consents_device ON device_consents(device_id)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS event_schemas (
+            event_type TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            schema_json TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (event_type, version)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS device_commands (
+            id TEXT PRIMARY KEY,
+            device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL,
+            payload TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            delivered_at TEXT,
+            completed_at TEXT,
+            expires_at TEXT,
+            result TEXT
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_commands_device_status ON device_commands(device_id, status, created_at)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS device_pairing_codes (
+            code_hash TEXT PRIMARY KEY,
+            created_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            device_id TEXT REFERENCES devices(id) ON DELETE SET NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_notifications (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            device_id TEXT REFERENCES devices(id) ON DELETE SET NULL,
+            kind TEXT NOT NULL,
+            title TEXT NOT NULL,
+            body TEXT NOT NULL DEFAULT '',
+            data TEXT NOT NULL DEFAULT '{}',
+            status TEXT NOT NULL DEFAULT 'pending',
+            created_at TEXT NOT NULL,
+            delivered_at TEXT,
+            read_at TEXT
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user ON user_notifications(user_id, status, created_at)")
+
+
+def _m006_push_tokens(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS device_push_tokens (
+            device_id TEXT NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            platform TEXT NOT NULL,
+            token TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (device_id, token)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_push_tokens_device ON device_push_tokens(device_id)")
+
+
+def _m007_agent_run_events(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_run_events (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            seq INTEGER NOT NULL,
+            event_type TEXT NOT NULL,
+            data TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            UNIQUE(run_id, seq)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_run_events_run ON agent_run_events(run_id, seq)")
+
+
+def _m008_durable_workflows(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workflows (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            context TEXT NOT NULL DEFAULT '{}',
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            completed_at TEXT
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_workflows_user ON workflows(created_by_user_id, created_at)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workflow_steps (
+            workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+            id TEXT NOT NULL,
+            seq INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            agent_id TEXT NOT NULL,
+            input TEXT NOT NULL DEFAULT '{}',
+            depends_on TEXT NOT NULL DEFAULT '[]',
+            retry_policy TEXT,
+            compensation TEXT,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempts INTEGER NOT NULL DEFAULT 0,
+            result TEXT,
+            error TEXT,
+            started_at TEXT,
+            completed_at TEXT,
+            PRIMARY KEY (workflow_id, id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_workflow_steps_status ON workflow_steps(workflow_id, status)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workflow_events (
+            id TEXT PRIMARY KEY,
+            workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+            step_id TEXT,
+            event_type TEXT NOT NULL,
+            data TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_workflow_events ON workflow_events(workflow_id, created_at)")
+
+
+def _m009_rag_vectors(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS memory_embeddings (
+            memory_id TEXT PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            model TEXT NOT NULL,
+            dims INTEGER NOT NULL,
+            vector TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_embeddings_user ON memory_embeddings(user_id)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rag_documents (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            metadata TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_documents_user ON rag_documents(user_id, created_at)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rag_chunks (
+            id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL REFERENCES rag_documents(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            chunk_index INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            metadata TEXT NOT NULL DEFAULT '{}',
+            model TEXT NOT NULL,
+            dims INTEGER NOT NULL,
+            vector TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rag_chunks_user ON rag_chunks(user_id, document_id)")
+
+
+def _m010_p4_ecosystem(conn: sqlite3.Connection) -> None:
+    # --- plugins -----------------------------------------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plugins (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            api_version TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            author TEXT NOT NULL DEFAULT '',
+            entrypoint TEXT,
+            manifest TEXT NOT NULL,
+            permissions TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'discovered',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            error TEXT,
+            installed_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plugin_storage (
+            plugin_id TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (plugin_id, key)
+        )
+        """
+    )
+    # --- MCP marketplace / allow-list -------------------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT NOT NULL DEFAULT '',
+            transport TEXT NOT NULL DEFAULT 'stdio',
+            command TEXT,
+            args TEXT NOT NULL DEFAULT '[]',
+            url TEXT,
+            env TEXT NOT NULL DEFAULT '{}',
+            permissions TEXT NOT NULL DEFAULT '["read","execute"]',
+            allowed_tools TEXT NOT NULL DEFAULT '[]',
+            denied_tools TEXT NOT NULL DEFAULT '[]',
+            categories TEXT NOT NULL DEFAULT '[]',
+            version TEXT NOT NULL DEFAULT '1.0.0',
+            source TEXT NOT NULL DEFAULT 'manual',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mcp_policies (
+            id TEXT PRIMARY KEY,
+            server_id TEXT NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
+            subject_type TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            allowed INTEGER NOT NULL DEFAULT 1,
+            allowed_tools TEXT NOT NULL DEFAULT '[]',
+            denied_tools TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL,
+            UNIQUE(server_id, subject_type, subject_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_mcp_policies_subject ON mcp_policies(subject_type, subject_id)")
+    # --- organizations / teams -------------------------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS organizations (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            slug TEXT NOT NULL UNIQUE,
+            owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS organization_members (
+            organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role TEXT NOT NULL DEFAULT 'member',
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (organization_id, user_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_org_members_user ON organization_members(user_id)")
+    _add_column(conn, "workflows", "organization_id", "TEXT")
+    _add_column(conn, "rag_documents", "organization_id", "TEXT")
+    # --- object storage ---------------------------------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS objects (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            organization_id TEXT REFERENCES organizations(id) ON DELETE SET NULL,
+            object_key TEXT NOT NULL,
+            content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            storage_backend TEXT NOT NULL,
+            storage_key TEXT NOT NULL,
+            metadata TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_objects_user ON objects(user_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_objects_org ON objects(organization_id, created_at)")
+    # --- cost / quota accounting -----------------------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS llm_usage (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            organization_id TEXT,
+            agent_id TEXT,
+            provider TEXT NOT NULL DEFAULT 'unknown',
+            model TEXT NOT NULL DEFAULT 'unknown',
+            prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens INTEGER NOT NULL DEFAULT 0,
+            cost_usd REAL NOT NULL DEFAULT 0,
+            latency_ms REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_usage_user ON llm_usage(user_id, created_at)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_llm_usage_org ON llm_usage(organization_id, created_at)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS llm_quotas (
+            id TEXT PRIMARY KEY,
+            scope TEXT NOT NULL,
+            subject_id TEXT NOT NULL,
+            period TEXT NOT NULL DEFAULT 'month',
+            token_limit INTEGER,
+            cost_limit_usd REAL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(scope, subject_id, period)
+        )
+        """
+    )
+    # --- update channel ---------------------------------------------------
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS update_releases (
+            id TEXT PRIMARY KEY,
+            product TEXT NOT NULL,
+            channel TEXT NOT NULL DEFAULT 'stable',
+            version TEXT NOT NULL,
+            min_version TEXT,
+            notes TEXT NOT NULL DEFAULT '',
+            url TEXT NOT NULL DEFAULT '',
+            checksum TEXT,
+            published_at TEXT NOT NULL,
+            created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            UNIQUE(product, channel, version)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_updates_lookup ON update_releases(product, channel, published_at)")
+
+
+def _m011_device_installation(conn: sqlite3.Connection) -> None:
+    _add_column(conn, "devices", "installation_id", "TEXT")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS devices_installation_uq "
+        "ON devices(created_by_user_id, installation_id) "
+        "WHERE installation_id IS NOT NULL"
+    )
+
+
 MIGRATIONS: List[Tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "users_public_id_and_status", _m001_users),
     (2, "devices_credentials_access_events", _m002_devices),
     (3, "provenance_columns", _m003_provenance_columns),
+    (4, "durable_jobs_and_daily_rollups", _m004_jobs_and_rollups),
+    (5, "consent_schemas_commands_pairing", _m005_consent_schemas_commands_pairing),
+    (6, "push_tokens", _m006_push_tokens),
+    (7, "agent_run_events", _m007_agent_run_events),
+    (8, "durable_workflows", _m008_durable_workflows),
+    (9, "rag_vectors", _m009_rag_vectors),
+    (10, "p4_ecosystem", _m010_p4_ecosystem),
+    (11, "device_installation_identity", _m011_device_installation),
 ]
 
 

@@ -3,11 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="VIRA control center — runtime, agents, extensions, security and usage.">
   <title>Overview · VIRA</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=apple-2">
   <script>
     (() => {
       let saved = null;
@@ -42,6 +40,10 @@
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="m7 4 13 8-13 8z"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-5 5 5 5 0 0 1-5-5zM12 16v5"/></symbol>
+    <symbol id="i-usage" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="6" rx="2"/><rect x="3.5" y="14" width="17" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   </defs>
 </svg>
 
@@ -60,14 +62,37 @@
     </div>
 
     <nav class="nav" aria-label="Dashboard sections">
-      <a class="nav-link" href="#overview" data-view="overview"><svg class="icon"><use href="#i-home"/></svg><span>Overview</span></a>
-      <a class="nav-link" href="#agents" data-view="agents"><svg class="icon"><use href="#i-agents"/></svg><span>Agents</span></a>
-      <a class="nav-link" href="#security" data-view="security"><svg class="icon"><use href="#i-shield"/></svg><span>Security</span></a>
-      <a class="nav-link" href="#events" data-view="events"><svg class="icon"><use href="#i-activity"/></svg><span>Events</span></a>
-      <a class="nav-link" href="#modules" data-view="modules"><svg class="icon"><use href="#i-box"/></svg><span>Modules</span></a>
-      <a class="nav-link" href="#developer" data-view="developer"><svg class="icon"><use href="#i-terminal"/></svg><span>Developer tools</span></a>
-      <a class="nav-link" href="#configuration" data-view="configuration"><svg class="icon"><use href="#i-settings"/></svg><span>Configuration</span></a>
-      <a class="nav-link nav-chat" href="/chat"><svg class="icon"><use href="#i-chat"/></svg><span>ChatBot</span></a>
+      <div class="nav-group">
+        <span class="nav-label">Workspace</span>
+        <a class="nav-link" href="#overview" data-view="overview"><svg class="icon"><use href="#i-home"/></svg><span>Overview</span></a>
+        <a class="nav-link nav-chat" href="/chat"><svg class="icon"><use href="#i-chat"/></svg><span>Open Chat</span></a>
+        <a class="nav-link" href="#devices" data-view="devices"><svg class="icon"><use href="#i-server"/></svg><span>Devices</span></a>
+        <a class="nav-link" href="#events" data-view="events"><svg class="icon"><use href="#i-activity"/></svg><span>Events</span></a>
+      </div>
+
+      <div class="nav-group">
+        <span class="nav-label">Intelligence</span>
+        <a class="nav-link" href="#agents" data-view="agents"><svg class="icon"><use href="#i-agents"/></svg><span>Agents</span></a>
+        <a class="nav-link" href="#extensions" data-view="extensions"><svg class="icon"><use href="#i-plug"/></svg><span>Extensions</span></a>
+        <a class="nav-link" href="#knowledge" data-view="knowledge"><svg class="icon"><use href="#i-info"/></svg><span>Knowledge</span></a>
+      </div>
+
+      <div class="nav-group">
+        <span class="nav-label">Operations</span>
+        <a class="nav-link" href="#automations" data-view="automations"><svg class="icon"><use href="#i-flag"/></svg><span>Automations</span></a>
+        <a class="nav-link" href="#usage" data-view="usage"><svg class="icon"><use href="#i-usage"/></svg><span>Usage</span></a>
+        <a class="nav-link" href="#organizations" data-view="organizations"><svg class="icon"><use href="#i-agents"/></svg><span>Organizations</span></a>
+        <a class="nav-link" href="#files" data-view="files"><svg class="icon"><use href="#i-box"/></svg><span>Files</span></a>
+        <a class="nav-link" href="#security" data-view="security"><svg class="icon"><use href="#i-shield"/></svg><span>Security</span></a>
+        <a class="nav-link" href="#modules" data-view="modules"><svg class="icon"><use href="#i-box"/></svg><span>Modules</span></a>
+      </div>
+
+      <div class="nav-group">
+        <span class="nav-label">System</span>
+        <a class="nav-link" href="#updates" data-view="updates"><svg class="icon"><use href="#i-refresh"/></svg><span>Updates</span></a>
+        <a class="nav-link" href="#developer" data-view="developer"><svg class="icon"><use href="#i-terminal"/></svg><span>Developer</span></a>
+        <a class="nav-link" href="#configuration" data-view="configuration"><svg class="icon"><use href="#i-settings"/></svg><span>Configuration</span></a>
+      </div>
     </nav>
 
     <div class="sidebar-foot">
@@ -168,6 +193,43 @@
         </div>
       </section>
 
+      <!-- ===== Devices ===== -->
+      <section class="view" id="view-devices" hidden>
+        <div class="kpis">
+          <article class="kpi">
+            <span class="kpi-label">Devices</span>
+            <strong class="kpi-value" id="kpi-devices">—</strong>
+            <span class="kpi-sub" id="kpi-devices-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Active now</span>
+            <strong class="kpi-value" id="kpi-devices-active">—</strong>
+            <span class="kpi-sub" id="kpi-devices-active-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Server device</span>
+            <strong class="kpi-value" id="kpi-devices-local">—</strong>
+            <span class="kpi-sub" id="kpi-devices-local-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Last contact</span>
+            <strong class="kpi-value" id="kpi-devices-seen">—</strong>
+            <span class="kpi-sub" id="kpi-devices-seen-sub">&nbsp;</span>
+          </article>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card card-flush">
+            <header class="card-head" style="padding:1.4rem 1.5rem 0"><h2>Fleet</h2><span class="card-note" id="device-count"></span></header>
+            <ul id="device-list" class="list-body"><li class="empty empty-pad">Loading devices…</li></ul>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>Device insight</h2><span class="card-note">Latest summary</span></header>
+            <div id="device-insight"><p class="empty">Select a device to see its usage summary.</p></div>
+          </section>
+        </div>
+      </section>
+
       <!-- ===== Agents ===== -->
       <section class="view" id="view-agents" hidden>
         <div class="card">
@@ -188,6 +250,334 @@
           <section class="card">
             <header class="card-head"><h2>Runtime</h2></header>
             <dl id="runtime-facts" class="kv"></dl>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== Automations ===== -->
+      <section class="view" id="view-automations" hidden>
+        <div class="kpis">
+          <article class="kpi">
+            <span class="kpi-label">Workflows</span>
+            <strong class="kpi-value" id="kpi-workflows">—</strong>
+            <span class="kpi-sub" id="kpi-workflows-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Running</span>
+            <strong class="kpi-value" id="kpi-workflows-running">—</strong>
+            <span class="kpi-sub" id="kpi-workflows-running-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Completed</span>
+            <strong class="kpi-value" id="kpi-workflows-done">—</strong>
+            <span class="kpi-sub" id="kpi-workflows-done-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Needs attention</span>
+            <strong class="kpi-value" id="kpi-workflows-failed">—</strong>
+            <span class="kpi-sub" id="kpi-workflows-failed-sub">&nbsp;</span>
+          </article>
+        </div>
+
+        <section class="card card-flush">
+          <header class="card-head" style="padding:1.4rem 1.5rem 0">
+            <h2>Durable workflows</h2>
+            <div class="card-actions">
+              <span class="card-note" id="workflow-count"></span>
+              <button class="btn btn-ghost" id="workflow-refresh" type="button">Refresh</button>
+            </div>
+          </header>
+          <div class="table-head workflow-head" aria-hidden="true"><span>Workflow</span><span>Status</span><span>Detail</span><span>Updated</span><span></span></div>
+          <ul id="workflow-list" class="list-body"><li class="empty empty-pad">Loading workflows…</li></ul>
+        </section>
+        <p class="card-note">Workflows are durable. Resume, cancel and replay runs here; create new workflows through <span class="mono">POST /api/v1/workflows</span>.</p>
+      </section>
+
+      <!-- ===== Extensions ===== -->
+      <section class="view" id="view-extensions" hidden>
+        <div class="kpis">
+          <article class="kpi">
+            <span class="kpi-label">Plugins loaded</span>
+            <strong class="kpi-value" id="kpi-plugins">—</strong>
+            <span class="kpi-sub" id="kpi-plugins-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">MCP servers</span>
+            <strong class="kpi-value" id="kpi-mcp">—</strong>
+            <span class="kpi-sub" id="kpi-mcp-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">MCP tools</span>
+            <strong class="kpi-value" id="kpi-mcp-tools">—</strong>
+            <span class="kpi-sub" id="kpi-mcp-tools-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Marketplace</span>
+            <strong class="kpi-value" id="kpi-marketplace">—</strong>
+            <span class="kpi-sub">Reference servers</span>
+          </article>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card card-flush">
+            <header class="card-head" style="padding:1.15rem 1.35rem 0">
+              <h2>Plugins</h2>
+              <div class="card-actions"><span class="card-note" id="plugin-count"></span><button class="btn btn-ghost" id="plugin-discover" type="button">Rescan</button></div>
+            </header>
+            <ul id="plugin-list" class="ext-list"><li class="empty empty-pad">Loading plugins…</li></ul>
+          </section>
+          <section class="card card-flush">
+            <header class="card-head" style="padding:1.15rem 1.35rem 0"><h2>MCP servers</h2><span class="card-note" id="mcp-count"></span></header>
+            <ul id="mcp-list" class="ext-list"><li class="empty empty-pad">Loading servers…</li></ul>
+          </section>
+        </div>
+
+        <section class="card">
+          <header class="card-head"><h2>Tool marketplace</h2><span class="card-note">Curated reference servers</span></header>
+          <div id="marketplace-list" class="market-grid"><p class="empty">Loading…</p></div>
+        </section>
+      </section>
+
+      <!-- ===== Knowledge ===== -->
+      <section class="view" id="view-knowledge" hidden>
+        <div class="kpis">
+          <article class="kpi">
+            <span class="kpi-label">Documents</span>
+            <strong class="kpi-value" id="kpi-docs">—</strong>
+            <span class="kpi-sub" id="kpi-docs-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Chunks indexed</span>
+            <strong class="kpi-value" id="kpi-chunks">—</strong>
+            <span class="kpi-sub" id="kpi-chunks-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Search results</span>
+            <strong class="kpi-value" id="kpi-rag-search">—</strong>
+            <span class="kpi-sub" id="kpi-rag-search-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Retrieval</span>
+            <strong class="kpi-value">Vector</strong>
+            <span class="kpi-sub">Hybrid lexical + embeddings</span>
+          </article>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card card-flush">
+            <header class="card-head" style="padding:1.4rem 1.5rem 0"><h2>Knowledge base</h2><span class="card-note" id="document-count"></span></header>
+            <ul id="document-list" class="list-body"><li class="empty empty-pad">Loading documents…</li></ul>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>Add knowledge</h2><span class="card-note">Chunked and embedded locally</span></header>
+            <form id="rag-form" class="form">
+              <label for="rag-title">Title</label>
+              <input id="rag-title" type="text" placeholder="Project notes" required>
+              <label for="rag-source">Source</label>
+              <input id="rag-source" type="text" value="manual">
+              <label for="rag-content">Content</label>
+              <textarea id="rag-content" rows="8" placeholder="Paste notes, documentation or reference material…" required></textarea>
+              <div class="form-actions">
+                <button class="btn" type="submit">Index document</button>
+                <span id="rag-result" class="result" role="status"></span>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        <section class="card">
+          <header class="card-head"><h2>Search knowledge</h2><span class="card-note" id="rag-search-meta"></span></header>
+          <form id="rag-search-form" class="form-inline">
+            <input id="rag-query" type="search" placeholder="Search indexed documents…" aria-label="Search knowledge" required>
+            <button class="btn" type="submit">Search</button>
+          </form>
+          <div id="rag-search-results" class="list-body"><p class="empty">Search results appear here.</p></div>
+        </section>
+      </section>
+
+      <!-- ===== Usage ===== -->
+      <section class="view" id="view-usage" hidden>
+        <div class="card">
+          <header class="card-head"><h2>Cost &amp; quota overview</h2><span id="usage-status" class="pill pill-neutral">Loading…</span></header>
+          <div id="usage-totals" class="usage-totals"><p class="empty">Loading usage…</p></div>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card">
+            <header class="card-head"><h2>Daily tokens</h2><span class="card-note">Last 30 days</span></header>
+            <div id="usage-chart" class="bar-chart"><p class="empty">No usage recorded yet.</p></div>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>Quotas</h2><span class="card-note" id="quota-count"></span></header>
+            <ul id="usage-quotas" class="policy-list"><li class="empty">Loading…</li></ul>
+            <form id="quota-form" class="form-inline" style="margin-top:1rem;flex-wrap:wrap">
+              <select id="quota-scope" aria-label="Quota scope"><option value="user">user</option><option value="org">org</option><option value="global">global</option></select>
+              <input id="quota-subject" type="text" placeholder="User or org ID" aria-label="Quota subject">
+              <select id="quota-period" aria-label="Quota period"><option value="month">month</option><option value="day">day</option></select>
+              <input id="quota-tokens" type="number" min="0" placeholder="Token limit" aria-label="Token limit">
+              <button class="btn" type="submit">Set quota</button>
+            </form>
+            <p id="quota-result" class="result" role="status"></p>
+          </section>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card">
+            <header class="card-head"><h2>By model</h2></header>
+            <div id="usage-models"><p class="empty">Loading…</p></div>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>By agent</h2></header>
+            <div id="usage-agents"><p class="empty">Loading…</p></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== Organizations ===== -->
+      <section class="view" id="view-organizations" hidden>
+        <div class="kpis">
+          <article class="kpi">
+            <span class="kpi-label">Organizations</span>
+            <strong class="kpi-value" id="kpi-orgs">—</strong>
+            <span class="kpi-sub" id="kpi-orgs-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Members</span>
+            <strong class="kpi-value" id="kpi-org-members">—</strong>
+            <span class="kpi-sub" id="kpi-org-members-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Your role</span>
+            <strong class="kpi-value" id="kpi-org-role">—</strong>
+            <span class="kpi-sub" id="kpi-org-role-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Tenancy</span>
+            <strong class="kpi-value">Teams</strong>
+            <span class="kpi-sub">Scoped workflows, RAG and files</span>
+          </article>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card card-flush">
+            <header class="card-head" style="padding:1.4rem 1.5rem 0"><h2>Your organizations</h2><span class="card-note" id="org-count"></span></header>
+            <ul id="org-list" class="list-body"><li class="empty empty-pad">Loading organizations…</li></ul>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>Create organization</h2><span class="card-note">Owner + admin + member</span></header>
+            <form id="org-form" class="form">
+              <label for="org-name">Name</label>
+              <input id="org-name" type="text" placeholder="Acme Team" required>
+              <div class="form-actions">
+                <button class="btn" type="submit">Create organization</button>
+                <span id="org-result" class="result" role="status"></span>
+              </div>
+            </form>
+            <p class="card-note" style="margin-top:1rem">Use the <span class="mono">X-Organization-ID</span> header on workflows, RAG and file APIs to scope resources to a team.</p>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== Files ===== -->
+      <section class="view" id="view-files" hidden>
+        <div class="kpis">
+          <article class="kpi">
+            <span class="kpi-label">Objects</span>
+            <strong class="kpi-value" id="kpi-objects">—</strong>
+            <span class="kpi-sub" id="kpi-objects-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Stored bytes</span>
+            <strong class="kpi-value" id="kpi-object-bytes">—</strong>
+            <span class="kpi-sub" id="kpi-object-bytes-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Backend</span>
+            <strong class="kpi-value">Local / S3</strong>
+            <span class="kpi-sub">Pluggable object storage</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Retention</span>
+            <strong class="kpi-value">Durable</strong>
+            <span class="kpi-sub">Metadata + content hashes</span>
+          </article>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card card-flush">
+            <header class="card-head" style="padding:1.4rem 1.5rem 0"><h2>Files</h2><span class="card-note" id="object-count"></span></header>
+            <ul id="object-list" class="list-body"><li class="empty empty-pad">Loading files…</li></ul>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>Upload file</h2><span class="card-note">Stored by content hash</span></header>
+            <form id="object-form" class="form">
+              <label for="object-file">File</label>
+              <input id="object-file" type="file" required>
+              <label for="object-key">Object key (optional)</label>
+              <input id="object-key" type="text" placeholder="notes/project.pdf">
+              <div class="form-actions">
+                <button class="btn" type="submit">Upload</button>
+                <span id="object-result" class="result" role="status"></span>
+              </div>
+            </form>
+          </section>
+        </div>
+      </section>
+
+      <!-- ===== Updates ===== -->
+      <section class="view" id="view-updates" hidden>
+        <div class="kpis">
+          <article class="kpi">
+            <span class="kpi-label">Releases</span>
+            <strong class="kpi-value" id="kpi-releases">—</strong>
+            <span class="kpi-sub" id="kpi-releases-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Latest client</span>
+            <strong class="kpi-value" id="kpi-client-latest">—</strong>
+            <span class="kpi-sub" id="kpi-client-latest-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Latest server</span>
+            <strong class="kpi-value" id="kpi-server-latest">—</strong>
+            <span class="kpi-sub" id="kpi-server-latest-sub">&nbsp;</span>
+          </article>
+          <article class="kpi">
+            <span class="kpi-label">Channels</span>
+            <strong class="kpi-value">3</strong>
+            <span class="kpi-sub">Stable · beta · dev</span>
+          </article>
+        </div>
+
+        <div class="grid grid-2">
+          <section class="card card-flush">
+            <header class="card-head" style="padding:1.4rem 1.5rem 0"><h2>Release timeline</h2><span class="card-note" id="release-count"></span></header>
+            <ul id="release-list" class="list-body"><li class="empty empty-pad">Loading releases…</li></ul>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>Publish release</h2><span class="card-note">Semver + minimum version</span></header>
+            <form id="release-form" class="form">
+              <div class="form-row">
+                <div class="field field-grow">
+                  <label for="release-product">Product</label>
+                  <select id="release-product"><option value="client">client</option><option value="server">server</option></select>
+                </div>
+                <div class="field field-grow">
+                  <label for="release-channel">Channel</label>
+                  <select id="release-channel"><option value="stable">stable</option><option value="beta">beta</option><option value="dev">dev</option></select>
+                </div>
+              </div>
+              <label for="release-version">Version</label>
+              <input id="release-version" type="text" placeholder="1.4.0" required>
+              <label for="release-notes">Notes</label>
+              <textarea id="release-notes" rows="3" placeholder="What changed?"></textarea>
+              <label for="release-url">Download URL</label>
+              <input id="release-url" type="url" placeholder="https://…">
+              <div class="form-actions">
+                <button class="btn" type="submit">Publish</button>
+                <span id="release-result" class="result" role="status"></span>
+              </div>
+            </form>
           </section>
         </div>
       </section>
@@ -343,6 +733,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=configuration-2"></script>
+<script src="/static/app.js?v=apple-2"></script>
 </body>
 </html>

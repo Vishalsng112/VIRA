@@ -1,10 +1,11 @@
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -13,6 +14,12 @@ from . import migrations
 DEFAULT_DB_PATH = Path("data/vira.sqlite3")
 LEGACY_DB_PATH = Path("data/vira.db")
 DB_PATH = DEFAULT_DB_PATH
+DATABASE_URL = os.environ.get("VIRA_DATABASE_URL", "")
+READ_DATABASE_URL = os.environ.get("VIRA_DATABASE_READ_URL", "")
+
+
+def is_postgres() -> bool:
+    return DATABASE_URL.startswith(("postgres://", "postgresql://"))
 
 
 def _utc_now() -> str:
@@ -24,7 +31,20 @@ def hash_session_id(session_id: str) -> str:
 
 
 def init_db() -> None:
-    """Create and migrate the local identity database."""
+    """Create and migrate the identity database (SQLite or PostgreSQL)."""
+    if is_postgres():
+        from vira.db.postgres import connect, schema_sql
+        with connect(DATABASE_URL) as conn:
+            conn.executescript(schema_sql())
+            conn.execute(
+                "INSERT INTO schema_migrations (version, name, applied_at) "
+                "VALUES (6, 'postgres_schema', ?) ON CONFLICT DO NOTHING",
+                (_utc_now(),),
+            )
+            from vira.event_schemas import seed_schemas
+            seed_schemas(conn)
+            conn.commit()
+        return
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     if DB_PATH == DEFAULT_DB_PATH and LEGACY_DB_PATH.exists() and not DB_PATH.exists():
         shutil.move(str(LEGACY_DB_PATH), str(DB_PATH))
@@ -286,12 +306,23 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_scope ON memories(user_id, agent_id, conversation_id, created_at)")
         conn.commit()
         # Versioned multi-user / multi-device migrations (see migrations.py).
-        migrations.apply_migrations(conn)
+        if not is_postgres():
+            migrations.apply_migrations(conn)
+        from vira.event_schemas import seed_schemas
+        seed_schemas(conn)
         conn.commit()
 
 
 @contextmanager
-def get_connection() -> Iterator[sqlite3.Connection]:
+def get_connection() -> Iterator[Any]:
+    if is_postgres():
+        from vira.db.postgres import connect
+        conn = connect(DATABASE_URL)
+        try:
+            yield conn
+        finally:
+            conn.close()
+        return
     conn = sqlite3.connect(str(DB_PATH), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -302,8 +333,26 @@ def get_connection() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def get_read_connection() -> Iterator[Any]:
+    """Read-only connection, optionally routed to a PostgreSQL replica.
+
+    SQLite deployments and installations without ``VIRA_DATABASE_READ_URL``
+    transparently use the primary connection.
+    """
+    url = READ_DATABASE_URL if READ_DATABASE_URL.startswith(("postgres://", "postgresql://")) else ""
+    if url:
+        from vira.db.postgres import connect
+        conn = connect(url)
+        try:
+            yield conn
+        finally:
+            conn.close()
+        return
+    yield from get_connection()
+
+
 @contextmanager
-def transaction() -> Iterator[sqlite3.Connection]:
+def transaction() -> Iterator[Any]:
     """Yield a connection inside an explicit write transaction.
 
     ``BEGIN IMMEDIATE`` takes the write lock up front so check-then-insert
@@ -311,7 +360,7 @@ def transaction() -> Iterator[sqlite3.Connection]:
     are atomic.  Commits on success, rolls back on any exception.
     """
     with get_connection() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("BEGIN" if is_postgres() else "BEGIN IMMEDIATE")
         try:
             yield conn
             conn.commit()
@@ -347,10 +396,11 @@ def _insert_user(
     now = _utc_now()
     cur = conn.execute(
         "INSERT INTO users (username, password_hash, recovery_code_hash, role, "
-        "public_id, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "public_id, status, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id",
         (username, password_hash, recovery_code_hash, role, str(uuid.uuid4()), status, now),
     )
-    return int(cur.lastrowid)
+    row = cur.fetchone()
+    return int(row["id"])
 
 
 def create_user(
@@ -533,6 +583,17 @@ def touch_session(session_id: str) -> None:
         conn.commit()
 
 
+def purge_expired_sessions(now: Optional[str] = None) -> int:
+    """Delete expired or revoked sessions; returns the number removed."""
+    now = now or _utc_now()
+    with transaction() as conn:
+        cur = conn.execute(
+            "DELETE FROM sessions WHERE expires_at <= ? OR revoked_at IS NOT NULL",
+            (now,),
+        )
+        return cur.rowcount
+
+
 def revoke_session(session_id: str) -> None:
     with get_connection() as conn:
         conn.execute(
@@ -635,16 +696,26 @@ def enqueue_outbox_event(event: Dict[str, Any]) -> None:
 def claim_outbox_events(limit: int = 100) -> list[Dict[str, Any]]:
     """Claim pending outbox rows for publication."""
     now = _utc_now()
+    stale_cutoff = (
+        datetime.now(timezone.utc) - timedelta(minutes=5)
+    ).isoformat()
     with get_connection() as conn:
-        conn.execute(
-            """
-            UPDATE outbox_events
-            SET status = 'pending', locked_at = NULL
-            WHERE status = 'processing'
-              AND julianday(locked_at) < julianday(?) - (5.0 / 1440.0)
-            """,
-            (now,),
-        )
+        if is_postgres():
+            conn.execute(
+                "UPDATE outbox_events SET status = 'pending', locked_at = NULL "
+                "WHERE status = 'processing' AND locked_at < ?",
+                (stale_cutoff,),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE outbox_events
+                SET status = 'pending', locked_at = NULL
+                WHERE status = 'processing'
+                  AND julianday(locked_at) < julianday(?) - (5.0 / 1440.0)
+                """,
+                (now,),
+            )
         rows = conn.execute(
             """
             SELECT * FROM outbox_events

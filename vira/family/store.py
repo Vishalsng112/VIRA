@@ -12,6 +12,8 @@ def _now() -> str:
 
 
 def ensure_schema() -> None:
+    if database.is_postgres():
+        return
     with database.get_connection() as conn:
         conn.executescript(
             """

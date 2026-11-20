@@ -286,6 +286,32 @@ class DeviceTests(Base):
         with self.assertRaises(errors.Unauthorized):
             self.devs.authenticate_credential(reg["credential"]["token"])
 
+    def test_re_enrollment_reuses_installation_device(self):
+        alice = self.new_user("alice")
+        first = self.devs.register_device(
+            alice, "Web browser", "web", "browser", os_version="Linux",
+            installation_id="install-alice-1")
+        second = self.devs.register_device(
+            alice, "Web browser", "web", "browser", os_version="Linux",
+            installation_id="install-alice-1")
+        self.assertEqual(second["device_id"], first["device_id"])
+        self.assertNotEqual(second["credential"]["token"], first["credential"]["token"])
+        # The old credential is rotated away, not left live.
+        with self.assertRaises(errors.Unauthorized):
+            self.devs.authenticate_credential(first["credential"]["token"])
+        devices = store.list_devices_for_user(alice.user_id)
+        self.assertEqual(len([d for d in devices if not d["is_server_local"]]), 1)
+
+    def test_revoked_installation_can_enroll_as_new_device(self):
+        alice = self.new_user("alice")
+        first = self.devs.register_device(
+            alice, "Laptop", "linux", "laptop", installation_id="install-alice-2")
+        self.devs.revoke_device(alice, first["device_id"])
+        second = self.devs.register_device(
+            alice, "Laptop", "linux", "laptop", installation_id="install-alice-2")
+        self.assertNotEqual(second["device_id"], first["device_id"])
+        self.assertEqual(store.get_device(first["device_id"])["status"], "revoked")
+
     def test_admin_fleet_and_get_device(self):
         alice = self.new_user("alice")
         reg, _ = self.active_device(alice)

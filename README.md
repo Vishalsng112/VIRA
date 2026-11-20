@@ -98,6 +98,43 @@ sudo chown "$USER":"$USER" /AgentWorkspace
 For local HTTP, keep `auth.https_only: false` in `config.yaml`. Turn it on before
 exposing VIRA through HTTPS or a trusted reverse proxy.
 
+### PostgreSQL (optional)
+
+SQLite remains the default. To use PostgreSQL, install `psycopg[binary]` and
+start VIRA with:
+
+```bash
+VIRA_DATABASE_URL=postgresql://vira:password@localhost/vira python run.py
+```
+
+The schema is applied automatically (`vira/db/postgres_schema.sql`). Validate
+the deployment against a real PostgreSQL instance before production use.
+
+### Background worker
+
+Retention, insight rollups and database backups run in a separate durable worker:
+
+```bash
+python -m vira.worker --once      # one batch
+python -m vira.worker             # keep running
+```
+
+Jobs are stored in the database and survive restarts.
+
+### Backups
+
+```bash
+scripts/backup.sh                 # data/backups/vira-<timestamp>.sqlite3
+scripts/restore.sh <backup>       # stop the API and worker first
+```
+
+Sensitive config values and device event payloads are encrypted with a master
+key at `data/.vira_master_key` (or `VIRA_MASTER_KEY`). Back up that key separately;
+without it encrypted values cannot be recovered.
+
+Request rate limits are enabled in `config.yaml` under `rate_limits`.
+
+
 ---
 
 ## The default model
@@ -121,6 +158,20 @@ You can still use other Ollama models, OpenAI or Anthropic. Change
 The chat workspace keeps conversations and memory locally. The agent can use the
 built-in tools: filesystem, shell, git, utility, web search/browse/research, and a
 Bubblewrap-backed sandbox. Tool calls go through permissions and are audited.
+
+### Web console
+
+The server ships an Apple-inspired control center at `/dashboard` with grouped
+navigation for workspace, intelligence, operations and system views. It covers
+runtime health, devices, agents, extensions (plugins + MCP), knowledge/RAG,
+durable automations, usage/cost and quotas, organizations, object storage,
+security, updates, events, modules and configuration. Plugin/MCP install,
+enable, reload, connect and delete actions work from the page.
+
+The chat workspace at `/chat` has a conversation sidebar, search, agent picker,
+live tool traces, a runtime context rail (status, tools, specialists), privacy
+notes and light/dark themes. Sign-in, setup and password recovery share the same
+design language.
 
 ### Operations
 
@@ -190,6 +241,9 @@ run.py                      start VIRA
 - [docs/VIRA_DOCS.md](docs/VIRA_DOCS.md) — framework reference and config
 - [docs/SYSTEM_DESIGN.md](docs/SYSTEM_DESIGN.md) — design and persistence
 - [docs/AGENT_DESIGN.md](docs/AGENT_DESIGN.md)
+- [docs/TOOL_SEARCH.md](docs/TOOL_SEARCH.md) — tool catalog, relevance ranking and prompt budgeting
+- [docs/PLUGIN_SDK.md](docs/PLUGIN_SDK.md) — plugin manifest, permissions and extension API
+- [docs/P4_ECOSYSTEM.md](docs/P4_ECOSYSTEM.md) — marketplace, organizations, storage, quotas and scale-out
 - [docs/MULTI_DEVICE_IMPLEMENTATION.md](docs/MULTI_DEVICE_IMPLEMENTATION.md) and
   [VIRA_MULTI_DEVICE_DESIGN.md](VIRA_MULTI_DEVICE_DESIGN.md)
 - [docs/VIRA_architecture.svg](docs/VIRA_architecture.svg) — diagram

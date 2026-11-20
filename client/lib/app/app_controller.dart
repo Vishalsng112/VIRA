@@ -1,14 +1,22 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
 import '../core/config/app_config.dart';
+import '../core/models/app_usage.dart';
 import '../core/models/captured_event.dart';
 import '../core/models/device_info.dart';
+import '../core/models/device_signals.dart';
+import '../core/models/focus_session.dart';
 import '../data/api/vira_api.dart';
+import '../core/utils/ids.dart';
 import '../data/storage/credential_store.dart';
+import '../data/storage/focus_ledger.dart';
 import '../data/storage/outbox_store.dart';
+import '../data/storage/session_ledger.dart';
 import '../data/storage/settings_store.dart';
+import '../data/storage/usage_ledger.dart';
 import '../services/capture/capture_service.dart';
 import '../services/capture/platform_probe.dart';
 import '../services/sync/sync_service.dart';
@@ -21,12 +29,18 @@ class AppController extends ChangeNotifier {
     required this.credentials,
     required this.outbox,
     required this.probe,
+    required this.usageLedger,
+    required this.sessionLedger,
+    required this.focusLedger,
   });
 
   final SettingsStore settings;
   final CredentialStore credentials;
   final OutboxStore outbox;
   final PlatformProbe probe;
+  final UsageLedger usageLedger;
+  final SessionLedger sessionLedger;
+  final FocusLedger focusLedger;
 
   AppConnectionState _state = AppConnectionState.starting;
   StoredCredentials _stored = const StoredCredentials();
@@ -39,6 +53,9 @@ class AppController extends ChangeNotifier {
   String? _error;
   String? _devicesError;
   bool _busy = false;
+  bool _isAdmin = false;
+  bool _pollingCommands = false;
+  Timer? _commandTimer;
   int _pendingCount = 0;
 
   static Future<AppController> create() async {
@@ -47,6 +64,9 @@ class AppController extends ChangeNotifier {
       credentials: CredentialStore(),
       outbox: await OutboxStore.open(),
       probe: createPlatformProbe(),
+      usageLedger: await UsageLedger.open(),
+      sessionLedger: await SessionLedger.open(),
+      focusLedger: await FocusLedger.open(),
     );
     await controller._boot();
     return controller;
@@ -64,6 +84,8 @@ class AppController extends ChangeNotifier {
   bool get busy => _busy;
   int get pendingCount => _pendingCount;
   bool get isConnected => _state == AppConnectionState.connected;
+  bool get isAdmin => _isAdmin;
+  ViraApi? get api => _api;
 
   SyncSnapshot get syncSnapshot =>
       _sync?.snapshot.value ?? const SyncSnapshot();
@@ -86,13 +108,16 @@ class AppController extends ChangeNotifier {
   Future<void> _boot() async {
     try {
       _profile = await probe.profile();
+      await settings.ensureInstallationId();
       _stored = await credentials.load();
+      _isAdmin = _stored.isAdmin;
       _pendingCount = await outbox.depth();
       if (_stored.hasDevice) {
         _api = _buildApi(_stored);
         await _startServices();
         _state = AppConnectionState.connected;
         unawaited(refreshDevices());
+        unawaited(_refreshIdentity());
       } else {
         _state = AppConnectionState.disconnected;
       }
@@ -119,6 +144,8 @@ class AppController extends ChangeNotifier {
         outbox: outbox,
         settings: settings,
         probe: probe,
+        usageLedger: usageLedger,
+        sessionLedger: sessionLedger,
         onChanged: _onLocalDataChanged,
       );
       await _capture!.start();
@@ -132,7 +159,58 @@ class AppController extends ChangeNotifier {
         onChanged: _onSyncChanged,
       );
       _sync!.snapshot.addListener(_onSyncChanged);
-      await _sync!.start(autoSync: () => settings.autoSync);
+      await _sync!.start(
+        autoSync: () =>
+            settings.autoSync && !(_capture?.battery?.isLow ?? false),
+      );
+      _commandTimer?.cancel();
+      _commandTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => unawaited(_pollCommands()),
+      );
+      unawaited(_pollCommands());
+    }
+  }
+
+  bool _hasAdminRole(Map<String, dynamic> login) {
+    final principal = login['principal'];
+    final roles = principal is Map ? principal['roles'] : null;
+    return roles is List && roles.contains('admin');
+  }
+
+  Future<void> _refreshIdentity() async {
+    final api = _api;
+    if (api == null || !_stored.hasSession) return;
+    try {
+      final me = await api.me();
+      final roles = me['roles'];
+      final isAdmin = roles is List && roles.contains('admin');
+      if (isAdmin == _isAdmin) return;
+      _isAdmin = isAdmin;
+      if (_stored.hasDevice) {
+        await credentials.save(
+          serverUrl: _stored.serverUrl!,
+          username: _stored.username ?? '',
+          sessionId: _stored.sessionId!,
+          deviceId: _stored.deviceId!,
+          deviceToken: _stored.deviceToken!,
+          isAdmin: isAdmin,
+        );
+        _stored = StoredCredentials(
+          serverUrl: _stored.serverUrl,
+          username: _stored.username,
+          sessionId: _stored.sessionId,
+          deviceId: _stored.deviceId,
+          deviceToken: _stored.deviceToken,
+          isAdmin: isAdmin,
+        );
+      }
+      notifyListeners();
+    } on ViraApiException catch (error) {
+      if (error.isAuthFailure && _isAdmin) {
+        _isAdmin = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -150,7 +228,8 @@ class AppController extends ChangeNotifier {
     try {
       final normalized = ViraApi.normalizeBaseUrl(server);
       final api = ViraApi(normalized, clientVersion: appVersion);
-      await api.login(username, password);
+      final login = await api.login(username, password);
+      final isAdmin = _hasAdminRole(login);
       final profile = _profile ?? await probe.profile();
       final name = deviceName.trim().isEmpty
           ? suggestedDeviceName
@@ -162,6 +241,7 @@ class AppController extends ChangeNotifier {
         displayName: name,
         profile: profile,
         capabilities: capabilities,
+        installationId: await settings.ensureInstallationId(),
       );
       final session = api.sessionId;
       if (session == null) {
@@ -177,6 +257,7 @@ class AppController extends ChangeNotifier {
         sessionId: session,
         deviceId: device.deviceId,
         deviceToken: token,
+        isAdmin: isAdmin,
       );
       await settings.setServerUrl(normalized);
       await settings.setDeviceName(name);
@@ -186,8 +267,10 @@ class AppController extends ChangeNotifier {
         sessionId: session,
         deviceId: device.deviceId,
         deviceToken: token,
+        isAdmin: isAdmin,
       );
       _api = api;
+      _isAdmin = isAdmin;
       _currentDevice = device;
       await _startServices();
       _state = AppConnectionState.connected;
@@ -217,7 +300,8 @@ class AppController extends ChangeNotifier {
       return 'This device is not connected.';
     }
     try {
-      await api.login(username, password);
+      final login = await api.login(username, password);
+      final isAdmin = _hasAdminRole(login);
       final session = api.sessionId;
       if (session == null) return 'The server did not return a session.';
       await credentials.save(
@@ -226,6 +310,7 @@ class AppController extends ChangeNotifier {
         sessionId: session,
         deviceId: deviceId,
         deviceToken: deviceToken,
+        isAdmin: isAdmin,
       );
       _stored = StoredCredentials(
         serverUrl: server,
@@ -233,7 +318,9 @@ class AppController extends ChangeNotifier {
         sessionId: session,
         deviceId: deviceId,
         deviceToken: deviceToken,
+        isAdmin: isAdmin,
       );
+      _isAdmin = isAdmin;
       await refreshDevices();
       notifyListeners();
       return null;
@@ -297,6 +384,157 @@ class AppController extends ChangeNotifier {
   Future<void> setCaptureEnabled(bool value) async {
     await _capture?.setCaptureEnabled(value);
     notifyListeners();
+  }
+
+  Future<bool> requestCollectorAccess(String id) async {
+    final opened = await _capture?.requestAccess(id) ?? false;
+    notifyListeners();
+    return opened;
+  }
+
+  Future<void> onAppResumed() async {
+    if (!isConnected) return;
+    await captureNow();
+    unawaited(syncNow());
+  }
+
+  Future<UsageDay> usageToday() => usageLedger.today();
+
+  Future<List<UsageDay>> usageRecent({int days = 7}) =>
+      usageLedger.recent(days: days);
+
+  Future<void> clearUsageHistory() async {
+    await usageLedger.clear();
+    notifyListeners();
+  }
+
+  BatterySnapshot? get battery => _capture?.battery;
+
+  DeviceHealthSnapshot? get health => _capture?.health;
+
+  Future<SessionDay> sessionToday() => sessionLedger.today();
+
+  Future<List<SessionDay>> sessionRecent({int days = 7}) =>
+      sessionLedger.recent(days: days);
+
+  Future<void> clearSessionHistory() async {
+    await sessionLedger.clear();
+    notifyListeners();
+  }
+
+  Future<void> clearLocalHistory() async {
+    await usageLedger.clear();
+    await sessionLedger.clear();
+    await focusLedger.clear();
+    notifyListeners();
+  }
+
+  Future<FocusSession?> activeFocus() => focusLedger.active();
+
+  Future<List<FocusSession>> recentFocus({int days = 7}) =>
+      focusLedger.recent(days: days);
+
+  Future<void> startFocus({
+    String label = 'Focus',
+    int minutes = 25,
+  }) async {
+    if (await focusLedger.active() != null) return;
+    await focusLedger.start(
+      FocusSession(
+        id: newUuidV4(),
+        label: label,
+        startedAt: DateTime.now().toUtc(),
+        plannedMinutes: minutes,
+      ),
+    );
+    notifyListeners();
+  }
+
+  Future<void> stopFocus() async {
+    final current = await focusLedger.active();
+    if (current == null) return;
+    final completed = current.durationMs >= current.plannedMs;
+    final session = await focusLedger.stop(markCompleted: completed);
+    if (session == null) return;
+    await outbox.enqueue(
+      CapturedEvent(
+        eventId: newUuidV4(),
+        type: 'device.focus.session',
+        occurredAt: DateTime.now().toUtc(),
+        sourceComponent: 'focus_session',
+        payload: {
+          'app': appName,
+          'client_version': appVersion,
+          'id': session.id,
+          'label': session.label,
+          'planned_minutes': session.plannedMinutes,
+          'duration_seconds': session.durationMs ~/ 1000,
+          'completed': session.completed,
+          'started_at': session.startedAt.toIso8601String(),
+          if (session.endedAt != null)
+            'ended_at': session.endedAt!.toIso8601String(),
+        },
+      ),
+    );
+    _pendingCount = await outbox.depth();
+    notifyListeners();
+    unawaited(syncNow());
+  }
+
+  Future<void> clearFocusHistory() async {
+    await focusLedger.clear();
+    notifyListeners();
+  }
+
+  bool collectorHasLocalData(String id) =>
+      _capture?.collectorHasLocalData(id) ?? false;
+
+  Future<void> clearCollectorData(String id) async {
+    await _capture?.clearCollectorData(id);
+    notifyListeners();
+  }
+
+  Future<String> exportLocalData() async {
+    final pending = await outbox.pending(limit: 1000);
+    final history = await outbox.history();
+    final usage = await usageLedger.recent(days: 30);
+    final sessions = await sessionLedger.recent(days: 30);
+    final payload = {
+      'exported_at': DateTime.now().toUtc().toIso8601String(),
+      'app': appName,
+      'client_version': appVersion,
+      'protocol_version': protocolVersion,
+      'account': {
+        'server': serverUrl,
+        'username': username,
+        'device_id': deviceId,
+      },
+      'settings': {
+        'auto_sync': autoSync,
+        'capture_enabled': captureEnabled,
+        'device_name': settings.deviceName,
+      },
+      'collectors': [
+        for (final state in collectors)
+          {
+            'id': state.collector.id,
+            'title': state.collector.title,
+            'enabled': state.enabled,
+            'status': state.status,
+            'event_type': state.collector.eventType,
+            'last_run': state.lastRun?.toIso8601String(),
+          },
+      ],
+      'app_usage': usage.map((day) => day.toJson()).toList(),
+      'sessions': sessions.map((day) => day.toJson()).toList(),
+      'outbox': {
+        'pending_count': pending.length,
+        'history_count': history.length,
+        'pending': pending.map((event) => event.toJson()).toList(),
+        'history': history.map((event) => event.toJson()).toList(),
+      },
+    };
+    return const JsonEncoder.withIndent('  ').convert(payload);
   }
 
   Future<void> setCollectorEnabled(String id, bool value) async {
@@ -365,6 +603,7 @@ class AppController extends ChangeNotifier {
         _currentDevice = null;
         _devices = const [];
         _pendingCount = 0;
+        _isAdmin = false;
         _state = AppConnectionState.disconnected;
       } else {
         await refreshDevices();
@@ -398,6 +637,7 @@ class AppController extends ChangeNotifier {
       _currentDevice = null;
       _devices = const [];
       _pendingCount = await outbox.depth();
+      _isAdmin = false;
       _state = AppConnectionState.disconnected;
       _error = null;
     } finally {
@@ -406,7 +646,85 @@ class AppController extends ChangeNotifier {
     }
   }
 
+  Future<void> _pollCommands() async {
+    final api = _api;
+    if (_pollingCommands || api == null || !isConnected) return;
+    _pollingCommands = true;
+    try {
+      final commands = await api.pendingCommands();
+      for (final command in commands) {
+        final id = (command['id'] ?? '').toString();
+        final kind = (command['kind'] ?? '').toString();
+        final payload = command['payload'] is Map
+            ? Map<String, dynamic>.from(command['payload'] as Map)
+            : <String, dynamic>{};
+        try {
+          final result = await _applyCommand(kind, payload);
+          await api.completeCommand(id, result: result);
+        } on Object catch (error) {
+          await api.completeCommand(
+            id,
+            status: 'failed',
+            result: {'error': error.toString()},
+          );
+        }
+      }
+    } on ViraApiException {
+      // Offline or command endpoint unavailable; retry on the next tick.
+    } on Object {
+      // Never let remote-control polling affect capture/sync.
+    } finally {
+      _pollingCommands = false;
+    }
+  }
+
+  Future<Map<String, dynamic>> _applyCommand(
+    String kind,
+    Map<String, dynamic> payload,
+  ) async {
+    switch (kind) {
+      case 'capture.pause':
+        await _capture?.setCaptureEnabled(false);
+        notifyListeners();
+        return {'capture_enabled': false};
+      case 'capture.resume':
+        await _capture?.setCaptureEnabled(true);
+        notifyListeners();
+        return {'capture_enabled': true};
+      case 'config.update':
+        if (payload['auto_sync'] is bool) {
+          await settings.setAutoSync(payload['auto_sync'] as bool);
+        }
+        if (payload['capture_enabled'] is bool) {
+          await _capture?.setCaptureEnabled(payload['capture_enabled'] as bool);
+        }
+        notifyListeners();
+        return {'applied': true};
+      case 'queue.flush':
+        unawaited(syncNow());
+        return {'queued': true};
+      case 'queue.clear':
+        await outbox.clearAll();
+        _pendingCount = 0;
+        notifyListeners();
+        return {'cleared': true};
+      case 'update.check':
+        return {
+          'version': appVersion,
+          'platform': profile?.platform ?? 'unknown',
+        };
+      case 'export.request':
+        return {'message': 'Start the export from Settings on this device.'};
+      case 'consent.update':
+        return {'message': 'Consent is enforced by the VIRA server.'};
+      default:
+        return {'message': 'Unsupported command: $kind'};
+    }
+  }
+
   Future<void> _stopServices() async {
+    _commandTimer?.cancel();
+    _commandTimer = null;
     _sync?.snapshot.removeListener(_onSyncChanged);
     _sync?.dispose();
     _sync = null;

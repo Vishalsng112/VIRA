@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/utils/ids.dart';
+
 /// Non-secret client preferences. Secrets live in [CredentialStore].
 class SettingsStore {
   SettingsStore._(this._prefs);
@@ -10,6 +12,7 @@ class SettingsStore {
   static const _captureKey = 'settings.capture_enabled';
   static const _intervalKey = 'settings.capture_interval_seconds';
   static const _collectorKey = 'settings.collector';
+  static const _installationKey = 'settings.installation_id';
 
   static const defaultServerUrl = 'http://localhost:8000';
   static const defaultCaptureIntervalSeconds = 10;
@@ -26,6 +29,19 @@ class SettingsStore {
   String? get deviceName => _prefs.getString(_deviceNameKey);
   Future<void> setDeviceName(String value) =>
       _prefs.setString(_deviceNameKey, value.trim());
+
+  /// Stable per-install identity. It survives sign-out and is sent on every
+  /// enrollment so the server reuses the existing device row instead of
+  /// registering the same machine again.
+  String get installationId => _prefs.getString(_installationKey) ?? '';
+
+  Future<String> ensureInstallationId() async {
+    final existing = installationId;
+    if (existing.isNotEmpty) return existing;
+    final value = newUuidV4();
+    await _prefs.setString(_installationKey, value);
+    return value;
+  }
 
   bool get autoSync => _prefs.getBool(_autoSyncKey) ?? true;
   Future<void> setAutoSync(bool value) => _prefs.setBool(_autoSyncKey, value);

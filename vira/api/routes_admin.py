@@ -1,4 +1,5 @@
 """Administrator routes: user lifecycle, fleet view, audit (design 7.2)."""
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -8,6 +9,8 @@ from vira.auth import database
 from vira.auth.admin import UserAdminService
 from vira.auth.principals import UserPrincipal
 from vira.devices import store as device_store
+from vira.jobs import queue as jobs
+from vira.ops.backup import create_backup, list_backups
 from vira.family import store as family_store
 from .deps import correlation_id_of
 
@@ -88,6 +91,78 @@ def build_admin_router(kernel, deps: dict, stream_manager) -> APIRouter:
     async def audit(limit: int = 100, before_id: Optional[int] = None,
                     actor: UserPrincipal = Depends(admin)):
         return {"audit": database.list_audit(limit, before_id)}
+
+    @router.get("/admin/jobs")
+    async def job_status(status: Optional[str] = None, limit: int = 100,
+                         actor: UserPrincipal = Depends(admin)):
+        return {"stats": jobs.stats(), "jobs": jobs.list_jobs(status, limit)}
+
+    @router.post("/admin/jobs/{job_id}/retry")
+    async def retry_job(job_id: str, actor: UserPrincipal = Depends(admin)):
+        return {"job_id": job_id, "retried": jobs.retry(job_id)}
+
+    @router.get("/admin/backups")
+    async def backups(actor: UserPrincipal = Depends(admin)):
+        return {"backups": [str(path) for path in list_backups()]}
+
+    @router.post("/admin/backups", status_code=201)
+    async def backup_now(actor: UserPrincipal = Depends(admin)):
+        return {"backup": str(create_backup())}
+
+    @router.get("/admin/fleet/ops")
+    async def fleet_ops(actor: UserPrincipal = Depends(admin)):
+        now = datetime.now(timezone.utc)
+        stale_cutoff = (now - timedelta(days=7)).isoformat()
+        expiring_cutoff = (now + timedelta(days=7)).isoformat()
+        with database.get_connection() as conn:
+            stale = [dict(row) for row in conn.execute(
+                "SELECT id, display_name, platform, last_seen_at FROM devices "
+                "WHERE status = 'active' AND (last_seen_at IS NULL OR last_seen_at < ?)",
+                (stale_cutoff,),
+            ).fetchall()]
+            expiring = [dict(row) for row in conn.execute(
+                "SELECT device_id, expires_at FROM device_credentials "
+                "WHERE revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at <= ?",
+                (expiring_cutoff,),
+            ).fetchall()]
+            commands = conn.execute(
+                "SELECT status, COUNT(*) AS c FROM device_commands GROUP BY status"
+            ).fetchall()
+            missing_consent = conn.execute(
+                "SELECT COUNT(*) AS c FROM devices d WHERE d.status = 'active' "
+                "AND NOT EXISTS (SELECT 1 FROM device_consents c WHERE c.device_id = d.id)"
+            ).fetchone()["c"]
+        return {
+            "stale_devices": stale,
+            "expiring_credentials": expiring,
+            "commands": {row["status"]: int(row["c"]) for row in commands},
+            "devices_without_explicit_consent": int(missing_consent),
+        }
+
+    @router.get("/ops/alerts")
+    async def alerts(actor: UserPrincipal = Depends(admin)):
+        counts = database.outbox_counts()
+        job_stats = jobs.stats()
+        devices = device_store.health_summary()
+        alerts = []
+        if counts.get("dead_letter", 0):
+            alerts.append({"level": "error", "kind": "outbox",
+                           "message": f"{counts['dead_letter']} dead-letter event(s)"})
+        if counts.get("pending", 0) > 1000:
+            alerts.append({"level": "warning", "kind": "outbox",
+                           "message": f"{counts['pending']} pending outbox event(s)"})
+        if job_stats.get("dead", 0):
+            alerts.append({"level": "error", "kind": "jobs",
+                           "message": f"{job_stats['dead']} dead job(s)"})
+        if job_stats.get("pending", 0) > 100:
+            alerts.append({"level": "warning", "kind": "jobs",
+                           "message": f"{job_stats['pending']} pending job(s)"})
+        stale = [d for d in devices.get("devices", []) if d.get("status") == "active"
+                 and not d.get("last_seen_at")]
+        if stale:
+            alerts.append({"level": "warning", "kind": "devices",
+                           "message": f"{len(stale)} active device(s) never seen"})
+        return {"alerts": alerts, "counts": counts, "jobs": job_stats}
 
     @router.get("/ops/devices/health")
     async def devices_health(actor: UserPrincipal = Depends(admin)):

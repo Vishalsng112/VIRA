@@ -17,13 +17,15 @@ from typing import Any, Dict, List, Optional
 from loguru import logger
 
 from vira.agent.base import BaseAgent
-from vira.agent.definitions import AgentDefinition, load_definitions
+from vira.agent.definitions import AgentDefinition, definitions_version, load_definitions
 from vira.agent.lessons import LessonStore
 from vira.agent.loop import AgentLoop, LoopConfig, LoopResult
 from vira.agent.progress import hub
 from vira.agent.toolcalls import clip
 from vira.agent_orchestration.registry import AgentCapability
 from vira.agent_runtime.runtime import AgentContext
+from vira.tools.catalog import ToolCatalog
+from vira.agent_runtime import run_store
 
 DELEGATE = "delegate"
 
@@ -83,11 +85,13 @@ class ChatAgent(BaseAgent):
             enabled=bool(merged.get("learn_lessons", True)),
             recall_limit=int(merged.get("lesson_recall_limit", 3)),
         )
-        self.definitions: Dict[str, AgentDefinition] = (
-            load_definitions([merged["definitions_dir"]] if merged.get("definitions_dir") else [])
-            if merged.get("delegation", True) else {}
-        )
+        self._delegation = bool(merged.get("delegation", True))
+        self._definitions_dir = merged.get("definitions_dir")
+        self.definitions: Dict[str, AgentDefinition] = self._load_definitions()
         self.available_tools = self._load_tools()
+        self.tool_catalog = ToolCatalog(self.available_tools)
+        self._tools_version = self._registry_version()
+        self._definitions_version = definitions_version()
         logger.info(f"[{self.name}] tools={[t['name'] for t in self.available_tools]} "
                     f"sub-agents={list(self.definitions)}")
 
@@ -100,6 +104,30 @@ class ChatAgent(BaseAgent):
                 output_schema={"type": "object", "properties": {"response": {"type": "string"}}},
             )
         ]
+
+    def _load_definitions(self) -> Dict[str, AgentDefinition]:
+        if not self._delegation:
+            return {}
+        return load_definitions([self._definitions_dir] if self._definitions_dir else [])
+
+    def _registry_version(self) -> int:
+        try:
+            registry = getattr(self.runtime.tool_executor, "_registry", None)
+            return int(getattr(registry, "version", 0))
+        except Exception:
+            return 0
+
+    def _refresh_capabilities(self) -> None:
+        """Pick up plugin tools and agent definitions registered after startup."""
+        version = self._registry_version()
+        if version != self._tools_version:
+            self.available_tools = self._load_tools()
+            self.tool_catalog = ToolCatalog(self.available_tools)
+            self._tools_version = version
+        definitions_version_now = definitions_version()
+        if self._delegation and definitions_version_now != self._definitions_version:
+            self.definitions = self._load_definitions()
+            self._definitions_version = definitions_version_now
 
     def _load_tools(self) -> List[Dict]:
         """Fetch tool metadata from the ToolExecutor."""
@@ -126,9 +154,9 @@ class ChatAgent(BaseAgent):
     def _tokens(text: str) -> set:
         return {w for w in _WORD.findall((text or "").lower()) if w not in _STOP}
 
-    def _tool_catalog(self) -> str:
+    def _tool_catalog(self, tools: Optional[List[Dict]] = None) -> str:
         lines = []
-        for t in self.available_tools:
+        for t in (tools or self.available_tools):
             params = t.get("parameters") or {}
             props = params.get("properties", params) if isinstance(params, dict) else {}
             args = ", ".join(props.keys()) if isinstance(props, dict) else ""
@@ -151,10 +179,10 @@ class ChatAgent(BaseAgent):
         scored.sort(reverse=True)
         return [(n, s) for s, n in scored[:k]]
 
-    def _build_system_prompt(self, message: str) -> str:
-        if not self.available_tools and not self.definitions:
+    def _build_system_prompt(self, message: str, tools: Optional[List[Dict]] = None) -> str:
+        if not (tools or self.available_tools) and not self.definitions:
             return self.system_prompt
-        parts = [self.system_prompt, TOOL_POLICY, "AVAILABLE TOOLS:\n" + self._tool_catalog()]
+        parts = [self.system_prompt, TOOL_POLICY, "AVAILABLE TOOLS:\n" + self._tool_catalog(tools)]
         hints = self._suggest_tools(message)
         if hints:
             parts.append("For this request, likely relevant tools: " + ", ".join(n for n, _ in hints)
@@ -176,6 +204,7 @@ class ChatAgent(BaseAgent):
         event = kwargs.get("event")
         if not event:
             raise ValueError("ChatAgent requires an event")
+        self._refresh_capabilities()
         message = event.data.get("message")
         if not message:
             raise ValueError("Event data missing 'message'")
@@ -185,11 +214,14 @@ class ChatAgent(BaseAgent):
         if history is None:
             history = self._conversation_histories.get(conversation_id, [])
         user_id = event.data.get("user_id")
+        device_id = event.data.get("device_id")
         return {
             "conversation_id": conversation_id,
             "user_message": message,
             "history": history,
             "user_id": user_id,
+            "device_id": device_id,
+            "organization_id": event.data.get("organization_id") or event.data.get("org_id"),
             "run_id": event.data.get("run_id"),
             "lessons": await self.lessons.recall(user_id, message),
         }
@@ -210,7 +242,8 @@ class ChatAgent(BaseAgent):
                            "required": ["agent", "task"]},
         }]
 
-    async def _delegate(self, params: Dict[str, Any], user_id, on_event=None) -> str:
+    async def _delegate(self, params: Dict[str, Any], user_id, on_event=None,
+                        device_id=None, organization_id=None) -> str:
         definition = self.definitions.get(str(params.get("agent", "")))
         task = str(params.get("task", "")).strip()
         if not definition:
@@ -219,39 +252,55 @@ class ChatAgent(BaseAgent):
             return "ERROR: 'task' is required"
         allowed = definition.tools
         tools = [t for t in self.available_tools if allowed is None or t["name"] in allowed]
+        sub_catalog = ToolCatalog(tools)
+        selected = sub_catalog.select(task, limit=8)
         sub = AgentLoop(  # fresh context, no delegate tool -> no recursion
-            self.runtime, self.agent_id, definition.prompt, tools,
+            self.runtime, self.agent_id, definition.prompt, selected,
             LoopConfig(max_steps=definition.max_steps, max_tool_chars=self.loop_config.max_tool_chars,
                        max_prompt_chars=self.loop_config.max_prompt_chars, tool_timeout=self.loop_config.tool_timeout),
             model=definition.model or self.model,
             temperature=definition.temperature if definition.temperature is not None else self.temperature,
             max_tokens=self.max_tokens, on_event=on_event, source=definition.name,
+            catalog=sub_catalog,
         )
-        result = await sub.run(task, user_id=user_id)
+        result = await sub.run(task, user_id=user_id, device_id=device_id,
+                               organization_id=organization_id)
         return clip(result.text, 2500)
 
     async def act(self, plan: List[Dict], **kwargs) -> LoopResult:
         thought = next(s["thought"] for s in plan if s.get("step") == "agent_loop")
         user_id = thought["user_id"]
+        device_id = thought.get("device_id")
+        organization_id = thought.get("organization_id")
         run_id = thought.get("run_id")
         message = thought["user_message"]
 
         def on_event(evt: Dict[str, Any]) -> None:
             hub.emit(run_id, evt)
+            try:
+                run_store.append(run_id, evt.get("type", "event"), evt)
+            except Exception:
+                pass
 
         async def delegate(params):
-            return await self._delegate(params, user_id, on_event)
+            return await self._delegate(params, user_id, on_event, device_id,
+                                         organization_id)
 
         def make_loop() -> AgentLoop:
+            hints = [name for name, _ in self._suggest_tools(message, 3)]
+            selected = self.tool_catalog.select(message, limit=8, required=hints)
             return AgentLoop(
-                self.runtime, self.agent_id, self._build_system_prompt(message),
-                self.available_tools, self.loop_config,
+                self.runtime, self.agent_id, self._build_system_prompt(message, selected),
+                selected, self.loop_config,
                 model=self.model, temperature=self.temperature, max_tokens=self.max_tokens,
                 extra_tools={DELEGATE: delegate} if self.definitions else None,
                 extra_specs=self._delegate_spec(), on_event=on_event,
+                catalog=self.tool_catalog,
             )
 
-        result = await make_loop().run(message, thought["history"], thought["lessons"], user_id)
+        result = await make_loop().run(
+            message, thought["history"], thought["lessons"], user_id, device_id,
+            organization_id)
 
         # Safety net: answered without any tool although tools exist and the answer
         # is empty/hedging, or a strongly matching tool was never used -> retry once.
@@ -263,7 +312,9 @@ class ChatAgent(BaseAgent):
             logger.info(f"[{self.name}] no tool used; retrying with forced tool nudge ({names})")
             nudged = (f"{message}\n\n[System note: do not answer from memory. Call one of these tools "
                       f"({names}) to get or verify the answer, then reply using its result.]")
-            retry = await make_loop().run(nudged, thought["history"], thought["lessons"], user_id)
+            retry = await make_loop().run(
+                nudged, thought["history"], thought["lessons"], user_id,
+                device_id, organization_id)
             if self._n_calls(retry) > 0 or not self._unanswered(retry.text):
                 result = retry
 

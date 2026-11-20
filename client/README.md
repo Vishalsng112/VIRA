@@ -11,11 +11,20 @@ web PWA, Linux AppImage and Windows desktop executable.
 - Enrolls this device through `POST /api/v1/devices` and stores the one-time
   device credential in the platform keystore/keychain.
 - Captures device telemetry through modular collectors.
+- Captures **Android foreground app usage** through `UsageStatsManager` (after the user grants Usage Access), categorises apps, and keeps a local 30-day usage ledger.
+- Shows **Insights** with screen time, unlocks, top apps, focus/category breakdowns and rest suggestions.
+- Captures **battery**, **screen/session**, **device health** (storage/memory/thermal) and **desktop idle** signals.
+- Supports **focus sessions** with a local ledger and `device.focus.session` events.
+- Captures **device health** (storage, memory, thermal, battery temperature) and **desktop idle** state.
+- Builds **local rule-based smart insights** (distraction share, long sessions, unlocks, health warnings) without sending raw data.
+- Captures **desktop active-window usage** on X11, Sway, Hyprland, KDE, Windows and macOS. GNOME Wayland uses the bundled optional Shell extension.
+- Exports local insight data as JSON and can clear local histories per collector.
 - Writes events to a durable local outbox before any network call.
 - Sends bounded batches to `POST /api/v1/devices/{id}/events:batch`.
 - Heartbeats the device (which also activates a newly enrolled device).
 - Lists, renames and revokes devices linked to the account.
 - Works offline; the queue drains automatically when the server returns.
+- Polls server-to-device commands: pause/resume capture, config update, queue flush/clear, update check.
 
 ## Run
 
@@ -60,6 +69,15 @@ The iOS artifact is unsigned because signing certificates and provisioning
 profiles are not part of the repository. Sign it in Xcode or with your own CI
 secrets before distributing to devices.
 
+For a signed Android release, add these repository secrets:
+
+- `ANDROID_KEYSTORE_BASE64` — base64 of your `.jks` keystore
+- `ANDROID_STORE_PASSWORD`
+- `ANDROID_KEY_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+
+Without them the workflow still builds an installable APK using the debug key.
+
 ## Architecture
 
 ```text
@@ -76,10 +94,16 @@ lib/
   features/
     onboarding/        connect + enroll
     dashboard/         status, capture modules, sync controls
+    insights/          local app-usage summary and categories
     activity/          queued and delivered event log
     devices/           account devices, rename, revoke
     settings/          sync, capture, lifecycle
 ```
+
+The full data taxonomy, use cases and future phases are in
+[ROADMAP.md](ROADMAP.md). In short: the client is being built to collect device
+health, app usage, screen/focus signals and opt-in context so VIRA agents can
+later produce wellbeing, study and productivity insights.
 
 ### Adding a feature
 
@@ -119,3 +143,62 @@ in `lib/services/capture/capture_service.dart`.
 
 The event allow-list is controlled by the server in `config.yaml`
 (`devices.event_policy.types`).
+
+### Android Usage Access permission
+
+App usage, screen/session events and screen-time rollups are read only after the user grants **Usage Access**:
+
+1. Open **Overview → App usage → Grant access**.
+2. Enable VIRA Link in the Android Usage Access screen.
+3. Return to the app; capture resumes automatically.
+
+Android also requires the `QUERY_ALL_PACKAGES` permission to resolve app labels.
+If you distribute through Google Play, review its declaration requirements for
+that permission; the collector still works with package names if labels are not
+available.
+
+### GNOME Wayland active window
+
+GNOME does not expose the focused window to normal applications. Install the bundled optional extension once:
+
+```bash
+./packaging/gnome-extension/install.sh
+# Log out and back in, then:
+gnome-extensions enable vira-link@vira.local
+```
+
+The X11/Sway/Hyprland/KDE, Windows and macOS probes work without an extension. On GNOME without the extension, Active window reports `unavailable`; all other collectors continue normally.
+
+### Admin control panel
+
+Administrators get an **Admin** module in the client with:
+
+- Server health, uptime, event pipeline and sensor status
+- Agent list, enable/disable and unregister
+- User create/update/delete, role and status changes, one-time credentials
+- Fleet devices with last-seen, queue and battery state
+- Security/admin audit log
+
+Non-admin accounts do not see the module. The server still enforces every
+administrator permission.
+
+### Server insight API
+
+The server exposes aggregate-only insight endpoints:
+
+- `GET /api/v1/insights/summary?device_id=…&days=7`
+- `GET /api/v1/insights/context?device_id=…&days=7` for future agents
+- `GET /api/v1/insights/fleet` for administrators
+
+They aggregate the device events already stored by the ingestion pipeline; raw
+payloads are not re-exported.
+
+VIRA's ChatAgent also registers an `insights` tool, so a user can ask questions
+such as “how much time did I spend on social apps this week?” and the agent can
+use the authenticated user/device context to answer from the aggregate.
+
+### Local data controls
+
+Settings includes **Export local data** (JSON copy, no credentials) and
+**Clear local insights**. Each collector with a local ledger also has a menu to
+clear just that collector’s history.

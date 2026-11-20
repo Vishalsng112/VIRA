@@ -2,6 +2,8 @@
 from typing import List, Dict, Any, Optional
 from .base import MemoryItem, MemoryStore
 from vira.auth import database
+from .embeddings import rank
+from . import vector_store
 
 class MemoryManager:
     def __init__(self):
@@ -15,7 +17,12 @@ class MemoryManager:
 
     async def store(self, content: str, store_name: Optional[str] = None, **kwargs) -> str:
         user_id = kwargs.pop("user_id", None)
-        return database.store_memory(user_id=user_id, content=content, **kwargs)
+        memory_id = database.store_memory(user_id=user_id, content=content, **kwargs)
+        try:
+            await vector_store.index_memory(memory_id, user_id, content)
+        except Exception:
+            pass
+        return memory_id
 
     async def retrieve(
         self,
@@ -29,6 +36,43 @@ class MemoryManager:
     ) -> List[MemoryItem]:
         if user_id is None:
             raise ValueError("user_id is required for scoped memory")
+        try:
+            vector_items = await vector_store.search(
+                user_id, query, limit=limit, agent_id=agent_id,
+                conversation_id=conversation_id, memory_type=memory_type,
+            )
+            if vector_items:
+                return [
+                    MemoryItem(
+                        id=item["id"], content=item["content"],
+                        metadata={
+                            **item["metadata"], "user_id": item["user_id"],
+                            "agent_id": item["agent_id"],
+                            "conversation_id": item["conversation_id"],
+                            "type": item["memory_type"],
+                            "score": item.get("_score"),
+                        },
+                    )
+                    for item in vector_items
+                ]
+        except Exception:
+            pass
+        candidates = database.search_memories(
+            user_id=user_id,
+            query=None,
+            limit=max(limit * 20, 100),
+            agent_id=agent_id,
+            conversation_id=conversation_id,
+            memory_type=memory_type,
+        )
+        if query:
+            candidates = rank(
+                query,
+                [(item, item["content"]) for item in candidates],
+                limit=limit,
+            )
+        else:
+            candidates = candidates[:limit]
         return [
             MemoryItem(
                 id=item["id"],
@@ -41,14 +85,7 @@ class MemoryManager:
                     "type": item["memory_type"],
                 },
             )
-            for item in database.search_memories(
-                user_id=user_id,
-                query=query,
-                limit=limit,
-                agent_id=agent_id,
-                conversation_id=conversation_id,
-                memory_type=memory_type,
-            )
+            for item in candidates
         ]
 
     async def summarize(self, store_name: Optional[str] = None, max_items: int = 20) -> str:

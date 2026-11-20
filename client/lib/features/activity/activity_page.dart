@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
 import '../../app/widgets.dart';
 import '../../core/models/captured_event.dart';
@@ -20,18 +21,19 @@ class _ActivityPageState extends State<ActivityPage> {
   List<CapturedEvent> _history = const [];
   bool _loading = true;
   bool _autoSelected = false;
+  late final AppController _controller;
 
   @override
   void initState() {
     super.initState();
-    final controller = AppScope.of(context, listen: false);
-    controller.addListener(_reload);
+    _controller = AppScope.of(context, listen: false);
+    _controller.addListener(_reload);
     _load();
   }
 
   @override
   void dispose() {
-    AppScope.of(context, listen: false).removeListener(_reload);
+    _controller.removeListener(_reload);
     super.dispose();
   }
 
@@ -40,9 +42,8 @@ class _ActivityPageState extends State<ActivityPage> {
   }
 
   Future<void> _load() async {
-    final controller = AppScope.of(context, listen: false);
-    final pending = await controller.pendingEvents(limit: 200);
-    final history = await controller.historyEvents();
+    final pending = await _controller.pendingEvents(limit: 200);
+    final history = await _controller.historyEvents();
     if (!mounted) return;
     setState(() {
       _pending = pending.reversed.toList();

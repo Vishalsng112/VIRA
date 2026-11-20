@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional, Sequence
 
 from vira.auth import database
+from vira import secrets as vira_secrets
 
 CREDENTIAL_PREFIX = "vdc_"
 ACCESS_ROLES = ("owner", "operator", "viewer")
@@ -73,6 +74,7 @@ def insert_device(
     created_by_user_id: Optional[int] = None,
     is_server_local: bool = False,
     device_id: Optional[str] = None,
+    installation_id: Optional[str] = None,
 ) -> str:
     device_id = device_id or str(uuid.uuid4())
     now = utc_now()
@@ -81,13 +83,14 @@ def insert_device(
         INSERT INTO devices
             (id, display_name, platform, device_type, os_version, client_version,
              capabilities, status, is_server_local, created_by_user_id,
-             created_at, updated_at, last_seen_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             installation_id, created_at, updated_at, last_seen_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             device_id, display_name, platform, device_type, os_version, client_version,
             json.dumps(list(capabilities)), status, int(is_server_local),
-            created_by_user_id, now, now, now if status == "active" else None,
+            created_by_user_id, installation_id, now, now,
+            now if status == "active" else None,
         ),
     )
     return device_id
@@ -103,6 +106,37 @@ def get_server_local_device(conn: Optional[sqlite3.Connection] = None) -> Option
         return _device_row(
             c.execute("SELECT * FROM devices WHERE is_server_local = 1").fetchone()
         )
+
+
+def get_device_by_installation(
+    conn: sqlite3.Connection, user_id: int, installation_id: str
+) -> Optional[Dict[str, Any]]:
+    row = conn.execute(
+        "SELECT * FROM devices WHERE created_by_user_id = ? AND installation_id = ?",
+        (user_id, installation_id),
+    ).fetchone()
+    return _device_row(row) if row else None
+
+
+def find_reusable_device(
+    conn: sqlite3.Connection,
+    user_id: int,
+    display_name: str,
+    platform: str,
+    device_type: str,
+) -> Optional[Dict[str, Any]]:
+    """Best-effort adoption for clients that predate installation IDs.
+
+    Only same-user, non-server devices in a usable state are considered.  The
+    newest match is returned so a relogin does not create another row.
+    """
+    row = conn.execute(
+        "SELECT * FROM devices WHERE created_by_user_id = ? AND is_server_local = 0 "
+        "AND status IN ('pending', 'active') AND display_name = ? AND platform = ? "
+        "AND device_type = ? ORDER BY updated_at DESC LIMIT 1",
+        (user_id, display_name, platform, device_type),
+    ).fetchone()
+    return _device_row(row) if row else None
 
 
 def list_devices_for_user(
@@ -143,7 +177,7 @@ def update_device_fields(conn: sqlite3.Connection, device_id: str, **fields: Any
     allowed = {
         "display_name", "os_version", "client_version", "capabilities",
         "capability_status", "status", "last_seen_at", "last_event_at",
-        "revoked_at", "queue_backlog", "last_accepted_sequence",
+        "revoked_at", "queue_backlog", "last_accepted_sequence", "installation_id",
     }
     sets, values = [], []
     for key, value in fields.items():
@@ -362,6 +396,8 @@ def get_event(event_id: str, conn: sqlite3.Connection) -> Optional[Dict[str, Any
 
 def insert_event(conn: sqlite3.Connection, row: Dict[str, Any]) -> bool:
     """Insert a normalized event; False when the event_id already exists."""
+    row = dict(row)
+    row["payload"] = vira_secrets.encrypt_payload(row.get("payload"))
     cur = conn.execute(
         """
         INSERT OR IGNORE INTO device_events
@@ -389,7 +425,8 @@ def upsert_latest_state(conn: sqlite3.Connection, device_id: str, event_type: st
             received_at = excluded.received_at, payload = excluded.payload
         WHERE excluded.occurred_at >= device_latest_state.occurred_at
         """,
-        (device_id, event_type, event_id, occurred_at, received_at, payload_json),
+        (device_id, event_type, event_id, occurred_at, received_at,
+         vira_secrets.encrypt_payload(payload_json)),
     )
 
 
@@ -403,7 +440,7 @@ def get_latest_state(device_id: str) -> List[Dict[str, Any]]:
         result = []
         for r in rows:
             item = dict(r)
-            item["payload"] = json.loads(item["payload"])
+            item["payload"] = json.loads(vira_secrets.decrypt_payload(item["payload"]))
             result.append(item)
         return result
 
@@ -439,7 +476,7 @@ def list_events(
         for r in rows:
             item = dict(r)
             if include_payload and item.get("payload") is not None:
-                item["payload"] = json.loads(item["payload"])
+                item["payload"] = json.loads(vira_secrets.decrypt_payload(item["payload"]))
             result.append(item)
         return result
 

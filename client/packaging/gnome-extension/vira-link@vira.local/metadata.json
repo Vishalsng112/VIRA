@@ -1,0 +1,7 @@
+{
+  "uuid": "vira-link@vira.local",
+  "name": "VIRA Link Active Window",
+  "description": "Exposes the focused window to VIRA Link on GNOME Wayland.",
+  "shell-version": ["45", "46", "47", "48", "49", "50", "51", "52"],
+  "version": 1
+}

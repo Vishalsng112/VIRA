@@ -5,7 +5,7 @@ import '../collector.dart';
 import '../platform_probe_base.dart';
 
 /// Interface counts only; raw addresses are not sent.
-class NetworkCollector implements Collector {
+class NetworkCollector extends Collector {
   @override
   String get id => collectorNetwork;
   @override
@@ -24,10 +24,20 @@ class NetworkCollector implements Collector {
   bool get enabledByDefault => true;
 
   @override
-  Future<List<CapturedEvent>> collect(PlatformProbe probe) async {
+  bool get canRequestAccess => false;
+
+  @override
+  Future<bool> requestAccess() async => false;
+
+  @override
+  Future<CollectorResult> collect(PlatformProbe probe) async {
     final snapshot = await probe.networkSnapshot();
-    if (snapshot == null || snapshot.isEmpty) return const [];
-    return [
+    if (snapshot == null || snapshot.isEmpty) {
+      return const CollectorResult.unavailable(
+        'This platform does not expose the signal yet.',
+      );
+    }
+    return CollectorResult.available([
       CapturedEvent(
         eventId: newUuidV4(),
         type: eventType,
@@ -35,6 +45,6 @@ class NetworkCollector implements Collector {
         sourceComponent: sourceComponent,
         payload: snapshot,
       ),
-    ];
+    ]);
   }
 }

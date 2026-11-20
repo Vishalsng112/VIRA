@@ -15,7 +15,7 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
-  int _selected = 0;
+  String _selectedId = 'dashboard';
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +23,10 @@ class _AppShellState extends State<AppShell> {
     if (controller.state != AppConnectionState.connected) {
       return const OnboardingPage();
     }
-    final module = appModules[_selected.clamp(0, appModules.length - 1)];
+    final modules = appModulesFor(isAdmin: controller.isAdmin);
+    final selected = modules.indexWhere((item) => item.id == _selectedId);
+    final selectedIndex = selected < 0 ? 0 : selected;
+    final module = modules[selectedIndex];
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 900;
@@ -45,11 +48,11 @@ class _AppShellState extends State<AppShell> {
               child: module.builder(context),
             ),
             bottomNavigationBar: NavigationBar(
-              selectedIndex: _selected,
+              selectedIndex: selectedIndex,
               onDestinationSelected: (index) =>
-                  setState(() => _selected = index),
+                  setState(() => _selectedId = modules[index].id),
               destinations: [
-                for (final item in appModules)
+                for (final item in modules)
                   NavigationDestination(
                     icon: Icon(item.icon),
                     selectedIcon: Icon(item.selectedIcon),
@@ -65,9 +68,9 @@ class _AppShellState extends State<AppShell> {
             children: [
               NavigationRail(
                 extended: extended,
-                selectedIndex: _selected,
+                selectedIndex: selectedIndex,
                 onDestinationSelected: (index) =>
-                    setState(() => _selected = index),
+                    setState(() => _selectedId = modules[index].id),
                 leading: Padding(
                   padding: EdgeInsets.fromLTRB(
                     extended ? 20 : 12,
@@ -90,7 +93,7 @@ class _AppShellState extends State<AppShell> {
                       : const BrandMark(size: 34),
                 ),
                 destinations: [
-                  for (final item in appModules)
+                  for (final item in modules)
                     NavigationRailDestination(
                       icon: Icon(item.icon),
                       selectedIcon: Icon(item.selectedIcon),

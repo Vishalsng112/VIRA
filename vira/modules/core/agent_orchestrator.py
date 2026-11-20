@@ -7,6 +7,7 @@ from vira.kernel.module_manager import ViraModule
 from vira.agent_orchestration.registry import AgentRegistry
 from vira.agent_orchestration.router import EventRouter
 from vira.agent_orchestration.scheduler import RuntimeScheduler
+from vira.agent_orchestration.workflow import WorkflowEngine
 from vira.agent_runtime.runtime import AgentRuntime
 from vira.memory.manager import MemoryManager
 from vira.llm.manager import LLMManager
@@ -18,7 +19,11 @@ from vira.sandbox import SandboxManager
 from vira.sandbox import SandboxPolicy
 from vira.tools.sandbox import SandboxTool
 from vira.tools.chat_statistics import ChatStatisticsTool
+from vira.tools.insights import InsightsTool
+from vira.tools.context_tool import UserContextTool
+from vira.tools.rag_tool import RagSearchTool
 from vira.auth import database
+from vira.mcp import store as mcp_store
 
 try:
     from mcp import ClientSession
@@ -44,6 +49,7 @@ class AgentOrchestratorModule(ViraModule):
         self.registry = None
         self.router = None
         self.runtime_scheduler = None
+        self.workflow_engine = None
         self.runtime = None
 
         # Tool components
@@ -52,6 +58,7 @@ class AgentOrchestratorModule(ViraModule):
 
         # MCP connections (managed by the registry)
         self._mcp_connections = []
+        self._mcp_by_name = {}
 
     # ---- Setter methods for dependency injection ----
     def set_event_bus(self, event_bus):
@@ -91,6 +98,9 @@ class AgentOrchestratorModule(ViraModule):
             builtins = self.tool_registry.register_builtins(tool_root)
             logger.info("Registered built-in tools: {}", builtins)
             self.tool_registry.register(ChatStatisticsTool())
+            self.tool_registry.register(InsightsTool())
+            self.tool_registry.register(UserContextTool())
+            self.tool_registry.register(RagSearchTool())
             sandbox_config = self._config_manager.get("sandbox", {}) or {}
             sandbox_policy = {
                 key: sandbox_config[key]
@@ -142,6 +152,16 @@ class AgentOrchestratorModule(ViraModule):
                     "MCP not available or no 'mcp_server' config. "
                     "Only local tools (if any) will be available."
                 )
+
+            # Installed MCP marketplace servers (DB-backed allow-lists).
+            if MCP_AVAILABLE:
+                for record in mcp_store.list_servers(enabled_only=True):
+                    try:
+                        registered = await self.connect_mcp_server(record["id"])
+                        logger.info("Connected MCP server {}: {}", record["name"], registered)
+                    except Exception as exc:
+                        logger.error("Failed to connect MCP server {}: {}", record["name"], exc)
+
             # After registration, log the final registry state
             logger.info(f"Final tool registry: {self.tool_registry.list()}")
 
@@ -197,6 +217,7 @@ class AgentOrchestratorModule(ViraModule):
             # Create orchestrator components
             self.registry = AgentRegistry()
             self.runtime_scheduler = RuntimeScheduler(self.registry, max_concurrent=10)
+            self.workflow_engine = WorkflowEngine(self.runtime_scheduler, self.registry)
             self.router = EventRouter(
                 self._event_bus, 
                 self.registry, 
@@ -309,6 +330,11 @@ class AgentOrchestratorModule(ViraModule):
                     logger.info(f"Agent loaded: {cfg['name']} (ID: {agent.agent_id})")
                 except Exception as e:
                     logger.error(f"Failed to load agent {cfg.get('name')}: {e}")
+            # Resume workflows that were running when the process stopped.
+            if self.workflow_engine:
+                resumed = await self.workflow_engine.resume_all()
+                if resumed:
+                    logger.info("Resumed {} durable workflow(s)", resumed)
             # print(1/0)
             self._running = True
             logger.info("Agent Orchestrator Module started")
@@ -319,6 +345,57 @@ class AgentOrchestratorModule(ViraModule):
             logger.error(f"Failed to start Agent Orchestrator Module: {e}")
             self._running = False
             raise
+
+    async def connect_mcp_server(self, server_id: str) -> list:
+        """Connect an installed MCP server and register its tools."""
+        if not MCP_AVAILABLE:
+            raise RuntimeError("MCP SDK not available")
+        record = mcp_store.get_server(server_id)
+        if record is None:
+            raise ValueError("MCP server not found")
+        name = record["name"]
+        if name in self._mcp_by_name:
+            return [tool for tool in self.tool_registry.list() if tool.startswith(f"{name}.")]
+        if record["transport"] == "http":
+            if not record.get("url"):
+                raise ValueError("HTTP MCP server requires a url")
+            connection = MCPServerConnection.http(name=name, url=record["url"])
+        else:
+            if not record.get("command"):
+                raise ValueError("stdio MCP server requires a command")
+            connection = MCPServerConnection.stdio(
+                name=name,
+                command=record["command"],
+                args=list(record.get("args") or []),
+                env=dict(record.get("env") or {}) or None,
+            )
+        permissions = ToolPermission(actions=record.get("permissions") or ["read", "execute"])
+        registered = await self.tool_registry.register_mcp_server(
+            connection,
+            default_permissions=permissions,
+            allowed_tools=record.get("allowed_tools"),
+            denied_tools=record.get("denied_tools"),
+        )
+        self._mcp_connections.append(connection)
+        self._mcp_by_name[name] = connection
+        return registered
+
+    async def disconnect_mcp_server(self, server_id: str) -> bool:
+        record = mcp_store.get_server(server_id)
+        if record is None:
+            raise ValueError("MCP server not found")
+        name = record["name"]
+        connection = self._mcp_by_name.pop(name, None)
+        if self.tool_registry:
+            self.tool_registry.remove_by_provider(name)
+        if connection is not None:
+            try:
+                self._mcp_connections.remove(connection)
+            except ValueError:
+                pass
+            await connection.close()
+            return True
+        return False
 
     async def stop(self):
         self._running = False
@@ -336,6 +413,7 @@ class AgentOrchestratorModule(ViraModule):
 
         # Clear references
         self._mcp_connections.clear()
+        self._mcp_by_name.clear()
         self.tool_registry = None
         self.tool_executor = None
 

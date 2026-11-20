@@ -1,5 +1,6 @@
 # vira/llm/manager.py
 import random
+import time
 from typing import List, Optional
 from vira.llm.base import BaseLLMProvider, LLMResponse
 from typing import Dict
@@ -27,7 +28,13 @@ class LLMManager:
             self._routing_config[model].append(name)
 
     async def generate(self, prompt: str, model: Optional[str] = None, **kwargs) -> LLMResponse:
-        """Route to appropriate provider(s) with failover."""
+        """Route to appropriate provider(s) with failover, usage and quotas."""
+        user_id = kwargs.pop("user_id", None)
+        agent_id = kwargs.pop("agent_id", None)
+        organization_id = kwargs.pop("organization_id", None)
+        from vira.llm import usage
+        usage.check_quota(user_id, organization_id)
+
         if model and model in self._routing_config:
             providers = self._routing_config[model]
         else:
@@ -36,9 +43,25 @@ class LLMManager:
 
         # Try each provider in order
         for provider_name in providers:
+            started = time.perf_counter()
             try:
                 provider = self._providers[provider_name]
-                return await provider.generate(prompt, **kwargs)
+                response = await provider.generate(prompt, **kwargs)
+                try:
+                    counts = response.usage or {}
+                    usage.record(
+                        user_id=user_id,
+                        agent_id=agent_id,
+                        provider=provider_name,
+                        model=getattr(response, "model", None) or model or "unknown",
+                        prompt_tokens=int(counts.get("prompt_tokens", 0) or 0),
+                        completion_tokens=int(counts.get("completion_tokens", 0) or 0),
+                        latency_ms=(time.perf_counter() - started) * 1000,
+                        organization_id=organization_id,
+                    )
+                except Exception as exc:
+                    logger.warning("Failed to record LLM usage: {}", exc)
+                return response
             except Exception as e:
                 logger.warning(f"Provider {provider_name} failed: {e}")
                 continue

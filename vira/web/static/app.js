@@ -12,7 +12,15 @@
 
   const VIEWS = {
     overview:  { title: "Overview",        sub: "Live status of your VIRA runtime." },
+    devices:   { title: "Devices",         sub: "Fleet health, sync state and the latest device insight." },
     agents:    { title: "Agents",          sub: "Registered agents, scheduling and the tools they can use." },
+    extensions:{ title: "Extensions",      sub: "Plugins, MCP servers and the tool marketplace." },
+    knowledge: { title: "Knowledge",       sub: "Local documents, hybrid retrieval and RAG search." },
+    automations:{ title: "Automations",    sub: "Durable workflows, step state and recovery." },
+    usage:     { title: "Usage",           sub: "Token spend, storage, device events and quotas." },
+    organizations:{ title: "Organizations", sub: "Teams, membership roles and shared tenancy." },
+    files:     { title: "Files",           sub: "Object storage for attachments and large artifacts." },
+    updates:   { title: "Updates",         sub: "Server and client release channels." },
     security:  { title: "Security",        sub: "Read-only view of how VIRA authenticates, authorizes and handles events." },
     events:    { title: "Events",          sub: "Live stream from the event bus." },
     modules:   { title: "Modules",         sub: "Kernel modules that are currently loaded." },
@@ -24,6 +32,9 @@
 
   const state = {
     health: null, metrics: null, orchestration: null, security: null, modules: null,
+    plugins: null, mcpServers: null, marketplace: null, mcpTools: null, usage: null,
+    devices: null, deviceInsight: null, ragDocs: null, workflows: null, orgs: null,
+    objects: null, releases: null, selectedDevice: null,
     events: [], eventCount: 0, paused: false,
     stream: "connecting", // connecting | connected | disconnected
     loaded: false,
@@ -68,6 +79,31 @@
   function fmtTime(value) {
     const d = typeof value === "number" ? new Date(value * 1000) : new Date(value);
     return Number.isNaN(d.getTime()) ? "—" : d.toLocaleTimeString([], { hour12: false });
+  }
+
+  function fmtDate(value) {
+    if (!value) return "—";
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+
+  function fmtDurationMs(ms) {
+    const minutes = Math.round((Number(ms) || 0) / 60000);
+    if (minutes < 60) return `${minutes} min`;
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }
+
+  function fmtNumber(n) {
+    n = Number(n);
+    if (!Number.isFinite(n)) return "—";
+    return new Intl.NumberFormat([], { notation: n >= 100000 ? "compact" : "standard",
+      maximumFractionDigits: n >= 1000 ? 1 : 0 }).format(n);
+  }
+
+  function fmtMoney(n) {
+    n = Number(n);
+    if (!Number.isFinite(n)) return "—";
+    return n < 0.01 && n > 0 ? `<$0.01` : `$${n.toFixed(2)}`;
   }
 
   function fmtValue(v) {
@@ -236,6 +272,70 @@
   async function loadModules() {
     const r = await fetchJson("/modules");
     state.modules = r.ok && Array.isArray(r.data) ? r.data : null;
+  }
+
+  async function loadPlugins() {
+    const r = await fetchJson("/api/v1/plugins");
+    state.plugins = r.ok ? r.data : null;
+  }
+
+  async function loadMcp() {
+    const [servers, marketplace, tools] = await Promise.all([
+      fetchJson("/api/v1/mcp/servers"),
+      fetchJson("/api/v1/mcp/marketplace"),
+      fetchJson("/api/v1/mcp/tools"),
+    ]);
+    state.mcpServers = servers.ok ? (servers.data?.servers || []) : null;
+    state.marketplace = marketplace.ok ? (marketplace.data?.entries || []) : null;
+    state.mcpTools = tools.ok ? (tools.data?.tools || []) : null;
+  }
+
+  async function loadUsage() {
+    const [usage, quotas] = await Promise.all([
+      fetchJson("/api/v1/admin/usage?days=30"),
+      fetchJson("/api/v1/admin/quotas"),
+    ]);
+    state.usage = usage.ok
+      ? { ...usage.data, quotas: quotas.ok ? (quotas.data?.quotas || []) : [] }
+      : null;
+  }
+
+  async function loadDevices() {
+    const r = await fetchJson("/api/v1/devices");
+    state.devices = r.ok ? (r.data?.devices || []) : null;
+    const target = state.selectedDevice || state.devices?.[0]?.device_id;
+    if (target) {
+      const insight = await fetchJson(`/api/v1/insights/summary?device_id=${encodeURIComponent(target)}&days=7`);
+      state.deviceInsight = insight.ok ? insight.data : null;
+      state.selectedDevice = target;
+    } else {
+      state.deviceInsight = null;
+    }
+  }
+
+  async function loadKnowledge() {
+    const r = await fetchJson("/api/v1/rag/documents");
+    state.ragDocs = r.ok ? (r.data?.documents || []) : null;
+  }
+
+  async function loadWorkflows() {
+    const r = await fetchJson("/api/v1/workflows");
+    state.workflows = r.ok ? (r.data?.workflows || []) : null;
+  }
+
+  async function loadOrganizations() {
+    const r = await fetchJson("/api/v1/organizations");
+    state.orgs = r.ok ? (r.data?.organizations || []) : null;
+  }
+
+  async function loadObjects() {
+    const r = await fetchJson("/api/v1/objects?limit=100");
+    state.objects = r.ok ? (r.data?.objects || []) : null;
+  }
+
+  async function loadReleases() {
+    const r = await fetchJson("/api/v1/updates/releases?limit=50");
+    state.releases = r.ok ? (r.data?.releases || []) : null;
   }
 
   /* ---------- derived status ---------- */
@@ -464,8 +564,374 @@
       : '<li class="empty">No modules loaded.</li>');
   }
 
+  /* ---------- render: extensions ---------- */
+  function statusTone(status) {
+    const value = String(status || "").toLowerCase();
+    if (["active", "loaded", "connected", "enabled", "ok"].includes(value)) return "ok";
+    if (["error", "failed", "bad"].includes(value)) return "bad";
+    if (["disabled", "stopped", "missing"].includes(value)) return "warn";
+    return "";
+  }
+
+  function renderExtensions() {
+    const plugins = state.plugins && Array.isArray(state.plugins.plugins) ? state.plugins.plugins : null;
+    const loaded = plugins ? plugins.filter((p) => p.loaded || p.status === "active").length : null;
+    setText("kpi-plugins", plugins ? `${loaded} / ${plugins.length}` : "—");
+    setText("kpi-plugins-sub", plugins ? "Discovered extensions" : "Admin access required");
+    setText("plugin-count", plugins ? `${plugins.length} total` : "");
+
+    if (!plugins) {
+      setHtml("plugin-list", '<li class="empty empty-pad">Sign in as an administrator to manage plugins.</li>');
+    } else if (!plugins.length) {
+      setHtml("plugin-list", '<li class="empty empty-pad">No plugins discovered. Add a manifest to a configured plugin directory.</li>');
+    } else {
+      setHtml("plugin-list", plugins.map((p) => {
+        const tone = statusTone(p.status);
+        const perms = (p.permissions || []).slice(0, 4);
+        return `<li class="ext-item">
+          <span class="ext-icon" aria-hidden="true">${esc(String(p.name || p.id || "P").charAt(0).toUpperCase())}</span>
+          <div class="ext-body">
+            <strong>${esc(p.name || p.id)}</strong>
+            <p>${esc(p.description || "No description provided.")}</p>
+            <div class="ext-meta">
+              <span class="badge ${tone ? `badge-${tone}` : ""}">${esc(titleCase(p.status || "discovered"))}</span>
+              <span class="chip">v${esc(p.version)}</span>
+              ${p.author ? `<span class="card-note">${esc(p.author)}</span>` : ""}
+            </div>
+            ${perms.length ? `<div class="chips" style="margin-top:.45rem">${perms.map((x) => `<span class="chip">${esc(x)}</span>`).join("")}</div>` : ""}
+          </div>
+          <div class="row-actions">
+            <button class="btn btn-ghost" type="button" data-plugin-id="${esc(p.id)}" data-plugin-action="${p.enabled ? "disable" : "enable"}">${p.enabled ? "Disable" : "Enable"}</button>
+            <button class="btn btn-ghost" type="button" data-plugin-id="${esc(p.id)}" data-plugin-action="reload">Reload</button>
+          </div>
+        </li>`;
+      }).join(""));
+    }
+
+    const servers = state.mcpServers;
+    setText("kpi-mcp", servers ? `${servers.filter((s) => s.enabled).length} / ${servers.length}` : "—");
+    setText("kpi-mcp-sub", servers ? "Enabled / installed" : "Admin access required");
+    setText("mcp-count", servers ? `${servers.length} installed` : "");
+    if (!servers) {
+      setHtml("mcp-list", '<li class="empty empty-pad">Sign in as an administrator to inspect MCP servers.</li>');
+    } else if (!servers.length) {
+      setHtml("mcp-list", '<li class="empty empty-pad">No MCP servers installed yet. Choose one from the marketplace.</li>');
+    } else {
+      setHtml("mcp-list", servers.map((s) => `
+        <li class="ext-item">
+          <span class="ext-icon" aria-hidden="true"><svg class="icon"><use href="#i-server"/></svg></span>
+          <div class="ext-body">
+            <strong>${esc(s.name)}</strong>
+            <p>${esc(s.description || `${titleCase(s.transport || "stdio")} transport`)}</p>
+            <div class="ext-meta">
+              <span class="badge ${s.enabled ? "badge-ok" : "badge-warn"}">${s.enabled ? "Enabled" : "Disabled"}</span>
+              <span class="chip">${esc(s.transport || "stdio")}</span>
+              ${(s.categories || []).slice(0, 2).map((c) => `<span class="chip">${esc(c)}</span>`).join("")}
+            </div>
+          </div>
+          <div class="row-actions">
+            <button class="btn btn-ghost" type="button" data-mcp-id="${esc(s.id)}" data-mcp-action="${s.enabled ? "disable" : "enable"}">${s.enabled ? "Disable" : "Enable"}</button>
+            <button class="btn btn-ghost" type="button" data-mcp-id="${esc(s.id)}" data-mcp-action="connect">Connect</button>
+            <button class="btn btn-ghost" type="button" data-mcp-id="${esc(s.id)}" data-mcp-action="delete">Remove</button>
+          </div>
+        </li>`).join(""));
+    }
+
+    const tools = state.mcpTools;
+    setText("kpi-mcp-tools", tools ? String(tools.length) : "—");
+    setText("kpi-mcp-tools-sub", tools ? "Registered from MCP" : "Admin access required");
+
+    const market = state.marketplace;
+    setText("kpi-marketplace", market ? String(market.length) : "—");
+    if (!market) {
+      setHtml("marketplace-list", '<p class="empty">Sign in as an administrator to browse the marketplace.</p>');
+    } else if (!market.length) {
+      setHtml("marketplace-list", '<p class="empty">No marketplace entries available.</p>');
+    } else {
+      setHtml("marketplace-list", market.map((entry) => `
+        <article class="market-item">
+          <strong>${esc(entry.display_name || entry.name)}</strong>
+          <p>${esc(entry.description || "")}</p>
+          <div class="chips" style="margin-top:.55rem">${(entry.categories || []).map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</div>
+          <button class="btn btn-ghost" type="button" style="margin-top:.7rem" data-install-mcp="${esc(entry.id)}">Install</button>
+        </article>`).join(""));
+    }
+  }
+
+  /* ---------- render: devices ---------- */
+  function renderDeviceInsight() {
+    const d = state.deviceInsight;
+    if (!d) {
+      setHtml("device-insight", '<p class="empty">No insight data yet. Capture a few events from VIRA Link, then select a device.</p>');
+      return;
+    }
+    const totals = d.totals || {};
+    const battery = d.battery || {};
+    const health = d.health || {};
+    const facts = [
+      ["Screen time", fmtDurationMs(totals.screen_ms)],
+      ["App time", fmtDurationMs(totals.app_ms)],
+      ["Focus score", `${totals.focus_score || 0}%`],
+      ["Unlocks", fmtNumber(totals.unlocks)],
+      ["Battery", battery.level_percent != null ? `${battery.level_percent}%${battery.charging ? " · charging" : ""}` : "—"],
+      ["Warnings", (health.warnings || []).length ? health.warnings.join("; ") : "None"],
+    ];
+    const apps = (d.top_apps || []).slice(0, 5).map((app) => `
+      <div><dt>${esc(app.label || app.package)}</dt><dd>${fmtDurationMs(app.foreground_ms)}</dd></div>`).join("");
+    setHtml("device-insight", `
+      <p class="insight-copy">${esc(d.summary || "No summary available.")}</p>
+      <dl class="kv kv-inline">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
+      <h3>Top apps</h3>
+      ${apps ? `<dl class="kv">${apps}</dl>` : '<p class="empty">No app usage captured.</p>'}`);
+  }
+
+  function renderDevices() {
+    const devices = state.devices;
+    if (!devices) {
+      ["kpi-devices", "kpi-devices-active", "kpi-devices-local", "kpi-devices-seen"].forEach((id) => setText(id, "—"));
+      setText("kpi-devices-sub", "Sign in to view devices");
+      setHtml("device-list", '<li class="empty empty-pad">Could not load devices.</li>');
+      renderDeviceInsight();
+      return;
+    }
+    const active = devices.filter((d) => d.status === "active").length;
+    const local = devices.filter((d) => d.is_server_local).length;
+    const latest = devices.map((d) => d.last_seen_at).filter(Boolean).sort().pop();
+    setText("kpi-devices", String(devices.length));
+    setText("kpi-devices-sub", `${devices.length === 1 ? "endpoint" : "endpoints"} registered`);
+    setText("kpi-devices-active", String(active));
+    setText("kpi-devices-active-sub", active ? "Connected or ready" : "None active");
+    setText("kpi-devices-local", String(local));
+    setText("kpi-devices-local-sub", local ? "This server" : "Remote only");
+    setText("kpi-devices-seen", latest ? fmtDate(latest) : "—");
+    setText("kpi-devices-seen-sub", latest ? fmtTime(latest) : "No contact yet");
+    setText("device-count", `${devices.length} total`);
+
+    setHtml("device-list", devices.length ? devices.map((d) => {
+      const tone = d.status === "active" ? "ok" : d.status === "pending" ? "warn" : "bad";
+      return `<li class="list-row">
+        <span class="row-icon"><svg class="icon"><use href="#i-server"/></svg></span>
+        <div class="row-main">
+          <strong>${esc(d.display_name)}${d.is_server_local ? ' <span class="chip">server</span>' : ""}</strong>
+          <span>${esc(d.platform || "unknown")} · ${esc(d.device_type || "device")} · ${esc(d.os_version || "—")}</span>
+        </div>
+        <div class="row-meta">
+          <span class="badge badge-${tone}">${esc(titleCase(d.status || "unknown"))}</span>
+          <span class="card-note">${d.last_seen_at ? `Seen ${fmtDate(d.last_seen_at)}` : "Never seen"}</span>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-ghost" type="button" data-device-select="${esc(d.device_id)}">Inspect</button>
+        </div>
+      </li>`;
+    }).join("") : '<li class="empty empty-pad">No devices yet. Pair one from VIRA Link.</li>');
+    renderDeviceInsight();
+  }
+
+  /* ---------- render: knowledge ---------- */
+  function renderKnowledge() {
+    const docs = state.ragDocs;
+    if (!docs) {
+      setText("kpi-docs", "—");
+      setText("kpi-docs-sub", "Could not load documents");
+      setHtml("document-list", '<li class="empty empty-pad">Could not load the knowledge base.</li>');
+      return;
+    }
+    const chunks = docs.reduce((sum, d) => sum + Number(d.chunks || 0), 0);
+    setText("kpi-docs", String(docs.length));
+    setText("kpi-docs-sub", "Indexed local documents");
+    setText("kpi-chunks", fmtNumber(chunks));
+    setText("kpi-chunks-sub", "Searchable vector chunks");
+    setText("document-count", `${docs.length} documents`);
+    setHtml("document-list", docs.length ? docs.map((d) => `
+      <li class="list-row">
+        <span class="row-icon"><svg class="icon"><use href="#i-info"/></svg></span>
+        <div class="row-main">
+          <strong>${esc(d.title)}</strong>
+          <span>${esc(d.source || "manual")} · ${esc(d.chunks || 0)} chunks · ${fmtDate(d.created_at)}</span>
+        </div>
+        <div class="row-actions">
+          <button class="btn btn-ghost" type="button" data-delete-doc="${esc(d.id)}">Delete</button>
+        </div>
+      </li>`).join("") : '<li class="empty empty-pad">No documents yet. Add your first reference document.</li>');
+  }
+
+  /* ---------- render: automations ---------- */
+  function renderWorkflows() {
+    const workflows = state.workflows;
+    if (!workflows) {
+      setText("kpi-workflows", "—");
+      setText("kpi-workflows-sub", "Could not load workflows");
+      setHtml("workflow-list", '<li class="empty empty-pad">Could not load workflows.</li>');
+      return;
+    }
+    const count = (status) => workflows.filter((w) => w.status === status).length;
+    setText("kpi-workflows", String(workflows.length));
+    setText("kpi-workflows-sub", "Durable runs");
+    setText("kpi-workflows-running", String(count("running")));
+    setText("kpi-workflows-running-sub", "In progress");
+    setText("kpi-workflows-done", String(count("completed")));
+    setText("kpi-workflows-done-sub", "Finished successfully");
+    setText("kpi-workflows-failed", String(count("failed")));
+    setText("kpi-workflows-failed-sub", "Needs a retry or fix");
+    setText("workflow-count", `${workflows.length} total`);
+    setHtml("workflow-list", workflows.length ? workflows.map((w) => {
+      const tone = w.status === "completed" ? "ok" : w.status === "failed" ? "bad" : w.status === "running" ? "info" : "warn";
+      return `<li class="list-row workflow-row">
+        <div class="row-main"><strong>${esc(w.name)}</strong><span class="mono">${esc(w.id)}</span></div>
+        <span class="badge badge-${tone}">${esc(titleCase(w.status || "pending"))}</span>
+        <span class="card-note">${esc(w.error || "No errors")}</span>
+        <span class="card-note">${w.updated_at ? fmtDate(w.updated_at) + " " + fmtTime(w.updated_at) : "—"}</span>
+        <div class="row-actions">
+          ${w.status === "failed" || w.status === "running" ? `<button class="btn btn-ghost" type="button" data-resume-workflow="${esc(w.id)}">Resume</button>` : ""}
+          ${w.status === "running" || w.status === "pending" ? `<button class="btn btn-ghost" type="button" data-cancel-workflow="${esc(w.id)}">Cancel</button>` : ""}
+        </div>
+      </li>`;
+    }).join("") : '<li class="empty empty-pad">No workflows yet. Create one through the API to see durable execution here.</li>');
+  }
+
+  /* ---------- render: organizations ---------- */
+  function renderOrganizations() {
+    const orgs = state.orgs;
+    if (!orgs) {
+      setText("kpi-orgs", "—");
+      setText("kpi-orgs-sub", "Could not load organizations");
+      setHtml("org-list", '<li class="empty empty-pad">Could not load organizations.</li>');
+      return;
+    }
+    const members = orgs.reduce((sum, o) => sum + Number(o.member_count || 0), 0);
+    setText("kpi-orgs", String(orgs.length));
+    setText("kpi-orgs-sub", "Teams you belong to");
+    setText("kpi-org-members", String(members));
+    setText("kpi-org-members-sub", "Across your teams");
+    setText("kpi-org-role", orgs[0]?.my_role ? titleCase(orgs[0].my_role) : "—");
+    setText("kpi-org-role-sub", orgs.length ? "In your first team" : "Create a team to start");
+    setText("org-count", `${orgs.length} teams`);
+    setHtml("org-list", orgs.length ? orgs.map((o) => `
+      <li class="list-row">
+        <span class="row-icon">${esc(String(o.name || "O").charAt(0).toUpperCase())}</span>
+        <div class="row-main"><strong>${esc(o.name)}</strong><span>${esc(o.slug)} · ${esc(o.member_count || 0)} members</span></div>
+        <span class="badge badge-info">${esc(titleCase(o.my_role || "member"))}</span>
+        <div class="row-actions"><span class="chip">${esc(String(o.id).slice(0, 8))}</span></div>
+      </li>`).join("") : '<li class="empty empty-pad">No organizations yet. Create your first team.</li>');
+  }
+
+  /* ---------- render: files ---------- */
+  function renderObjects() {
+    const objects = state.objects;
+    if (!objects) {
+      setText("kpi-objects", "—");
+      setText("kpi-objects-sub", "Could not load files");
+      setHtml("object-list", '<li class="empty empty-pad">Could not load stored files.</li>');
+      return;
+    }
+    const bytes = objects.reduce((sum, o) => sum + Number(o.size_bytes || 0), 0);
+    setText("kpi-objects", String(objects.length));
+    setText("kpi-objects-sub", "Stored objects");
+    setText("kpi-object-bytes", fmtBytes(bytes));
+    setText("kpi-object-bytes-sub", "Total content size");
+    setText("object-count", `${objects.length} objects`);
+    setHtml("object-list", objects.length ? objects.map((o) => `
+      <li class="list-row">
+        <span class="row-icon"><svg class="icon"><use href="#i-box"/></svg></span>
+        <div class="row-main"><strong>${esc(o.metadata?.filename || o.object_key || o.id)}</strong><span>${esc(o.content_type)} · ${fmtBytes(o.size_bytes)} · ${fmtDate(o.created_at)}</span></div>
+        <div class="row-actions">
+          <a class="btn btn-ghost" href="/api/v1/objects/${esc(o.id)}" download>Download</a>
+          <button class="btn btn-ghost" type="button" data-delete-object="${esc(o.id)}">Delete</button>
+        </div>
+      </li>`).join("") : '<li class="empty empty-pad">No files stored yet.</li>');
+  }
+
+  /* ---------- render: updates ---------- */
+  function renderUpdates() {
+    const releases = state.releases;
+    if (!releases) {
+      setText("kpi-releases", "—");
+      setHtml("release-list", '<li class="empty empty-pad">Could not load releases.</li>');
+      return;
+    }
+    setText("kpi-releases", String(releases.length));
+    setText("kpi-releases-sub", "Published releases");
+    setText("release-count", `${releases.length} releases`);
+    const latestFor = (product) => releases.filter((r) => r.product === product)
+      .sort((a, b) => new Date(b.published_at) - new Date(a.published_at))[0];
+    const client = latestFor("client");
+    const server = latestFor("server");
+    setText("kpi-client-latest", client ? client.version : "—");
+    setText("kpi-client-latest-sub", client ? `${titleCase(client.channel)} · ${fmtDate(client.published_at)}` : "No client release");
+    setText("kpi-server-latest", server ? server.version : "—");
+    setText("kpi-server-latest-sub", server ? `${titleCase(server.channel)} · ${fmtDate(server.published_at)}` : "No server release");
+    setHtml("release-list", releases.length ? releases.map((r) => `
+      <li class="list-row">
+        <span class="row-icon">${r.product === "server" ? "S" : "C"}</span>
+        <div class="row-main"><strong>${esc(r.version)} <span class="chip">${esc(r.channel)}</span></strong><span>${esc(r.product)} · ${fmtDate(r.published_at)}</span></div>
+        <div class="row-main"><span>${esc(r.notes || "No release notes")}</span>${r.min_version ? `<span>Requires ≥ ${esc(r.min_version)}</span>` : ""}</div>
+      </li>`).join("") : '<li class="empty empty-pad">No releases published yet.</li>');
+  }
+
+  /* ---------- render: usage ---------- */
+  function breakdown(rows, labelKey) {
+    if (!rows || !rows.length) return '<p class="empty">Nothing recorded yet.</p>';
+    return `<dl class="kv">${rows.map((row) => `
+      <div><dt>${esc(row[labelKey] || "unknown")}</dt>
+      <dd>${fmtNumber(row.tokens)} tok · ${fmtMoney(row.cost)}</dd></div>`).join("")}</dl>`;
+  }
+
+  function renderUsage() {
+    const u = state.usage;
+    if (!u) {
+      setPill($("usage-status"), "Admin access required", "warn");
+      setHtml("usage-totals", '<p class="empty">An administrator session is required to view cost and quota data.</p>');
+      setHtml("usage-chart", '<p class="empty">No usage data available.</p>');
+      setHtml("usage-models", '<p class="empty">No usage data available.</p>');
+      setHtml("usage-agents", '<p class="empty">No usage data available.</p>');
+      setHtml("usage-quotas", '<li class="empty">No usage data available.</li>');
+      setText("quota-count", "");
+      return;
+    }
+    setPill($("usage-status"), "Last 30 days", "ok");
+    const totals = u.totals || {};
+    const storage = u.storage || {};
+    const cards = [
+      ["Tokens", fmtNumber(totals.tokens), `${fmtNumber(totals.calls)} LLM calls`],
+      ["Estimated cost", fmtMoney(totals.cost_usd), "Provider rates"],
+      ["Object storage", fmtBytes(storage.bytes), `${fmtNumber(storage.objects)} objects`],
+      ["Device events", fmtNumber(u.device_events), "Visible to you"],
+    ];
+    setHtml("usage-totals", cards.map(([label, value, note]) => `
+      <article class="usage-stat"><span>${esc(label)}</span><strong>${esc(value)}</strong><small>${esc(note)}</small></article>`).join(""));
+
+    const daily = u.daily || [];
+    if (!daily.length) {
+      setHtml("usage-chart", '<p class="empty">No usage recorded yet.</p>');
+    } else {
+      const max = Math.max(...daily.map((d) => Number(d.tokens) || 0), 1);
+      setHtml("usage-chart", daily.map((d) => {
+        const pct = Math.max(2, (Number(d.tokens) || 0) / max * 100);
+        return `<div class="bar" title="${esc(d.day)} · ${fmtNumber(d.tokens)} tokens">
+          <div class="bar-fill" style="height:${pct}%"></div>
+          <span class="bar-label">${esc(String(d.day).slice(5))}</span>
+        </div>`;
+      }).join(""));
+    }
+
+    setHtml("usage-models", breakdown(u.models, "model"));
+    setHtml("usage-agents", breakdown(u.agents, "agent_id"));
+
+    const quotas = u.quotas || [];
+    setText("quota-count", `${quotas.length} configured`);
+    setHtml("usage-quotas", quotas.length ? quotas.map((q) => {
+      const current = q.current || {};
+      const parts = [];
+      if (q.token_limit != null) parts.push(`${fmtNumber(current.tokens)} / ${fmtNumber(q.token_limit)} tokens`);
+      if (q.cost_limit_usd != null) parts.push(`${fmtMoney(current.cost_usd)} / ${fmtMoney(q.cost_limit_usd)}`);
+      return `<li><strong>${esc(q.scope)} · ${esc(q.subject_id)}</strong><span class="card-note">${esc(parts.join(" · ") || "No limit")} / ${esc(q.period)}</span></li>`;
+    }).join("") : '<li class="empty">No quotas configured yet. Use the admin API to add token or cost limits.</li>');
+  }
+
   function renderAll() {
-    renderOverview(); renderAgents(); renderSecurity(); renderModules();
+    renderOverview(); renderDevices(); renderAgents(); renderExtensions(); renderKnowledge();
+    renderWorkflows(); renderUsage(); renderOrganizations(); renderObjects(); renderUpdates();
+    renderSecurity(); renderModules();
   }
 
   /* ---------- refresh ---------- */
@@ -474,7 +940,11 @@
     await Promise.allSettled([
       load("user", loadUser), load("health", loadHealth), load("metrics", loadMetrics),
       load("context", loadContext), load("config", loadConfig), load("orchestration", loadOrchestration),
-      load("security", loadSecurity), load("modules", loadModules),
+      load("security", loadSecurity), load("modules", loadModules), load("plugins", loadPlugins),
+      load("mcp", loadMcp), load("usage", loadUsage), load("devices", loadDevices),
+      load("knowledge", loadKnowledge), load("workflows", loadWorkflows),
+      load("organizations", loadOrganizations), load("objects", loadObjects),
+      load("releases", loadReleases),
     ]);
     state.loaded = true;
     renderAll();
@@ -676,6 +1146,196 @@
     $("api-method").value = c.dataset.method || "GET";
     if ($("api-method").value === "GET") $("api-body").value = "";
   }));
+
+  /* ---------- P4 actions ---------- */
+  async function refreshAfter(action, loaders = []) {
+    await Promise.allSettled(loaders.map((fn) => load(fn.name || "refresh", fn)));
+    renderAll();
+  }
+
+  $("workflow-refresh").addEventListener("click", async () => {
+    await loadWorkflows();
+    renderWorkflows();
+  });
+
+  $("plugin-discover").addEventListener("click", async () => {
+    const r = await fetchJson("/api/v1/plugins/discover", { method: "POST" });
+    if (!r.ok) { window.alert("Could not rescan plugins."); return; }
+    await loadPlugins(); renderExtensions();
+  });
+
+  $("quota-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const out = $("quota-result");
+    const scope = $("quota-scope").value;
+    const subject = $("quota-subject").value.trim() || "*";
+    const tokens = $("quota-tokens").value;
+    setResult(out, "Saving quota…");
+    try {
+      const r = await fetchJson("/api/v1/admin/quotas", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope, subject_id: subject, period: $("quota-period").value,
+          token_limit: tokens ? Number(tokens) : null,
+        }),
+      });
+      if (!r.ok) throw new Error(r.data?.detail || "Could not save quota");
+      setResult(out, "Quota saved.");
+      await loadUsage(); renderUsage();
+    } catch (err) { setResult(out, err.message, true); }
+  });
+
+  document.addEventListener("click", async (event) => {
+    const target = event.target.closest("[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp]");
+    if (!target) return;
+
+    try {
+      if (target.dataset.deviceSelect) {
+        state.selectedDevice = target.dataset.deviceSelect;
+        await loadDevices();
+        renderDevices();
+      } else if (target.dataset.deleteDoc) {
+        const r = await fetchJson(`/api/v1/rag/documents/${encodeURIComponent(target.dataset.deleteDoc)}`, { method: "DELETE" });
+        if (!r.ok) throw new Error("Delete failed");
+        await loadKnowledge(); renderKnowledge();
+      } else if (target.dataset.resumeWorkflow) {
+        const r = await fetchJson(`/api/v1/workflows/${encodeURIComponent(target.dataset.resumeWorkflow)}/resume?retry_failed=true`, { method: "POST" });
+        if (!r.ok) throw new Error("Resume failed");
+        await loadWorkflows(); renderWorkflows();
+      } else if (target.dataset.cancelWorkflow) {
+        const r = await fetchJson(`/api/v1/workflows/${encodeURIComponent(target.dataset.cancelWorkflow)}/cancel`, { method: "POST" });
+        if (!r.ok) throw new Error("Cancel failed");
+        await loadWorkflows(); renderWorkflows();
+      } else if (target.dataset.deleteObject) {
+        const r = await fetchJson(`/api/v1/objects/${encodeURIComponent(target.dataset.deleteObject)}`, { method: "DELETE" });
+        if (!r.ok) throw new Error("Delete failed");
+        await loadObjects(); renderObjects();
+      } else if (target.dataset.pluginId) {
+        const id = encodeURIComponent(target.dataset.pluginId);
+        const action = target.dataset.pluginAction;
+        const r = await fetchJson(`/api/v1/plugins/${id}/${action}`, { method: "POST" });
+        if (!r.ok) throw new Error(`Plugin ${action} failed`);
+        await loadPlugins(); renderExtensions();
+      } else if (target.dataset.mcpId) {
+        const id = encodeURIComponent(target.dataset.mcpId);
+        const action = target.dataset.mcpAction;
+        const options = { method: action === "delete" ? "DELETE" : "POST" };
+        const url = action === "delete" ? `/api/v1/mcp/servers/${id}` : `/api/v1/mcp/servers/${id}/${action}`;
+        const r = await fetchJson(url, options);
+        if (!r.ok) throw new Error(`MCP ${action} failed`);
+        await loadMcp(); renderExtensions();
+      } else if (target.dataset.installMcp) {
+        const r = await fetchJson("/api/v1/mcp/servers", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ marketplace_id: target.dataset.installMcp }),
+        });
+        if (!r.ok) throw new Error("Install failed");
+        await loadMcp(); renderExtensions();
+      }
+    } catch (err) {
+      window.alert(err.message || "Action failed");
+    }
+  });
+
+  $("rag-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const out = $("rag-result");
+    setResult(out, "Indexing…");
+    try {
+      const r = await fetchJson("/api/v1/rag/documents", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: $("rag-title").value.trim(),
+          source: $("rag-source").value.trim() || "manual",
+          content: $("rag-content").value,
+        }),
+      });
+      if (!r.ok) throw new Error(r.data?.detail || "Indexing failed");
+      setResult(out, `Indexed ${r.data.chunks} chunk(s).`);
+      $("rag-form").reset();
+      $("rag-source").value = "manual";
+      await loadKnowledge(); renderKnowledge();
+    } catch (err) { setResult(out, err.message, true); }
+  });
+
+  $("rag-search-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const query = $("rag-query").value.trim();
+    if (!query) return;
+    setHtml("rag-search-results", '<p class="empty">Searching…</p>');
+    const r = await fetchJson(`/api/v1/rag/search?q=${encodeURIComponent(query)}&limit=8`);
+    if (!r.ok) {
+      setHtml("rag-search-results", '<p class="empty">Search failed.</p>');
+      return;
+    }
+    const results = r.data?.results || [];
+    setText("kpi-rag-search", String(results.length));
+    setText("kpi-rag-search-sub", `For “${query}”`);
+    setText("rag-search-meta", `${results.length} result(s)`);
+    setHtml("rag-search-results", results.length ? results.map((item) => `
+      <article class="search-result">
+        <div class="row-main"><strong>${esc(item.title)}</strong><span>${esc(item.source)} · score ${Number(item.score || 0).toFixed(3)}</span></div>
+        <p>${esc(item.content)}</p>
+      </article>`).join("") : '<p class="empty">No matching chunks.</p>');
+  });
+
+  $("org-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const out = $("org-result");
+    setResult(out, "Creating…");
+    try {
+      const r = await fetchJson("/api/v1/organizations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: $("org-name").value.trim() }),
+      });
+      if (!r.ok) throw new Error(r.data?.detail || "Could not create organization");
+      setResult(out, "Organization created.");
+      $("org-form").reset();
+      await loadOrganizations(); renderOrganizations();
+    } catch (err) { setResult(out, err.message, true); }
+  });
+
+  $("object-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const out = $("object-result");
+    const file = $("object-file").files[0];
+    if (!file) return;
+    setResult(out, "Uploading…");
+    const form = new FormData();
+    form.append("file", file);
+    if ($("object-key").value.trim()) form.append("key", $("object-key").value.trim());
+    try {
+      const res = await fetchWithAuth("/api/v1/objects", { method: "POST", body: form });
+      if (!res) return;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "Upload failed");
+      setResult(out, `Uploaded ${file.name}.`);
+      $("object-form").reset();
+      await loadObjects(); renderObjects();
+    } catch (err) { setResult(out, err.message, true); }
+  });
+
+  $("release-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const out = $("release-result");
+    setResult(out, "Publishing…");
+    try {
+      const r = await fetchJson("/api/v1/updates/releases", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          product: $("release-product").value,
+          channel: $("release-channel").value,
+          version: $("release-version").value.trim(),
+          notes: $("release-notes").value.trim(),
+          url: $("release-url").value.trim(),
+        }),
+      });
+      if (!r.ok) throw new Error(r.data?.detail || "Publish failed");
+      setResult(out, "Release published.");
+      $("release-form").reset();
+      await loadReleases(); renderUpdates();
+    } catch (err) { setResult(out, err.message, true); }
+  });
 
   /* ---------- start ---------- */
   showView();

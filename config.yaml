@@ -6,6 +6,17 @@ kernel:
   modules_dir: ./vira/modules/core
   sensors_dir: ./vira/sensors
 
+# --- Extension ecosystem (P4) -----------------------------------------------
+plugins:
+  # Extra directories to scan for plugin directories/manifests.  The kernel
+  # plugins_dir is always scanned first.
+  directories:
+    - ./examples/plugins
+  # Set to false to reject write/execute tools without an explicit allow-list.
+  allow_write_tools: true
+  denied_permissions: []
+  data_dir: ./data/plugins
+
 
 auth:
   secret_key: "change-this-to-a-random-secret-key-in-production"   # <-- generate a random string
@@ -73,6 +84,17 @@ security:
     - "llm.call.*"
     - "tool.execute.*"
     - "tool.use.*"
+
+# Request rate limits (in-process; use Redis for multi-worker deployments).
+rate_limits:
+  enabled: true
+
+# Background worker defaults (python -m vira.worker).
+jobs:
+  worker_interval: 5
+  rollup_days: 3
+  retention_days: 14
+  backup_keep: 7
 
 metrics:
   enabled: true

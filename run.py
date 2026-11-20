@@ -12,6 +12,7 @@ import uvicorn
 from vira.kernel import Kernel
 from vira.api.app import create_app
 from vira.auth import auth, database
+from vira.observability import configure_logging
 
 # logger.remove()  # Remove default handler
 # logger.add(
@@ -23,6 +24,7 @@ from vira.auth import auth, database
 
 # Initialize database tables before anything else
 database.init_db()
+configure_logging()
 
 
 class SignalAwareServer(uvicorn.Server):

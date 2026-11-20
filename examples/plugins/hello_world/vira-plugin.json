@@ -1,0 +1,13 @@
+{
+  "id": "example.hello-world",
+  "name": "Hello World",
+  "version": "1.0.0",
+  "api_version": "1",
+  "description": "Reference plugin: registers a read-only tool, an HTTP route and persisted plugin state.",
+  "author": "VIRA",
+  "license": "MIT",
+  "entrypoint": "plugin.py:HelloWorldPlugin",
+  "permissions": ["tools.register", "http.routes", "storage"],
+  "categories": ["example", "developer"],
+  "config": {"greeting": "Hello"}
+}

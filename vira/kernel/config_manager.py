@@ -1,10 +1,15 @@
 """Centralized configuration management"""
 import os
+import re
 import yaml
 import copy
 from loguru import logger
 from pathlib import Path
 from typing import Dict, Any, Optional
+
+from vira.secrets import decrypt_text, encrypt_text
+
+_SENSITIVE_KEY = re.compile(r'(api_key|secret|secret_key|password|token|private_key)$', re.IGNORECASE)
 
 # logger = logging.getLogger(__name__)
 
@@ -50,7 +55,7 @@ class ConfigManager:
         target[parts[-1]] = value
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Get configuration value by dot-separated key"""
+        """Get configuration value by dot-separated key (decrypting secrets)."""
         parts = key.split(".")
         target = self._config
         for part in parts:
@@ -58,7 +63,7 @@ class ConfigManager:
                 target = target[part]
             else:
                 return default
-        return target
+        return self._decrypt_value(target)
 
     def set(self, key: str, value: Any) -> None:
         """Set configuration value"""
@@ -71,19 +76,41 @@ class ConfigManager:
         target[parts[-1]] = value
 
     def get_all(self) -> Dict[str, Any]:
-        """Get entire configuration"""
-        return copy.deepcopy(self._config)
+        """Get the full configuration with secret values decrypted for internal use."""
+        return self._decrypt_tree(copy.deepcopy(self._config))
 
     def save(self, config: Dict[str, Any]) -> None:
-        """Persist a complete configuration and make it the active configuration."""
+        """Persist config, encrypting sensitive values at rest."""
         path = Path(self._config_path or "config.yaml")
         path.parent.mkdir(parents=True, exist_ok=True)
+        persisted = self._encrypt_tree(copy.deepcopy(config))
         temporary_path = path.with_suffix(f"{path.suffix}.tmp")
         with temporary_path.open("w", encoding="utf-8") as config_file:
-            yaml.safe_dump(config, config_file, sort_keys=False, default_flow_style=False)
+            yaml.safe_dump(persisted, config_file, sort_keys=False, default_flow_style=False)
         temporary_path.replace(path)
-        self._config = copy.deepcopy(config)
+        self._config = self._decrypt_tree(copy.deepcopy(persisted))
         logger.info("Saved config to {}", path)
+
+    def _decrypt_value(self, value: Any) -> Any:
+        if isinstance(value, str) and value.startswith("enc:v1:"):
+            return decrypt_text(value)
+        if isinstance(value, dict):
+            return {key: self._decrypt_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._decrypt_value(item) for item in value]
+        return value
+
+    def _decrypt_tree(self, value: Any) -> Any:
+        return self._decrypt_value(value)
+
+    def _encrypt_tree(self, value: Any, key: str = "") -> Any:
+        if isinstance(value, dict):
+            return {item_key: self._encrypt_tree(item, item_key) for item_key, item in value.items()}
+        if isinstance(value, list):
+            return [self._encrypt_tree(item, key) for item in value]
+        if isinstance(value, str) and _SENSITIVE_KEY.search(key) and value and not value.startswith("enc:v1:"):
+            return encrypt_text(value)
+        return value
 
     async def reload(self) -> None:
         """Reload configuration from file"""

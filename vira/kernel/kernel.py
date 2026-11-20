@@ -239,7 +239,7 @@ class Kernel:
         # 7. Load Plugins
         self._state = "LOADING_PLUGINS"
         plugins_dir = self.config_manager.get("kernel.plugins_dir", "./vira/plugins")
-        self.plugin_manager = PluginManager(plugins_dir)
+        self.plugin_manager = PluginManager(plugins_dir, kernel=self, config=self.config_manager)
         await self.plugin_manager.load_plugins()
         logger.info("✓ Plugins loaded")
 
@@ -251,6 +251,9 @@ class Kernel:
         for sensor_cfg in sensors_config:
             if sensor_cfg.get("enabled", False):
                 await self._start_sensor(sensor_cfg)
+        # Plugin-declared sensors use the same factory/ingestion path.
+        for sensor_cfg in self.plugin_manager.pending_sensors():
+            await self._start_sensor(sensor_cfg)
         logger.info("✓ Sensors started")
         await self.outbox_publisher.start()
         self._maintenance_task = asyncio.create_task(self._device_maintenance())

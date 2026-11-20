@@ -3,41 +3,57 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VIRA - Reset Password</title>
-  <link rel="stylesheet" href="/static/auth.css">
+  <meta name="description" content="Reset your VIRA password">
+  <title>Reset password · VIRA</title>
+  <link rel="stylesheet" href="/static/auth.css?v=apple-2">
+  <script>
+    (() => {
+      let saved = null;
+      try { saved = localStorage.getItem("vira-theme"); } catch (e) {}
+      const system = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.dataset.theme = saved || system;
+    })();
+  </script>
 </head>
 <body>
   <div class="auth-container">
     <div class="auth-card">
-      <h1>🧠 VIRA</h1>
-      <h2>Reset Password</h2>
-      <p>Enter your username, recovery code, and new password.</p>
+      <div class="auth-brand">
+        <span class="auth-mark" aria-hidden="true">V</span>
+        <div><strong>VIRA</strong><span>Personal AI runtime</span></div>
+      </div>
+
+      <h1>Reset password</h1>
+      <p class="auth-sub">Use your recovery code to choose a new password.</p>
+
       <form id="forgot-form">
         <div class="form-group">
-          <label>Username</label>
-          <input type="text" id="username" required>
+          <label for="username">Username</label>
+          <input type="text" id="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
         </div>
         <div class="form-group">
-          <label>Recovery Code</label>
-          <input type="text" id="recovery-code" required>
+          <label for="recovery-code">Recovery code</label>
+          <input type="text" id="recovery-code" autocomplete="off" spellcheck="false" required>
         </div>
         <div class="form-group">
-          <label>New Password (min 6 chars)</label>
-          <input type="password" id="new-password" required minlength="6">
+          <label for="new-password">New password</label>
+          <input type="password" id="new-password" autocomplete="new-password" required minlength="6">
         </div>
         <div class="form-group">
-          <label>Confirm Password</label>
-          <input type="password" id="confirm-password" required>
+          <label for="confirm-password">Confirm password</label>
+          <input type="password" id="confirm-password" autocomplete="new-password" required>
         </div>
-        <div id="forgot-error" class="error"></div>
-        <div id="forgot-success" class="success" style="display:none;"></div>
-        <button type="submit">Reset Password</button>
+        <div id="forgot-error" class="error" role="alert" aria-live="polite"></div>
+        <div id="forgot-success" class="success" role="status" style="display:none;"></div>
+        <button type="submit">Reset password</button>
       </form>
+
       <div class="auth-links">
-        <a href="/login">Back to Login</a>
+        <a href="/login">Back to sign in</a>
       </div>
     </div>
   </div>
+
   <script>
     document.getElementById('forgot-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -47,24 +63,28 @@
       const confirm = document.getElementById('confirm-password').value;
       const errorEl = document.getElementById('forgot-error');
       const successEl = document.getElementById('forgot-success');
+      const button = e.target.querySelector('button[type="submit"]');
       errorEl.textContent = '';
       successEl.style.display = 'none';
+      button.disabled = true;
       try {
         const resp = await fetch('/api/v1/auth/password/reset', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, recovery_code, new_password, confirm_password: confirm })
         });
-        const data = await resp.json();
+        const data = await resp.json().catch(() => ({}));
         if (resp.ok) {
           successEl.style.display = 'block';
-          successEl.textContent = 'Password reset successful! Redirecting to login...';
-          setTimeout(() => { window.location.href = '/login'; }, 3000);
+          successEl.textContent = 'Password reset. Taking you back to sign in…';
+          setTimeout(() => { window.location.href = '/login'; }, 2400);
         } else {
-          errorEl.textContent = data.detail || 'Reset failed';
+          errorEl.textContent = data.detail || 'Reset failed. Check your recovery code.';
         }
       } catch (err) {
-        errorEl.textContent = 'Network error';
+        errorEl.textContent = 'Network error. Is the VIRA server running?';
+      } finally {
+        button.disabled = false;
       }
     });
   </script>

@@ -4,6 +4,8 @@ const state = {
   incognito: false,
   username: "User",
   sending: false,
+  agentId: "",
+  search: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -282,11 +284,15 @@ function userArticle(content) {
 
 function renderConversations() {
   const list = $("#conversation-list");
-  if (!state.conversations.length) {
-    list.innerHTML = '<p class="sidebar-status">No chats yet.</p>';
+  const query = state.search.trim().toLowerCase();
+  const conversations = query
+    ? state.conversations.filter((item) => String(item.title || "").toLowerCase().includes(query))
+    : state.conversations;
+  if (!conversations.length) {
+    list.innerHTML = `<p class="sidebar-status">${state.conversations.length ? "No chats match your search." : "No chats yet."}</p>`;
     return;
   }
-  list.innerHTML = state.conversations.map((conversation) => `
+  list.innerHTML = conversations.map((conversation) => `
     <div class="conversation-item ${conversation.id === state.conversationId ? "active" : ""}">
       <button class="conversation-select" type="button" data-open="${escapeHtml(conversation.id)}" title="${escapeHtml(conversation.title)}">
         ${conversation.incognito ? "◌ " : ""}${escapeHtml(conversation.title || "New conversation")}
@@ -300,6 +306,45 @@ function renderChatMode() {
   const badge = $("#chat-mode");
   badge.hidden = !state.incognito;
   $("#incognito-toggle").checked = state.incognito;
+}
+
+async function loadRuntimeContext() {
+  try {
+    const [orchestration, definitions] = await Promise.all([
+      api("/orchestration"),
+      api("/api/v1/agent-definitions"),
+    ]);
+    const agents = (orchestration?.agents || []).filter((agent) => agent.enabled !== false);
+    const select = $("#agent-select");
+    select.innerHTML = ['<option value="">VIRA</option>', ...agents.map((agent) =>
+      `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.name)}</option>`)].join("");
+    if (state.agentId && !agents.some((agent) => agent.id === state.agentId)) state.agentId = "";
+    select.value = state.agentId;
+
+    const active = agents.find((agent) => agent.id === state.agentId) || agents[0];
+    $("#context-runtime").textContent = orchestration?.running ? "Online" : "Stopped";
+    $("#context-runtime-sub").textContent = orchestration?.running
+      ? `${agents.length} agent(s) · ${orchestration?.tools?.total || 0} tools`
+      : "The agent orchestrator is not running";
+    $("#context-agent").textContent = active?.name || "VIRA";
+    $("#context-agent-sub").textContent = active?.description || "Main assistant";
+
+    const names = orchestration?.tools?.metadata || orchestration?.tools?.names || [];
+    const tools = names.slice(0, 14).map((tool) => typeof tool === "string"
+      ? `<span>${escapeHtml(tool)}</span>`
+      : `<span>${escapeHtml(tool.name)}</span>`).join("");
+    $("#context-tools").innerHTML = tools || '<span class="context-muted">No tools registered</span>';
+
+    const specialists = definitions?.definitions || [];
+    $("#context-specialists").innerHTML = specialists.length
+      ? specialists.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.description || "")}</span></div>`).join("")
+      : '<span class="context-muted">No specialist definitions</span>';
+  } catch (error) {
+    $("#context-runtime").textContent = "Unavailable";
+    $("#context-runtime-sub").textContent = error.message;
+    $("#context-tools").innerHTML = '<span class="context-muted">Runtime details unavailable</span>';
+    $("#context-specialists").innerHTML = '<span class="context-muted">Runtime details unavailable</span>';
+  }
 }
 
 async function loadConversations() {
@@ -429,7 +474,7 @@ async function sendMessage(event) {
     follow(true);
 
     let answer = null;
-    await streamChat({ conversation_id: state.conversationId, message }, (evt) => {
+    await streamChat({ conversation_id: state.conversationId, message, agent_id: state.agentId || null }, (evt) => {
       if (evt.type === "done") { answer = evt.response || ""; return; }
       if (evt.type === "error") throw new Error(evt.detail || "Chat failed");
       live.events.push(evt);
@@ -487,6 +532,23 @@ $("#incognito-toggle").addEventListener("change", (event) => {
   state.incognito = event.target.checked;
 });
 $("#refresh-chats").addEventListener("click", loadConversations);
+$("#conversation-search").addEventListener("input", (event) => {
+  state.search = event.target.value;
+  renderConversations();
+});
+$("#agent-select").addEventListener("change", (event) => {
+  state.agentId = event.target.value;
+  loadRuntimeContext();
+});
+$("#context-toggle").addEventListener("click", () => {
+  const main = $("#chat-main");
+  const open = main.classList.toggle("context-open");
+  $("#context-toggle").setAttribute("aria-expanded", String(open));
+});
+$("#context-close").addEventListener("click", () => {
+  $("#chat-main").classList.remove("context-open");
+  $("#context-toggle").setAttribute("aria-expanded", "false");
+});
 $("#composer").addEventListener("submit", sendMessage);
 $("#message-scroller").addEventListener("scroll", () => {
   const el = $("#message-scroller");
@@ -546,3 +608,4 @@ $("#logout-button").addEventListener("click", async () => {
 applyTheme(localStorage.getItem("vira-theme") || localStorage.getItem("vira-chat-theme") ||
   (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
 loadCurrentUser().then(() => loadConversations());
+loadRuntimeContext();

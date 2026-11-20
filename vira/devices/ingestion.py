@@ -20,8 +20,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from vira import errors
+from vira.event_schemas import validate_event
 from vira.auth import database
 from vira.auth.principals import DevicePrincipal, local_device_principal
+from . import consent as consent_store
 from . import store
 from .policy import ACTIVITY, DOMAIN, TELEMETRY, EventPolicy
 from .ratelimit import RateLimiter
@@ -140,6 +142,9 @@ class EventIngestionService:
         payload = item.get("payload", {})
         if not isinstance(payload, dict):
             raise _ItemError("invalid_payload", "payload must be an object")
+        schema_error = validate_event(event_type, payload, version)
+        if schema_error:
+            raise _ItemError("schema_validation_failed", schema_error)
         payload_json = canonical_json(payload)
         if len(payload_json.encode("utf-8")) > self.policy.max_event_payload_bytes:
             raise _ItemError("payload_too_large", "Event payload exceeds the size limit")
@@ -200,11 +205,20 @@ class EventIngestionService:
 
         now_dt = datetime.now(timezone.utc)
         received_at = now_dt.isoformat()
+        consents = consent_store.consent_map(principal.device_id)
         results: List[Dict[str, Any]] = []
         valid: List[Tuple[int, Dict[str, Any]]] = []
         for index, item in enumerate(events):
             try:
-                valid.append((index, self._validate_item(item, now_dt)))
+                norm = self._validate_item(item, now_dt)
+                if not consent_store.is_allowed(consents, norm["type"], norm["payload"]):
+                    results.append({
+                        "event_id": norm["event_id"], "status": "rejected",
+                        "code": "consent_denied",
+                        "message": "This collector is disabled for the device",
+                    })
+                    continue
+                valid.append((index, norm))
                 results.append({})
             except _ItemError as err:
                 eid = item.get("event_id") if isinstance(item, dict) else None
@@ -232,7 +246,11 @@ class EventIngestionService:
                                           "message": "event_id already used with different content"}
                     continue
                 rule = norm["rule"]
-                expires_at = (now_dt + timedelta(hours=rule.retention_hours)).isoformat()
+                retention_hours = consent_store.retention_for(consents, norm["type"], norm["payload"])
+                expires_at = (
+                    now_dt + timedelta(hours=retention_hours if retention_hours is not None
+                                       else rule.retention_hours)
+                ).isoformat()
                 store.insert_event(conn, {
                     "event_id": norm["event_id"], "device_id": principal.device_id,
                     "actor_user_id": None,  # device telemetry never carries a human actor
