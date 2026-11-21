@@ -348,8 +348,9 @@ or a missing Python dependency after a code update (rebuild the image).
 
 ### `curl http://localhost:8000/livez` works but `/health` returns 401
 
-`/livez` is the unauthenticated liveness probe. `/health` is an administrator
-health endpoint and requires a session. This is intentional.
+This should no longer happen. `/health` now returns a public minimal status
+without a session. A valid administrator session receives the detailed health
+payload; unauthenticated callers receive only `status` and `service`.
 
 ### Ollama connection refused
 

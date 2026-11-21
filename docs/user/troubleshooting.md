@@ -69,7 +69,8 @@ docker compose logs -f vira-server
 docker compose logs -f worker
 ```
 
-Operational endpoints: `/health` and `/metrics` on the server.
+Operational endpoints: `/health` (public summary, admin detail with a session)
+and `/metrics` (administrator).
 
 ## Still stuck?
 

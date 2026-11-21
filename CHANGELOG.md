@@ -112,6 +112,10 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Fixed
 
+- `/health` now returns a public minimal status without a session, so stale or
+  unauthenticated dashboard tabs cannot spam 401s. Administrators still receive
+  the detailed payload.
+- The dashboard script is cache-busted so the updated 401 handling is loaded.
 - Stale dashboard sessions no longer poll protected endpoints forever: the
   dashboard stops its refresh timer and redirects to login on the first 401.
 - A revoked or expired device credential now stops the command poller and sync

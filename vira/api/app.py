@@ -609,11 +609,25 @@ def create_app(kernel: Kernel) -> FastAPI:
         return {"status": "ok", "service": "vira-server"}
 
     @app.get("/health")
-    async def health(user: auth.Principal = Depends(require_admin)):
-        health_status = await kernel.health_check()
-        # Add overall health derived from sub-checks (optional)
+    async def health(request: Request):
+        """Liveness plus detailed health for administrators.
+
+        Unauthenticated or stale clients receive only the public status so a
+        cached dashboard tab cannot spam 401s. The detailed payload is returned
+        only for a valid admin session or bearer token.
+        """
+        token = None
+        authorization = request.headers.get("Authorization", "")
+        if authorization.startswith("Bearer "):
+            candidate = authorization[7:].strip()
+            if candidate and not candidate.startswith("vdc_"):
+                token = candidate
+        token = token or request.session.get("session_id")
+        principal = auth.resolve_principal(token) if token else None
         overall = "healthy" if kernel.is_running() else "unhealthy"
-        # You could also check agent status, etc.
+        if not principal or not principal.is_admin:
+            return {"status": overall, "service": "vira-server"}
+        health_status = await kernel.health_check()
         return {
             "status": overall,
             **health_status

@@ -50,6 +50,9 @@ class _Kernel:
     device_service = None
     ingestion_service = None
 
+    def is_running(self):
+        return True
+
 
 class OpenApiContractTests(unittest.TestCase):
     def setUp(self):
@@ -60,6 +63,12 @@ class OpenApiContractTests(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_health_is_public_summary_without_session(self):
+        response = self.client.get("/health")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "healthy")
+        self.assertEqual(response.json()["service"], "vira-server")
 
     def test_required_paths_are_published(self):
         response = self.client.get("/openapi.json")
