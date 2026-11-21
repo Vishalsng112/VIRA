@@ -66,6 +66,8 @@ All notable changes to VIRA are documented here. The format follows
   local OS notifications, Settings permission flow and tap-to-open Agent Inbox.
 - Server **push delivery channel**: per-user device tokens sent to a configurable
   FCM/APNs/push relay with retries and dedupe.
+- Web dashboard **Inbox** view: agent notifications, recipe shortcuts, schedule
+  create/edit/pause/delete, run-now and recent run history.
 - Backend recipe metadata (`schedule_modes`, `default_mode`) for client forms.
 - Backend support for the client: unread notification count and
   `GET /api/v1/agent-schedules/{id}/runs/{run_id}` with a redacted timeline.

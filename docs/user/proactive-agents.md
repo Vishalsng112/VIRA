@@ -10,6 +10,8 @@ installed agent; the five recommended agents are delivered next.
 
 ## Where you see results
 
+- **Web dashboard → Inbox**: unread agent results, schedule list, schedule
+  create/edit/pause/delete, run-now and run history.
 - **VIRA Link → Inbox** (mobile and desktop client): unread agent updates,
   full result text, agent recipe cards, schedule creation/editing, pause/resume,
   delete, next run time, run-now and run history.

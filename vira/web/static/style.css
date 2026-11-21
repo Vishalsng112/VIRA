@@ -600,3 +600,14 @@ textarea { resize: vertical; min-height: 4rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Proactive agent inbox controls */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-right: 1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.check input { accent-color: var(--accent); }

@@ -73,6 +73,7 @@
       <div class="nav-group">
         <span class="nav-label">Intelligence</span>
         <a class="nav-link" href="#agents" data-view="agents"><svg class="icon"><use href="#i-agents"/></svg><span>Agents</span></a>
+        <a class="nav-link" href="#inbox" data-view="inbox"><svg class="icon"><use href="#i-info"/></svg><span>Inbox</span></a>
         <a class="nav-link" href="#extensions" data-view="extensions"><svg class="icon"><use href="#i-plug"/></svg><span>Extensions</span></a>
         <a class="nav-link" href="#knowledge" data-view="knowledge"><svg class="icon"><use href="#i-info"/></svg><span>Knowledge</span></a>
       </div>
@@ -266,6 +267,113 @@
           <header class="card-head"><h2>Recent agent runs</h2><span class="card-note" id="run-count"></span></header>
           <ul id="run-list" class="list-body"><li class="empty">Loading…</li></ul>
           <p class="card-note">Failed or interrupted runs can be resumed from their original message. Tool inputs and results are redacted in the stored timeline.</p>
+        </section>
+      </section>
+
+      <!-- ===== Inbox ===== -->
+      <section class="view" id="view-inbox" hidden>
+        <div class="grid grid-2">
+          <section class="card card-flush">
+            <header class="card-head" style="padding:1.4rem 1.5rem 0">
+              <h2>Agent inbox</h2>
+              <span id="inbox-unread" class="pill pill-neutral">Loading…</span>
+            </header>
+            <ul id="notification-list" class="list-body"><li class="empty empty-pad">Loading notifications…</li></ul>
+          </section>
+          <section class="card">
+            <header class="card-head"><h2>Add to your day</h2><span class="card-note" id="recipe-count"></span></header>
+            <div id="recipe-list" class="chips"><span class="empty">Loading agents…</span></div>
+            <p class="card-note">Pick a recipe, then create or edit its schedule below.</p>
+          </section>
+        </div>
+
+        <section class="card card-flush">
+          <header class="card-head" style="padding:1.4rem 1.5rem 0">
+            <h2>Scheduled agents</h2><span class="card-note" id="schedule-count"></span>
+          </header>
+          <ul id="schedule-list" class="list-body"><li class="empty empty-pad">Loading schedules…</li></ul>
+        </section>
+
+        <section class="card">
+          <header class="card-head"><h2>Create or edit schedule</h2><span class="card-note" id="schedule-form-mode">New schedule</span></header>
+          <form id="schedule-form" class="form">
+            <div class="form-row">
+              <div class="field field-grow">
+                <label for="schedule-agent">Agent</label>
+                <select id="schedule-agent" required></select>
+              </div>
+              <div class="field field-grow">
+                <label for="schedule-name">Name</label>
+                <input id="schedule-name" type="text" maxlength="160" required placeholder="Morning brief">
+              </div>
+            </div>
+            <label for="schedule-message">Instruction</label>
+            <textarea id="schedule-message" rows="2" required placeholder="Write my morning brief from today's context."></textarea>
+            <div class="form-row">
+              <div class="field field-grow">
+                <label for="schedule-type">Repeat</label>
+                <select id="schedule-type">
+                  <option value="daily">Every day</option>
+                  <option value="weekly">Every week</option>
+                  <option value="interval">At an interval</option>
+                </select>
+              </div>
+              <div class="field field-grow">
+                <label for="schedule-time">Time (HH:MM)</label>
+                <input id="schedule-time" type="time" value="08:00">
+              </div>
+              <div class="field field-grow">
+                <label for="schedule-weekday">Weekday</label>
+                <select id="schedule-weekday">
+                  <option value="0">Monday</option><option value="1">Tuesday</option>
+                  <option value="2">Wednesday</option><option value="3">Thursday</option>
+                  <option value="4">Friday</option><option value="5">Saturday</option>
+                  <option value="6">Sunday</option>
+                </select>
+              </div>
+              <div class="field field-grow">
+                <label for="schedule-interval">Interval (min)</label>
+                <input id="schedule-interval" type="number" min="1" value="60">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="field field-grow">
+                <label for="schedule-timezone">Timezone</label>
+                <input id="schedule-timezone" type="text" value="UTC" placeholder="Asia/Kolkata">
+              </div>
+              <div class="field field-grow">
+                <label for="schedule-mode">Mode</label>
+                <select id="schedule-mode"><option value="">Default</option></select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="field field-grow">
+                <label for="schedule-quiet-start">Quiet from (optional)</label>
+                <input id="schedule-quiet-start" type="time">
+              </div>
+              <div class="field field-grow">
+                <label for="schedule-quiet-end">Quiet until (optional)</label>
+                <input id="schedule-quiet-end" type="time">
+              </div>
+            </div>
+            <div class="form-row">
+              <label class="check"><input id="schedule-webhook" type="checkbox"> Webhook delivery</label>
+              <label class="check"><input id="schedule-push" type="checkbox"> Push relay delivery</label>
+              <label class="check"><input id="schedule-enabled" type="checkbox" checked> Enabled</label>
+            </div>
+            <div class="form-actions">
+              <button class="btn" type="submit" id="schedule-submit">Create schedule</button>
+              <button class="btn btn-ghost" type="button" id="schedule-cancel" hidden>Cancel edit</button>
+              <span id="schedule-result" class="result" role="status"></span>
+            </div>
+          </form>
+        </section>
+
+        <section class="card card-flush">
+          <header class="card-head" style="padding:1.4rem 1.5rem 0">
+            <h2>Recent schedule runs</h2><span class="card-note" id="schedule-runs-count"></span>
+          </header>
+          <ul id="schedule-runs" class="list-body"><li class="empty empty-pad">Select a schedule and choose Runs.</li></ul>
         </section>
       </section>
 

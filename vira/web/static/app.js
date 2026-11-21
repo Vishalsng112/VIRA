@@ -14,6 +14,7 @@
     overview:  { title: "Overview",        sub: "Live status of your VIRA runtime." },
     devices:   { title: "Devices",         sub: "Fleet health, sync state and the latest device insight." },
     agents:    { title: "Agents",          sub: "Registered agents, scheduling and the tools they can use." },
+    inbox:     { title: "Inbox",           sub: "Proactive agent results, schedules and run history." },
     extensions:{ title: "Extensions",      sub: "Plugins, MCP servers and the tool marketplace." },
     knowledge: { title: "Knowledge",       sub: "Local documents, hybrid retrieval and RAG search." },
     automations:{ title: "Automations",    sub: "Durable workflows, step state and recovery." },
@@ -35,6 +36,8 @@
     plugins: null, mcpServers: null, marketplace: null, mcpTools: null, usage: null,
     devices: null, deviceInsight: null, ragDocs: null, workflows: null, orgs: null,
     objects: null, releases: null, selectedDevice: null,
+    notifications: null, schedules: null, recipes: null, unread: 0,
+    scheduleRuns: null, selectedSchedule: null, editingScheduleId: null,
     events: [], eventCount: 0, paused: false,
     stream: "connecting", // connecting | connected | disconnected
     loaded: false,
@@ -85,6 +88,12 @@
     if (!value) return "—";
     const d = new Date(value);
     return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString([], { month: "short", day: "numeric" });
+  }
+
+  function fmtDateTime(value) {
+    if (!value) return "—";
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
   function fmtDurationMs(ms) {
@@ -282,6 +291,25 @@
   async function loadRuns() {
     const r = await fetchJson("/api/v1/runs?limit=50");
     state.runs = r.ok ? (r.data?.runs || []) : null;
+  }
+
+  async function loadInbox() {
+    const [notes, unread, schedules, recipes] = await Promise.all([
+      fetchJson("/api/v1/notifications?limit=100"),
+      fetchJson("/api/v1/notifications/unread-count"),
+      fetchJson("/api/v1/agent-schedules"),
+      fetchJson("/api/v1/agent-recipes"),
+    ]);
+    state.notifications = notes.ok ? (notes.data?.notifications || []) : null;
+    state.unread = unread.ok ? Number(unread.data?.unread || 0) : 0;
+    state.schedules = schedules.ok ? (schedules.data?.schedules || []) : null;
+    state.recipes = recipes.ok ? (recipes.data?.agents || []) : null;
+  }
+
+  async function loadScheduleRuns(scheduleId) {
+    const r = await fetchJson(`/api/v1/agent-schedules/${encodeURIComponent(scheduleId)}/runs?limit=50`);
+    state.scheduleRuns = r.ok ? (r.data?.runs || []) : null;
+    state.selectedSchedule = scheduleId;
   }
 
   async function loadModules() {
@@ -590,7 +618,204 @@
     }).join("") : '<li class="empty">No agent runs yet.</li>');
   }
 
-  /* ---------- render: security ---------- */
+  /* ---------- render: inbox ---------- */
+  function recipeForAgent(agentId) {
+    return (state.recipes || []).find((r) => r.agent_id === agentId || r.id === agentId) || null;
+  }
+
+  function scheduleCadence(s) {
+    if (s.schedule_type === "weekly") {
+      const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+      return `${days[s.weekday || 0] || "Weekly"} ${s.time_of_day || ""}`;
+    }
+    if (s.schedule_type === "interval") return `Every ${s.interval_minutes || 60} min`;
+    return `Daily ${s.time_of_day || ""}`;
+  }
+
+  function renderScheduleOptions() {
+    const select = $("schedule-agent");
+    if (!select) return;
+    const current = select.value;
+    const available = (state.recipes || []).filter((r) => r.status === "implemented" && r.agent_id);
+    select.innerHTML = available.length
+      ? available.map((r) => `<option value="${esc(r.agent_id)}">${esc(r.name)}</option>`).join("")
+      : '<option value="">No installed agents</option>';
+    if (available.some((r) => r.agent_id === current)) select.value = current;
+    updateScheduleModes();
+  }
+
+  function updateScheduleModes() {
+    const select = $("schedule-mode");
+    if (!select) return;
+    const recipe = recipeForAgent($("schedule-agent").value);
+    const modes = (recipe && recipe.schedule_modes) || [];
+    const current = select.value;
+    select.innerHTML = '<option value="">Default</option>' +
+      modes.map((m) => `<option value="${esc(m)}">${esc(titleCase(m))}</option>`).join("");
+    if (modes.includes(current)) select.value = current;
+    else if (recipe && recipe.default_mode) select.value = recipe.default_mode;
+  }
+
+  function renderInbox() {
+    const notes = state.notifications;
+    setPill($("inbox-unread"), state.unread ? `${state.unread} unread` : "Up to date", state.unread ? "warn" : "ok");
+    if (!notes) {
+      setHtml("notification-list", '<li class="empty empty-pad">Could not load notifications.</li>');
+    } else if (!notes.length) {
+      setHtml("notification-list", '<li class="empty empty-pad">No agent updates yet. Create a schedule below.</li>');
+    } else {
+      setHtml("notification-list", notes.map((n) => {
+        const unread = !n.read_at;
+        const scheduleId = n.data?.schedule_id;
+        return `<li class="list-row">
+          <span class="row-icon"><svg class="icon"><use href="#i-info"/></svg></span>
+          <div class="row-main">
+            <strong>${unread ? '<span class="pill pill-warn">New</span> ' : ""}${esc(n.title)}</strong>
+            <span>${esc(fmtDateTime(n.created_at))} · ${esc(n.kind)}</span>
+            <div class="card-note" style="white-space:pre-wrap">${esc(n.body || "")}</div>
+          </div>
+          <div class="row-actions">
+            ${unread ? `<button class="btn btn-ghost" type="button" data-notification-read="${esc(n.id)}">Mark read</button>` : ""}
+            ${scheduleId ? `<button class="btn btn-ghost" type="button" data-schedule-run="${esc(scheduleId)}">Run again</button>` : ""}
+          </div>
+        </li>`;
+      }).join(""));
+    }
+
+    const recipes = (state.recipes || []).filter((r) => r.status === "implemented");
+    setText("recipe-count", `${recipes.length} available`);
+    setHtml("recipe-list", recipes.length ? recipes.map((r) =>
+      `<button class="chip" type="button" data-recipe="${esc(r.agent_id || r.id)}" title="${esc(r.pitch)}">${esc(r.name)} · ${esc(r.architecture)}</button>`
+    ).join("") : '<span class="empty">No agent recipes are available.</span>');
+
+    renderScheduleOptions();
+    const schedules = state.schedules;
+    setText("schedule-count", schedules ? `${schedules.length} total` : "Unavailable");
+    if (!schedules) {
+      setHtml("schedule-list", '<li class="empty empty-pad">Could not load schedules.</li>');
+    } else if (!schedules.length) {
+      setHtml("schedule-list", '<li class="empty empty-pad">No schedules yet. Pick a recipe and create one below.</li>');
+    } else {
+      setHtml("schedule-list", schedules.map((s) => {
+        const tone = !s.enabled ? "" : s.last_error ? "warn" : "ok";
+        return `<li class="list-row">
+          <span class="row-icon"><svg class="icon"><use href="#i-activity"/></svg></span>
+          <div class="row-main">
+            <strong>${esc(s.name)} <span class="badge ${tone ? `badge-${tone}` : ""}">${esc(s.enabled ? "Active" : "Paused")}</span></strong>
+            <span>${esc(s.agent_id)} · ${esc(scheduleCadence(s))} · ${esc(s.timezone)}</span>
+            <span>${s.next_run_at ? `Next: ${esc(fmtDateTime(s.next_run_at))}` : "No next run"}${s.last_error ? ` · ${esc(String(s.last_error).slice(0, 120))}` : ""}</span>
+          </div>
+          <div class="row-actions">
+            <button class="btn btn-ghost" type="button" data-schedule-run="${esc(s.id)}">Run</button>
+            <button class="btn btn-ghost" type="button" data-schedule-runs="${esc(s.id)}">Runs</button>
+            <button class="btn btn-ghost" type="button" data-schedule-edit="${esc(s.id)}">Edit</button>
+            <button class="btn btn-ghost" type="button" data-schedule-toggle="${esc(s.id)}">${s.enabled ? "Pause" : "Resume"}</button>
+            <button class="btn btn-ghost" type="button" data-schedule-delete="${esc(s.id)}">Delete</button>
+          </div>
+        </li>`;
+      }).join(""));
+    }
+
+    renderScheduleRuns();
+  }
+
+  function renderScheduleRuns() {
+    const runs = state.scheduleRuns;
+    const count = $("schedule-runs-count");
+    if (count) count.textContent = runs ? `${runs.length} recent` : "";
+    if (!runs) return;
+    setHtml("schedule-runs", runs.length ? runs.map((run) => `
+      <li class="list-row">
+        <span class="row-icon"><svg class="icon"><use href="#i-activity"/></svg></span>
+        <div class="row-main">
+          <strong>${esc(run.status)} <span class="chip">${esc(run.agent_id || "agent")}</span></strong>
+          <span>${esc(fmtDateTime(run.completed_at || run.started_at))}</span>
+          <div class="card-note" style="white-space:pre-wrap">${esc(run.error || run.result || "No result recorded.")}</div>
+        </div>
+      </li>`).join("") : '<li class="empty empty-pad">No runs for this schedule yet.</li>');
+  }
+
+  function resetScheduleForm() {
+    state.editingScheduleId = null;
+    const form = $("schedule-form");
+    if (form) form.reset();
+    setText("schedule-form-mode", "New schedule");
+    setText("schedule-submit", "Create schedule");
+    $("schedule-cancel").hidden = true;
+    $("schedule-time").value = "08:00";
+    $("schedule-timezone").value = "UTC";
+    $("schedule-interval").value = "60";
+    $("schedule-webhook").checked = false;
+    $("schedule-push").checked = false;
+    $("schedule-enabled").checked = true;
+    renderScheduleOptions();
+  }
+
+  function fillScheduleForm(recipeId) {
+    const recipe = (state.recipes || []).find((r) => (r.agent_id || r.id) === recipeId);
+    if (!recipe) return;
+    const defaults = recipe.default_schedule || {};
+    $("schedule-agent").value = recipe.agent_id || recipe.id;
+    $("schedule-name").value = recipe.name || "";
+    $("schedule-message").value = `Generate the ${String(recipe.name || "agent").toLowerCase()}.`;
+    $("schedule-type").value = defaults.schedule_type || "daily";
+    $("schedule-time").value = defaults.time_of_day || "08:00";
+    $("schedule-weekday").value = String(defaults.weekday ?? 0);
+    $("schedule-timezone").value = defaults.timezone || "UTC";
+    updateScheduleModes();
+    if (defaults.input && defaults.input.mode) $("schedule-mode").value = defaults.input.mode;
+    setResult($("schedule-result"), `${recipe.name} selected.`);
+  }
+
+  function fillScheduleEditor(schedule) {
+    state.editingScheduleId = schedule.id;
+    $("schedule-agent").value = schedule.agent_id;
+    $("schedule-name").value = schedule.name || "";
+    $("schedule-message").value = schedule.message || "";
+    $("schedule-type").value = schedule.schedule_type || "daily";
+    $("schedule-time").value = schedule.time_of_day || "08:00";
+    $("schedule-weekday").value = String(schedule.weekday ?? 0);
+    $("schedule-interval").value = String(schedule.interval_minutes || 60);
+    $("schedule-timezone").value = schedule.timezone || "UTC";
+    updateScheduleModes();
+    $("schedule-mode").value = schedule.input?.mode || "";
+    $("schedule-quiet-start").value = schedule.quiet_hours_start || "";
+    $("schedule-quiet-end").value = schedule.quiet_hours_end || "";
+    $("schedule-webhook").checked = (schedule.channels || []).includes("webhook");
+    $("schedule-push").checked = (schedule.channels || []).includes("push");
+    $("schedule-enabled").checked = Boolean(schedule.enabled);
+    setText("schedule-form-mode", `Editing ${schedule.name}`);
+    setText("schedule-submit", "Save changes");
+    $("schedule-cancel").hidden = false;
+    $("schedule-result").classList.remove("error", "success");
+    $("schedule-result").textContent = "";
+  }
+
+  function schedulePayload() {
+    const type = $("schedule-type").value;
+    const mode = $("schedule-mode").value;
+    const input = {};
+    if (mode) input.mode = mode;
+    const existing = (state.schedules || []).find((s) => s.id === state.editingScheduleId);
+    if (existing?.input?.household_id) input.household_id = existing.input.household_id;
+    return {
+      agent_id: $("schedule-agent").value,
+      name: $("schedule-name").value.trim(),
+      message: $("schedule-message").value.trim(),
+      schedule_type: type,
+      time_of_day: type === "interval" ? null : $("schedule-time").value,
+      weekday: type === "weekly" ? Number($("schedule-weekday").value) : null,
+      interval_minutes: type === "interval" ? Number($("schedule-interval").value) : null,
+      timezone: $("schedule-timezone").value.trim() || "UTC",
+      quiet_hours_start: $("schedule-quiet-start").value || null,
+      quiet_hours_end: $("schedule-quiet-end").value || null,
+      channels: ["inapp", ...($("schedule-webhook").checked ? ["webhook"] : []), ...($("schedule-push").checked ? ["push"] : [])],
+      input,
+      enabled: $("schedule-enabled").checked,
+    };
+  }
+
+
   function renderSecurity() {
     const s = state.security;
     if (!s) { setPill($("security-status"), "Unavailable", "bad"); return; }
@@ -1033,7 +1258,7 @@
   function renderAll() {
     renderOverview(); renderDevices(); renderAgents(); renderExtensions(); renderKnowledge();
     renderWorkflows(); renderUsage(); renderOrganizations(); renderObjects(); renderUpdates();
-    renderSecurity(); renderModules();
+    renderSecurity(); renderModules(); renderInbox();
   }
 
   /* ---------- refresh ---------- */
@@ -1046,7 +1271,7 @@
       load("mcp", loadMcp), load("usage", loadUsage), load("devices", loadDevices),
       load("knowledge", loadKnowledge), load("workflows", loadWorkflows),
       load("organizations", loadOrganizations), load("objects", loadObjects),
-      load("releases", loadReleases),
+      load("releases", loadReleases), load("inbox", loadInbox),
     ]);
     state.loaded = true;
     renderAll();
@@ -1287,12 +1512,85 @@
     } catch (err) { setResult(out, err.message, true); }
   });
 
+  $("schedule-cancel").addEventListener("click", resetScheduleForm);
+  $("schedule-agent").addEventListener("change", () => {
+    updateScheduleModes();
+    if (!state.editingScheduleId) fillScheduleForm($("schedule-agent").value);
+  });
+
+  $("schedule-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const out = $("schedule-result");
+    const payload = schedulePayload();
+    if (!payload.agent_id || !payload.name || !payload.message) {
+      setResult(out, "Agent, name and instruction are required.", true);
+      return;
+    }
+    setResult(out, "Saving schedule…");
+    try {
+      const editing = state.editingScheduleId;
+      const r = await fetchJson(
+        editing ? `/api/v1/agent-schedules/${encodeURIComponent(editing)}` : "/api/v1/agent-schedules",
+        {
+          method: editing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      if (!r.ok) throw new Error(r.data?.detail || "Could not save the schedule");
+      setResult(out, editing ? "Schedule updated." : "Schedule created.");
+      await loadInbox();
+      renderInbox();
+      resetScheduleForm();
+      setResult(out, editing ? "Schedule updated." : "Schedule created.");
+    } catch (err) {
+      setResult(out, err.message, true);
+    }
+  });
+
+
   document.addEventListener("click", async (event) => {
-    const target = event.target.closest("[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id],[data-generated-id],[data-run-resume],[data-run-timeline]");
+    const target = event.target.closest("[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id],[data-generated-id],[data-run-resume],[data-run-timeline],[data-notification-read],[data-schedule-run],[data-schedule-runs],[data-schedule-edit],[data-schedule-toggle],[data-schedule-delete],[data-recipe]");
     if (!target) return;
 
     try {
-      if (target.dataset.runResume) {
+      if (target.dataset.notificationRead) {
+        const r = await fetchJson(`/api/v1/notifications/${encodeURIComponent(target.dataset.notificationRead)}/read`, { method: "POST" });
+        if (!r.ok) throw new Error("Could not mark the notification as read");
+        await loadInbox(); renderInbox();
+      } else if (target.dataset.scheduleRun) {
+        const r = await fetchJson(`/api/v1/agent-schedules/${encodeURIComponent(target.dataset.scheduleRun)}/run`, { method: "POST" });
+        if (!r.ok) throw new Error(r.data?.detail || "Could not run the schedule");
+        setResult($("schedule-result"), "Schedule queued. It will run on the next scheduler tick.");
+      } else if (target.dataset.scheduleRuns) {
+        await loadScheduleRuns(target.dataset.scheduleRuns);
+        renderScheduleRuns();
+        $("schedule-runs")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } else if (target.dataset.scheduleEdit) {
+        const schedule = (state.schedules || []).find((s) => s.id === target.dataset.scheduleEdit);
+        if (schedule) {
+          fillScheduleEditor(schedule);
+          $("schedule-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      } else if (target.dataset.scheduleToggle) {
+        const schedule = (state.schedules || []).find((s) => s.id === target.dataset.scheduleToggle);
+        if (!schedule) return;
+        const r = await fetchJson(`/api/v1/agent-schedules/${encodeURIComponent(schedule.id)}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: !schedule.enabled }),
+        });
+        if (!r.ok) throw new Error(r.data?.detail || "Could not update the schedule");
+        await loadInbox(); renderInbox();
+      } else if (target.dataset.scheduleDelete) {
+        if (!window.confirm("Delete this schedule and its run history?")) return;
+        const r = await fetchJson(`/api/v1/agent-schedules/${encodeURIComponent(target.dataset.scheduleDelete)}`, { method: "DELETE" });
+        if (!r.ok) throw new Error(r.data?.detail || "Could not delete the schedule");
+        await loadInbox(); renderInbox();
+      } else if (target.dataset.recipe) {
+        fillScheduleForm(target.dataset.recipe);
+        $("schedule-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else if (target.dataset.runResume) {
+
         const r = await fetchJson(`/api/v1/runs/${encodeURIComponent(target.dataset.runResume)}/resume`, { method: "POST" });
         if (!r.ok) throw new Error(r.data?.detail || "Could not resume the run");
         await loadRuns(); renderAgents();
