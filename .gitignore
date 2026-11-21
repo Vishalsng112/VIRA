@@ -86,3 +86,6 @@ session-*.md
 
 # Large local backups (do not let tooling snapshot these)
 /backup.zip
+
+# Local release bundles (built artifacts are not committed).
+/release/
