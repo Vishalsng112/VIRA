@@ -58,6 +58,10 @@ All notable changes to VIRA are documented here. The format follows
   snapshots, morning/evening plans, and a weekly meals/budget/chores fan-out.
 - Read-only local office MCP connector (`examples/mcp/office_server.py`) for
   demonstrating the Chief of Staff without external credentials.
+- VIRA Link **Agent Inbox**: unread notifications, full result text, schedule
+  list with next run, run-now, run history and scheduled-run timeline.
+- Backend support for the client: unread notification count and
+  `GET /api/v1/agent-schedules/{id}/runs/{run_id}` with a redacted timeline.
 - Authorized `knowledge_list` service/runtime helper for scoped knowledge review.
 - Scoped knowledge base for agents: a single `knowledge_items` store with
   `conversation`/`personal`/`agent`/`org`/`global` scopes, append-only revisions,

@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../../core/models/captured_event.dart';
 import '../../core/models/chat_models.dart';
 import '../../core/models/device_info.dart';
+import '../../core/models/agent_inbox.dart';
 import '../../core/utils/ids.dart';
 
 class ViraApiException implements Exception {
@@ -488,9 +489,94 @@ class ViraApi {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Agent inbox: proactive outputs and schedules
+  // ---------------------------------------------------------------------------
+
+  Future<List<AgentNotification>> notifications({
+    int limit = 100,
+    bool unreadOnly = false,
+  }) async {
+    final query = 'limit=$limit${unreadOnly ? '&unread_only=true' : ''}';
+    final body = await _decode(
+      await _send('GET', '/api/v1/notifications?$query', user: true),
+    );
+    return ((body['notifications'] as List?) ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => AgentNotification.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  Future<int> unreadNotificationCount() async {
+    final body = await _decode(
+      await _send('GET', '/api/v1/notifications/unread-count', user: true),
+    );
+    return (body['unread'] as num?)?.toInt() ?? 0;
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    await _decode(
+      await _send('POST', '/api/v1/notifications/$id/read', user: true),
+    );
+  }
+
+  Future<List<AgentSchedule>> agentSchedules() async {
+    final body = await _decode(
+      await _send('GET', '/api/v1/agent-schedules', user: true),
+    );
+    return ((body['schedules'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => AgentSchedule.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<void> runAgentSchedule(String scheduleId) async {
+    await _decode(
+      await _send(
+        'POST',
+        '/api/v1/agent-schedules/$scheduleId/run',
+        user: true,
+      ),
+    );
+  }
+
+  Future<List<AgentScheduleRun>> agentScheduleRuns(
+    String scheduleId, {
+    int limit = 50,
+  }) async {
+    final body = await _decode(
+      await _send(
+        'GET',
+        '/api/v1/agent-schedules/$scheduleId/runs?limit=$limit',
+        user: true,
+      ),
+    );
+    return ((body['runs'] as List?) ?? const [])
+        .whereType<Map>()
+        .map(
+          (item) => AgentScheduleRun.fromJson(Map<String, dynamic>.from(item)),
+        )
+        .toList();
+  }
+
+  Future<AgentScheduleRunDetail> agentScheduleRun(
+    String scheduleId,
+    String runId,
+  ) async {
+    final body = await _decode(
+      await _send(
+        'GET',
+        '/api/v1/agent-schedules/$scheduleId/runs/$runId',
+        user: true,
+      ),
+    );
+    return AgentScheduleRunDetail.fromJson(body);
+  }
+
   Future<Map<String, dynamic>> health() async =>
       _decode(await _send('GET', '/health', user: true));
-
   Future<Map<String, dynamic>> metrics() async =>
       _decode(await _send('GET', '/metrics', user: true));
 

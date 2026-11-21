@@ -200,4 +200,13 @@ def build_schedule_router(user_dep, kernel) -> APIRouter:
             raise HTTPException(404, "Schedule not found")
         return {"runs": schedules.list_runs(schedule_id, user.user_id, limit)}
 
+    @router.get("/agent-schedules/{schedule_id}/runs/{run_id}")
+    async def schedule_run_detail(schedule_id: str, run_id: str,
+                                  user=Depends(user_dep)):
+        run = schedules.get_run(run_id, schedule_id, user.user_id)
+        if not run:
+            raise HTTPException(404, "Schedule run not found")
+        from vira.agent_runtime.run_store import timeline
+        return {"run": run, "timeline": timeline(run.get("run_id") or "")}
+
     return router

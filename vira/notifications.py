@@ -97,6 +97,15 @@ def mark_read(user_id: int, notification_id: str) -> bool:
         ).rowcount)
 
 
+def unread_count(user_id: int) -> int:
+    with database.get_connection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS count FROM user_notifications "
+            "WHERE user_id = ? AND read_at IS NULL", (user_id,)
+        ).fetchone()
+    return int(row["count"] or 0)
+
+
 def register_push_token(device_id: str, platform: str, token: str) -> None:
     with database.transaction() as conn:
         conn.execute(

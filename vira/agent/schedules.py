@@ -356,6 +356,16 @@ def list_runs(schedule_id: str, user_id: int, limit: int = 50) -> List[Dict[str,
     return [dict(row) for row in rows]
 
 
+def get_run(run_id: str, schedule_id: str,
+            user_id: int) -> Optional[Dict[str, Any]]:
+    with database.get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM agent_schedule_runs WHERE id = ? AND schedule_id = ? "
+            "AND user_id = ?", (run_id, schedule_id, user_id)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def purge_runs(older_than_days: int = 30) -> int:
     cutoff = _iso(_now() - timedelta(days=max(1, older_than_days)))
     with database.transaction() as conn:

@@ -6,6 +6,7 @@ import '../features/chat/chat_page.dart';
 import '../features/dashboard/dashboard_page.dart';
 import '../features/devices/devices_page.dart';
 import '../features/insights/insights_page.dart';
+import '../features/inbox/agent_inbox_page.dart';
 import '../features/settings/settings_page.dart';
 
 class AppModule {
@@ -39,6 +40,13 @@ const _insightsModule = AppModule(
   icon: Icons.insights_outlined,
   selectedIcon: Icons.insights,
   builder: _insights,
+);
+const _inboxModule = AppModule(
+  id: 'inbox',
+  label: 'Inbox',
+  icon: Icons.inbox_outlined,
+  selectedIcon: Icons.inbox,
+  builder: _inbox,
 );
 const _chatModule = AppModule(
   id: 'chat',
@@ -80,6 +88,7 @@ List<AppModule> appModulesFor({required bool isAdmin}) => [
   _dashboardModule,
   _chatModule,
   _insightsModule,
+  _inboxModule,
   _activityModule,
   _devicesModule,
   if (isAdmin) _adminModule,
@@ -89,6 +98,7 @@ List<AppModule> appModulesFor({required bool isAdmin}) => [
 Widget _dashboard(BuildContext context) => const DashboardPage();
 Widget _chat(BuildContext context) => const ChatPage();
 Widget _insights(BuildContext context) => const InsightsPage();
+Widget _inbox(BuildContext context) => const AgentInboxPage();
 Widget _activity(BuildContext context) => const ActivityPage();
 Widget _devices(BuildContext context) => const DevicesPage();
 Widget _admin(BuildContext context) => const AdminPage();

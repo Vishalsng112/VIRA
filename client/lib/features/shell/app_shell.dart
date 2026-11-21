@@ -38,9 +38,9 @@ class _AppShellState extends State<AppShell> {
 
   static const _bottomOrder = [
     'dashboard',
+    'inbox',
     'chat',
     'insights',
-    'activity',
     'devices',
   ];
 

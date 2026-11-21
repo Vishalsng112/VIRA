@@ -8,6 +8,19 @@ for the five daily-use agents in the
 [agent roadmap](../dev/roadmap/agents.md). You can already schedule any
 installed agent; the five recommended agents are delivered next.
 
+## Where you see results
+
+- **VIRA Link → Inbox** (mobile and desktop client): unread agent updates,
+  full result text, agent schedules, next run time, run-now and run history.
+- **API**: `GET /api/v1/notifications`,
+  `GET /api/v1/agent-schedules`,
+  `GET /api/v1/agent-schedules/{id}/runs`.
+- **Webhook** (optional): the same notification payload can be forwarded to a
+  desktop notifier or FCM/APNs gateway.
+
+Native OS notification scheduling is not built in yet; VIRA Link shows an
+in-app inbox today.
+
 ## Recommended agents
 
 `GET /api/v1/agent-recipes` returns the onboarding catalog:

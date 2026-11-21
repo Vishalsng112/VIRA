@@ -21,6 +21,10 @@ def build_notification_router(user_dep, device_dep) -> APIRouter:
         return {"notifications": notifications.list_for_user(
             user.user_id, limit, unread_only)}
 
+    @router.get("/notifications/unread-count")
+    async def unread_notifications(user: UserPrincipal = Depends(user_dep)):
+        return {"unread": notifications.unread_count(user.user_id)}
+
     @router.post("/notifications/{notification_id}/read", status_code=204)
     async def read_notification(notification_id: str,
                                 user: UserPrincipal = Depends(user_dep)):

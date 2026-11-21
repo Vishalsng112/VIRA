@@ -262,6 +262,9 @@ class NotificationDeliveryTests(unittest.TestCase):
         item = notifications.create(1, "Hello")
         self.assertEqual(item["status"], "delivered")
         self.assertEqual(notifications.list_for_user(1)[0]["status"], "delivered")
+        self.assertEqual(notifications.unread_count(1), 1)
+        notifications.mark_read(1, item["id"])
+        self.assertEqual(notifications.unread_count(1), 0)
 
     def test_webhook_success_and_failure(self):
         item = notifications.create(1, "Hello", channel="webhook",
@@ -325,6 +328,19 @@ class ScheduleApiTests(unittest.TestCase):
 
         listed = self.client.get("/api/v1/agent-schedules")
         self.assertEqual(len(listed.json()["schedules"]), 1)
+
+        schedules.record_run(
+            item["id"], 1, agent_id="chatbot", run_id="run-1",
+            scheduled_for=item["next_run_at"], status="ok",
+            result="Morning brief result")
+        runs = self.client.get(
+            f"/api/v1/agent-schedules/{item['id']}/runs").json()["runs"]
+        self.assertEqual(runs[0]["result"], "Morning brief result")
+        detail = self.client.get(
+            f"/api/v1/agent-schedules/{item['id']}/runs/{runs[0]['id']}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["run"]["result"], "Morning brief result")
+        self.assertEqual(detail.json()["timeline"], [])
 
         patched = self.client.patch(
             f"/api/v1/agent-schedules/{item['id']}",

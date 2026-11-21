@@ -290,23 +290,142 @@ void main() {
     );
   });
 
-  test('diagnostic reports use the authenticated diagnostics endpoint', () async {
+  test(
+    'diagnostic reports use the authenticated diagnostics endpoint',
+    () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/api/v1/diagnostics');
+        expect(request.headers['Authorization'], 'Bearer session-123');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['platform'], 'linux');
+        expect(body['events'], isEmpty);
+        return http.Response(jsonEncode({'status': 'recorded'}), 200);
+      });
+      final api = ViraApi('http://localhost:8000/', client: client)
+        ..sessionId = 'session-123';
+      final result = await api.submitDiagnostics({
+        'platform': 'linux',
+        'app_version': '1.0.0',
+        'events': <Map<String, dynamic>>[],
+      });
+      expect(result['status'], 'recorded');
+    },
+  );
+
+  test('agent inbox and schedule routes parse the server contract', () async {
     final client = MockClient((request) async {
-      expect(request.method, 'POST');
-      expect(request.url.path, '/api/v1/diagnostics');
-      expect(request.headers['Authorization'], 'Bearer session-123');
-      final body = jsonDecode(request.body) as Map<String, dynamic>;
-      expect(body['platform'], 'linux');
-      expect(body['events'], isEmpty);
-      return http.Response(jsonEncode({'status': 'recorded'}), 200);
+      switch ('${request.method} ${request.url.path}') {
+        case 'GET /api/v1/notifications':
+          return http.Response(
+            jsonEncode({
+              'notifications': [
+                {
+                  'id': 'n1',
+                  'title': 'Morning brief',
+                  'body': 'Today: review the plan.',
+                  'kind': 'agent_schedule',
+                  'status': 'delivered',
+                  'channel': 'inapp',
+                  'created_at': '2026-11-21T07:30:00+00:00',
+                  'data': {
+                    'schedule_id': 's1',
+                    'run_id': 'run-uuid',
+                    'agent_id': 'morning-brief',
+                  },
+                },
+              ],
+            }),
+            200,
+          );
+        case 'GET /api/v1/notifications/unread-count':
+          return http.Response(jsonEncode({'unread': 1}), 200);
+        case 'POST /api/v1/notifications/n1/read':
+          return http.Response('{}', 200);
+        case 'GET /api/v1/agent-schedules':
+          return http.Response(
+            jsonEncode({
+              'schedules': [
+                {
+                  'id': 's1',
+                  'agent_id': 'morning-brief',
+                  'name': 'Morning brief',
+                  'message': 'Write my brief.',
+                  'schedule_type': 'daily',
+                  'time_of_day': '07:30',
+                  'timezone': 'Asia/Kolkata',
+                  'enabled': true,
+                  'channels': ['inapp'],
+                  'input': {'mode': 'morning'},
+                  'next_run_at': '2026-11-22T02:00:00+00:00',
+                },
+              ],
+            }),
+            200,
+          );
+        case 'POST /api/v1/agent-schedules/s1/run':
+          return http.Response(jsonEncode({'status': 'queued'}), 200);
+        case 'GET /api/v1/agent-schedules/s1/runs':
+          return http.Response(
+            jsonEncode({
+              'runs': [
+                {
+                  'id': 'row1',
+                  'schedule_id': 's1',
+                  'agent_id': 'morning-brief',
+                  'run_id': 'run-uuid',
+                  'status': 'ok',
+                  'result': 'Today: review the plan.',
+                  'error': null,
+                  'started_at': '2026-11-21T07:30:00+00:00',
+                },
+              ],
+            }),
+            200,
+          );
+        case 'GET /api/v1/agent-schedules/s1/runs/row1':
+          return http.Response(
+            jsonEncode({
+              'run': {
+                'id': 'row1',
+                'schedule_id': 's1',
+                'run_id': 'run-uuid',
+                'status': 'ok',
+                'result': 'Today: review the plan.',
+              },
+              'timeline': [
+                {
+                  'type': 'schedule.started',
+                  'data': {'schedule_id': 's1'},
+                },
+              ],
+            }),
+            200,
+          );
+      }
+      return http.Response('{}', 404);
     });
+
     final api = ViraApi('http://localhost:8000/', client: client)
       ..sessionId = 'session-123';
-    final result = await api.submitDiagnostics({
-      'platform': 'linux',
-      'app_version': '1.0.0',
-      'events': <Map<String, dynamic>>[],
-    });
-    expect(result['status'], 'recorded');
+    final notifications = await api.notifications();
+    expect(notifications.single.title, 'Morning brief');
+    expect(notifications.single.scheduleId, 's1');
+    expect(notifications.single.isRead, isFalse);
+    expect(await api.unreadNotificationCount(), 1);
+    await api.markNotificationRead('n1');
+
+    final schedules = await api.agentSchedules();
+    expect(schedules.single.agentId, 'morning-brief');
+    expect(schedules.single.cadence, 'Daily 07:30');
+    expect(schedules.single.input['mode'], 'morning');
+    await api.runAgentSchedule('s1');
+
+    final runs = await api.agentScheduleRuns('s1');
+    expect(runs.single.ok, isTrue);
+    expect(runs.single.runId, 'run-uuid');
+    final detail = await api.agentScheduleRun('s1', 'row1');
+    expect(detail.run.result, 'Today: review the plan.');
+    expect(detail.timeline.single['type'], 'schedule.started');
   });
 }

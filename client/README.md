@@ -14,6 +14,7 @@ web PWA, Linux AppImage, Windows desktop executable and macOS (Apple Silicon) ap
 - Captures device telemetry through modular collectors.
 - Captures **Android foreground app usage** through `UsageStatsManager` (after the user grants Usage Access), categorises apps, and keeps a local 30-day usage ledger.
 - Shows **Insights** with screen time, unlocks, top apps, focus/category breakdowns and rest suggestions.
+- Shows an **Agent Inbox** with proactive agent results, unread notifications, schedules, next-run times, run-now and run history.
 - Captures **battery**, **screen/session**, **device health** (storage/memory/thermal) and **desktop idle** signals.
 - Supports **focus sessions** with a local ledger and `device.focus.session` events.
 - Captures **device health** (storage, memory, thermal, battery temperature) and **desktop idle** state.

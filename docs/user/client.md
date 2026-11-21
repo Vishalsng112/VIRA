@@ -20,6 +20,8 @@ which artifact is published.
   offline and drains automatically when the server returns.
 - Shows local Insights — screen time, unlocks, top apps, focus breakdown and
   rest suggestions.
+- **Agent Inbox** — proactive agent results, unread notifications, schedules,
+  next-run times, run-now and run history.
 - Polls server-to-device commands such as pause/resume capture, config update and
   queue flush.
 - Lists, renames and revokes devices linked to your account.
