@@ -48,6 +48,9 @@ def _deliver_notifications(payload: Dict[str, Any]) -> str:
         webhook_url=config.get("webhook_url") or None,
         timeout=float(config.get("webhook_timeout_seconds", 10)),
         max_attempts=int(config.get("max_attempts", 3)),
+        push_relay_url=config.get("push_relay_url") or None,
+        push_relay_token=config.get("push_relay_token") or None,
+        push_timeout=float(config.get("push_timeout_seconds", 10)),
     )
     return (f"checked={result['checked']} delivered={result['delivered']} "
             f"failed={result['failed']}")

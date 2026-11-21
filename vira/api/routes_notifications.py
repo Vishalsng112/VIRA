@@ -1,6 +1,10 @@
 """Notification queue and push-token endpoints."""
+import asyncio
+import json
+
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
+from starlette.responses import StreamingResponse
 
 from vira import errors
 from vira.auth.principals import DevicePrincipal, UserPrincipal
@@ -24,6 +28,33 @@ def build_notification_router(user_dep, device_dep) -> APIRouter:
     @router.get("/notifications/unread-count")
     async def unread_notifications(user: UserPrincipal = Depends(user_dep)):
         return {"unread": notifications.unread_count(user.user_id)}
+
+    @router.get("/notifications/stream")
+    async def stream_notifications(user: UserPrincipal = Depends(user_dep)):
+        """Live NDJSON stream of new in-app notifications for this user."""
+        queue = notifications.subscribe(user.user_id)
+
+        async def events():
+            try:
+                yield json.dumps({"type": "ready"}) + "\n"
+                while True:
+                    try:
+                        item = await asyncio.wait_for(queue.get(), timeout=20)
+                    except asyncio.TimeoutError:
+                        yield json.dumps({"type": "heartbeat"}) + "\n"
+                        continue
+                    yield json.dumps(
+                        {"type": "notification", "notification": item},
+                        default=str,
+                    ) + "\n"
+            finally:
+                notifications.unsubscribe(user.user_id, queue)
+
+        return StreamingResponse(
+            events(),
+            media_type="application/x-ndjson",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @router.post("/notifications/{notification_id}/read", status_code=204)
     async def read_notification(notification_id: str,

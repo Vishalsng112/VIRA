@@ -6,6 +6,27 @@ the **Decision proposal** issue template.
 
 Status values: **Proposed**, **Accepted**, **Superseded**, **Rejected**.
 
+## 2026-11-21 — Live stream plus relay for agent notifications
+
+**Status:** Accepted
+
+**Context:** Proactive agents need to reach users outside the API. VIRA is
+self-hosted, so requiring a cloud push provider for every install would break
+the local-first story. At the same time, an app-closed mobile device cannot keep
+a long-lived stream.
+
+**Decision:** Use a two-path delivery model. VIRA Link keeps an authenticated
+NDJSON notification stream open while it is connected and shows native OS
+notifications from it. For app-closed or multi-process delivery, schedules can
+use the `push` channel; device tokens are forwarded to a configurable relay that
+can speak FCM/APNs or another gateway. Webhook and push channels share retries,
+dedupe and audit.
+
+**Consequences:** the default install works without cloud credentials and still
+has native alerts while the client runs. Remote delivery is explicit
+configuration. Multi-replica API deployments must use the relay rather than the
+per-process stream.
+
 ## 2026-11-21 — Proactive schedules run inside the agent orchestrator
 
 **Status:** Accepted

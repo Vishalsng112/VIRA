@@ -35,6 +35,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   String _selectedId = 'dashboard';
+  late final AppController _controller;
 
   static const _bottomOrder = [
     'dashboard',
@@ -43,6 +44,28 @@ class _AppShellState extends State<AppShell> {
     'insights',
     'devices',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AppScope.of(context, listen: false);
+    _controller.addListener(_handleModuleRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handleModuleRequest());
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_handleModuleRequest);
+    super.dispose();
+  }
+
+  void _handleModuleRequest() {
+    final requested = _controller.requestedModule;
+    if (requested == null) return;
+    _controller.consumeRequestedModule();
+    if (!mounted) return;
+    setState(() => _selectedId = requested);
+  }
 
   void _open(String id) {
     if (id == _selectedId) return;

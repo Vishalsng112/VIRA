@@ -6,6 +6,7 @@ import '../../app/app_scope.dart';
 import '../../app/widgets.dart';
 import '../../core/config/app_config.dart';
 import '../../data/storage/outbox_store.dart';
+import '../../services/notifications/notification_hub.dart';
 import '../../services/sync/sync_service.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -131,8 +132,7 @@ class SettingsPage extends StatelessWidget {
                 const SizedBox(height: 16),
                 SectionCard(
                   title: 'Permissions and notifications',
-                  subtitle:
-                      'Only the signals you enable are captured. Some also need an OS permission.',
+                  subtitle: 'Only the signals you enable are captured. Some also need an OS permission.',
                   child: Column(
                     children: [
                       for (final state in controller.collectors)
@@ -172,18 +172,33 @@ class SettingsPage extends StatelessWidget {
                         onChanged: controller.setBreakRemindersEnabled,
                       ),
                       const Divider(height: 20),
-                      const ListTile(
+                      ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.notifications_none_outlined),
-                        title: Text('OS notifications'),
-                        subtitle: Text(
-                          'Not scheduled by this build. VIRA will request the '
-                          'notification permission when OS notifications ship; '
-                          'in-app reminders work without it.',
+                        leading: const Icon(
+                          Icons.notifications_active_outlined,
                         ),
-                        trailing: StatusPill(
-                          label: 'In-app only',
-                          tone: StatusTone.info,
+                        title: const Text('Agent notifications'),
+                        subtitle: const Text(
+                          'Show native alerts for scheduled agent results while '
+                          'VIRA Link is running. Remote delivery when the app is '
+                          'closed needs a configured push relay.',
+                        ),
+                        trailing: TextButton(
+                          onPressed: () async {
+                            final granted = await NotificationHub.instance
+                                .requestPermission();
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  granted
+                                      ? 'Native agent notifications are enabled.'
+                                      : 'Notification permission was not granted.',
+                                ),
+                              ),
+                            );
+                          },
+                          child: const Text('Enable'),
                         ),
                       ),
                     ],
@@ -294,8 +309,7 @@ class SettingsPage extends StatelessWidget {
                 const SizedBox(height: 16),
                 SectionCard(
                   title: 'Diagnostics',
-                  subtitle:
-                      'Off by default. Diagnostics stay on this device unless you choose to send them.',
+                  subtitle: 'Off by default. Diagnostics stay on this device unless you choose to send them.',
                   child: Column(
                     children: [
                       SwitchListTile(
@@ -686,7 +700,9 @@ class SettingsPage extends StatelessWidget {
     if (!controller.diagnosticsEnabled) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Turn on anonymous diagnostics first, then send a report.'),
+          content: Text(
+            'Turn on anonymous diagnostics first, then send a report.',
+          ),
         ),
       );
       return;
@@ -696,7 +712,8 @@ class SettingsPage extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          error ?? 'Diagnostic report sent. Thank you for helping improve VIRA.',
+          error ??
+              'Diagnostic report sent. Thank you for helping improve VIRA.',
         ),
       ),
     );

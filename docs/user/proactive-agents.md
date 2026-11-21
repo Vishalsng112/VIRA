@@ -13,14 +13,13 @@ installed agent; the five recommended agents are delivered next.
 - **VIRA Link → Inbox** (mobile and desktop client): unread agent updates,
   full result text, agent recipe cards, schedule creation/editing, pause/resume,
   delete, next run time, run-now and run history.
+- **Native notifications** in VIRA Link while it is running, after the user
+  enables the permission in Settings.
 - **API**: `GET /api/v1/notifications`,
   `GET /api/v1/agent-schedules`,
   `GET /api/v1/agent-schedules/{id}/runs`.
-- **Webhook** (optional): the same notification payload can be forwarded to a
-  desktop notifier or FCM/APNs gateway.
-
-Native OS notification scheduling is not built in yet; VIRA Link shows an
-in-app inbox today.
+- **Webhook or push relay** (optional): forward notifications to a desktop
+  notifier, FCM/APNs gateway or automation service.
 
 ## Recommended agents
 
@@ -314,18 +313,45 @@ curl -s -X POST http://localhost:8000/api/v1/notifications/<id>/read \
   -H "Authorization: Bearer <session>"
 ```
 
-External delivery uses a JSON webhook, which can be an FCM/APNs gateway, a
-desktop notifier or an automation service. Configure it in `config.yaml`:
+### Native notifications in VIRA Link
+
+VIRA Link keeps a live notification stream open while it is running and shows
+native alerts for new agent results. Enable the OS permission from
+**Settings → Permissions and notifications → Agent notifications → Enable**.
+Tapping an alert opens the Agent Inbox.
+
+This covers foreground and desktop use. Delivery while the app is fully closed
+needs a remote push gateway (next section). The live stream is held by the API
+process serving the client; if you run several API replicas, use the push relay
+or webhook for cross-process delivery.
+
+### External delivery
+
+External delivery uses a JSON webhook or a push relay, which can be an
+FCM/APNs gateway, a desktop notifier or an automation service. Configure it in
+`config.yaml`:
 
 ```yaml
 notifications:
   webhook_url: "https://notify.example.com/vira"
   webhook_timeout_seconds: 10
   max_attempts: 3
+  push_relay_url: "https://push.example.com/vira"
+  push_relay_token: "shared-secret"
+  push_timeout_seconds: 10
 ```
 
-Then add `"webhook"` to the schedule's `channels`. The worker retries pending
-deliveries and records the last error.
+Then add `"webhook"` or `"push"` to the schedule's `channels`. The worker
+retries pending deliveries and records the last error. The push relay receives:
+
+```json
+{"tokens": [{"device_id": "...", "platform": "android", "token": "..."}],
+ "notification": {"id": "...", "title": "...", "body": "...", "data": {}}}
+```
+
+The relay only has tokens that a client has registered through
+`POST /api/v1/devices/{id}/push-registration`. An FCM/APNs-enabled build must
+provide those tokens; the default VIRA Link build uses the live in-app stream.
 
 ## Safety and limits
 

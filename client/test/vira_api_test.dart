@@ -269,6 +269,37 @@ void main() {
     },
   );
 
+  test('notification stream yields parsed agent notifications', () async {
+    final client = MockClient((request) async {
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/v1/notifications/stream');
+      expect(request.headers['Authorization'], 'Bearer session-123');
+      return http.Response(
+        '${jsonEncode({'type': 'ready'})}\n'
+        '${jsonEncode({
+          'type': 'notification',
+          'notification': {
+            'id': 'n1',
+            'title': 'Morning brief',
+            'body': 'Today: review the plan.',
+            'kind': 'agent_schedule',
+            'status': 'delivered',
+            'channel': 'inapp',
+            'created_at': '2026-11-21T07:30:00+00:00',
+            'data': {'schedule_id': 's1'},
+          },
+        })}\n',
+        200,
+      );
+    });
+    final api = ViraApi('http://localhost:8000/', client: client)
+      ..sessionId = 'session-123';
+    final items = await api.streamNotifications().toList();
+    expect(items.single.id, 'n1');
+    expect(items.single.title, 'Morning brief');
+    expect(items.single.scheduleId, 's1');
+  });
+
   test('stream labels use the server status, tool and check fields', () {
     expect(
       const ChatStreamEvent('status', {'label': 'Thinking'}).label,

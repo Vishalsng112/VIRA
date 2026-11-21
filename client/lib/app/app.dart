@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'app_controller.dart';
 import 'app_scope.dart';
+import 'notification_host.dart';
 import 'theme.dart';
 import 'widgets.dart';
 import '../core/config/app_config.dart';
@@ -52,7 +53,12 @@ class _ViraLinkAppState extends State<ViraLinkApp> with WidgetsBindingObserver {
           AppThemeMode.light => ThemeMode.light,
           AppThemeMode.dark => ThemeMode.dark,
         },
-        home: const AppBackground(child: AppShell()),
+        home: AppBackground(
+          child: NotificationHost(
+            controller: widget.controller,
+            child: const AppShell(),
+          ),
+        ),
       ),
     ),
   );

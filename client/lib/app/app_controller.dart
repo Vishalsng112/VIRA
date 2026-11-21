@@ -57,6 +57,7 @@ class AppController extends ChangeNotifier {
   bool _pollingCommands = false;
   Timer? _commandTimer;
   int _pendingCount = 0;
+  String? _requestedModule;
 
   static Future<AppController> create() async {
     final controller = AppController._(
@@ -98,6 +99,17 @@ class AppController extends ChangeNotifier {
   AppThemeMode get themeMode => settings.themeMode;
   bool get diagnosticsEnabled => settings.diagnosticsEnabled;
   bool get breakRemindersEnabled => settings.breakRemindersEnabled;
+  String? get requestedModule => _requestedModule;
+
+  /// Ask the shell to open a module (used by notification taps).
+  void requestModule(String id) {
+    _requestedModule = id;
+    notifyListeners();
+  }
+
+  void consumeRequestedModule() {
+    _requestedModule = null;
+  }
 
   Future<void> setThemeMode(AppThemeMode mode) async {
     if (settings.themeMode == mode) return;

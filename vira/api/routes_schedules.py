@@ -54,7 +54,7 @@ def _check_timezone(name: str) -> str:
 
 
 def _channels(values: Optional[List[str]]) -> List[str]:
-    allowed = {"inapp", "webhook"}
+    allowed = {"inapp", "webhook", "push"}
     chosen = [str(value) for value in (values or ["inapp"]) if str(value) in allowed]
     return chosen or ["inapp"]
 

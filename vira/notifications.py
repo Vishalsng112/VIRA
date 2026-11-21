@@ -10,11 +10,13 @@ import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from loguru import logger
 
 from vira.auth import database
+
+_SUBSCRIBERS: Dict[int, Set[Any]] = {}
 
 
 def _now() -> str:
@@ -28,6 +30,32 @@ def _row(row: Any) -> Dict[str, Any]:
     except ValueError:
         item["data"] = {}
     return item
+
+
+def subscribe(user_id: int):
+    """Return a queue that receives new in-app notifications for this user."""
+    import asyncio
+
+    queue: Any = asyncio.Queue()
+    _SUBSCRIBERS.setdefault(int(user_id), set()).add(queue)
+    return queue
+
+
+def unsubscribe(user_id: int, queue: Any) -> None:
+    queues = _SUBSCRIBERS.get(int(user_id))
+    if not queues:
+        return
+    queues.discard(queue)
+    if not queues:
+        _SUBSCRIBERS.pop(int(user_id), None)
+
+
+def _publish(user_id: int, item: Dict[str, Any]) -> None:
+    for queue in list(_SUBSCRIBERS.get(int(user_id), ())):
+        try:
+            queue.put_nowait(item)
+        except Exception:
+            pass
 
 
 def create(user_id: int, title: str, body: str = "", kind: str = "system",
@@ -73,8 +101,11 @@ def create(user_id: int, title: str, body: str = "", kind: str = "system",
                 if existing:
                     return _row(existing)
             raise
-    return {"id": notification_id, "title": title, "body": body, "kind": kind,
-            "channel": channel, "status": status}
+    result = {"id": notification_id, "title": title, "body": body,
+              "kind": kind, "channel": channel, "status": status,
+              "data": data or {}}
+    _publish(user_id, result)
+    return result
 
 
 def list_for_user(user_id: int, limit: int = 100, unread_only: bool = False) -> List[Dict[str, Any]]:
@@ -116,11 +147,38 @@ def register_push_token(device_id: str, platform: str, token: str) -> None:
         )
 
 
-def _post_webhook(url: str, payload: Dict[str, Any], timeout: float = 10) -> bool:
+def push_tokens_for_user(user_id: int) -> List[Dict[str, str]]:
+    """Device push tokens the user may receive notifications on."""
+    with database.get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT t.device_id, t.platform, t.token
+            FROM device_push_tokens t
+            JOIN devices d ON d.id = t.device_id
+            LEFT JOIN user_device_access a
+                ON a.device_id = d.id AND a.user_id = ? AND a.status = 'active'
+            WHERE (d.created_by_user_id = ? OR a.user_id IS NOT NULL)
+              AND d.status = 'active' AND d.revoked_at IS NULL
+            """,
+            (user_id, user_id),
+        ).fetchall()
+    return [
+        {"device_id": row["device_id"], "platform": row["platform"],
+         "token": row["token"]}
+        for row in rows
+    ]
+
+
+def _post_webhook(url: str, payload: Dict[str, Any], timeout: float = 10,
+                  headers: Optional[Dict[str, str]] = None) -> bool:
     request = urllib.request.Request(
         url,
         data=json.dumps(payload, default=str).encode("utf-8"),
-        headers={"Content-Type": "application/json", "User-Agent": "VIRA-notifier"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "VIRA-notifier",
+            **(headers or {}),
+        },
         method="POST",
     )
     try:
@@ -131,28 +189,55 @@ def _post_webhook(url: str, payload: Dict[str, Any], timeout: float = 10) -> boo
         return False
 
 
+def _payload(item: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": item["id"],
+        "user_id": item["user_id"],
+        "title": item["title"],
+        "body": item["body"],
+        "kind": item["kind"],
+        "data": item.get("data") or {},
+        "created_at": item.get("created_at"),
+    }
+
+
 def _deliver_one(item: Dict[str, Any], *, webhook_url: Optional[str],
-                 timeout: float) -> bool:
+                 timeout: float, push_relay_url: Optional[str] = None,
+                 push_relay_token: Optional[str] = None,
+                 push_timeout: float = 10) -> bool:
     channel = item.get("channel") or "inapp"
     if channel == "webhook":
         if not webhook_url:
             logger.warning("Webhook notification {} has no configured URL", item["id"])
             return False
-        return _post_webhook(webhook_url, {
-            "id": item["id"],
-            "user_id": item["user_id"],
-            "title": item["title"],
-            "body": item["body"],
-            "kind": item["kind"],
-            "data": item.get("data") or {},
-            "created_at": item.get("created_at"),
-        }, timeout=timeout)
+        return _post_webhook(webhook_url, _payload(item), timeout=timeout)
+    if channel == "push":
+        if not push_relay_url:
+            logger.warning("Push notification {} has no relay URL", item["id"])
+            return False
+        tokens = push_tokens_for_user(int(item["user_id"]))
+        if not tokens:
+            logger.info("No push tokens registered for user {}", item["user_id"])
+            return False
+        headers = (
+            {"Authorization": f"Bearer {push_relay_token}"}
+            if push_relay_token else None
+        )
+        return _post_webhook(
+            push_relay_url,
+            {"tokens": tokens, "notification": _payload(item)},
+            timeout=push_timeout,
+            headers=headers,
+        )
     # Unknown external channels are failed rather than retried forever.
     return False
 
 
 def deliver_pending(limit: int = 50, *, webhook_url: Optional[str] = None,
-                    timeout: float = 10, max_attempts: int = 3) -> Dict[str, int]:
+                    timeout: float = 10, max_attempts: int = 3,
+                    push_relay_url: Optional[str] = None,
+                    push_relay_token: Optional[str] = None,
+                    push_timeout: float = 10) -> Dict[str, int]:
     """Deliver queued external notifications. Safe to run periodically."""
     limit = max(1, min(int(limit), 200))
     max_attempts = max(1, int(max_attempts))
@@ -166,7 +251,10 @@ def deliver_pending(limit: int = 50, *, webhook_url: Optional[str] = None,
     delivered = failed = 0
     for row in rows:
         item = _row(row)
-        success = _deliver_one(item, webhook_url=webhook_url, timeout=timeout)
+        success = _deliver_one(
+            item, webhook_url=webhook_url, timeout=timeout,
+            push_relay_url=push_relay_url, push_relay_token=push_relay_token,
+            push_timeout=push_timeout)
         attempts = int(item.get("attempts") or 0) + 1
         now = _now()
         with database.transaction() as conn:

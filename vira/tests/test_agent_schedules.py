@@ -286,6 +286,44 @@ class NotificationDeliveryTests(unittest.TestCase):
                    if row["id"] == failed["id"])
         self.assertEqual(row["status"], "failed")
 
+    def test_live_stream_receives_new_notifications(self):
+        queue = notifications.subscribe(1)
+        try:
+            item = notifications.create(1, "Live update", "hello")
+            received = queue.get_nowait()
+            self.assertEqual(received["id"], item["id"])
+        finally:
+            notifications.unsubscribe(1, queue)
+
+    def test_push_delivery_uses_device_tokens(self):
+        with database.transaction() as conn:
+            conn.execute(
+                "INSERT INTO devices (id, display_name, platform, device_type, "
+                "capabilities, capability_status, status, is_server_local, "
+                "created_by_user_id, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, '[]', '{}', 'active', 0, ?, ?, ?)",
+                ("dev1", "Phone", "android", "phone", 1,
+                 "2026-11-21T00:00:00+00:00", "2026-11-21T00:00:00+00:00"))
+        notifications.register_push_token("dev1", "android", "token-abc")
+        item = notifications.create(1, "Push update", "body", channel="push",
+                                    dedupe_key="push-1")
+        with mock.patch("vira.notifications._post_webhook",
+                        return_value=True) as post:
+            result = notifications.deliver_pending(
+                push_relay_url="https://relay.test",
+                push_relay_token="secret",
+                max_attempts=2,
+            )
+        self.assertEqual(result["delivered"], 1)
+        payload = post.call_args.args[1]
+        self.assertEqual(payload["tokens"][0]["token"], "token-abc")
+        self.assertEqual(payload["notification"]["id"], item["id"])
+        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"],
+                         "Bearer secret")
+        row = next(row for row in notifications.list_for_user(1)
+                   if row["id"] == item["id"])
+        self.assertEqual(row["status"], "delivered")
+
 
 class ScheduleApiTests(unittest.TestCase):
     def setUp(self):

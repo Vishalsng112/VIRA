@@ -62,6 +62,10 @@ All notable changes to VIRA are documented here. The format follows
   list with next run, run-now, run history and scheduled-run timeline.
 - VIRA Link **schedule management**: agent recipe cards, create/edit, pause/
   resume, delete, timezone, quiet hours, mode selection and webhook channel.
+- VIRA Link **native agent notifications**: live NDJSON notification stream,
+  local OS notifications, Settings permission flow and tap-to-open Agent Inbox.
+- Server **push delivery channel**: per-user device tokens sent to a configurable
+  FCM/APNs/push relay with retries and dedupe.
 - Backend recipe metadata (`schedule_modes`, `default_mode`) for client forms.
 - Backend support for the client: unread notification count and
   `GET /api/v1/agent-schedules/{id}/runs/{run_id}` with a redacted timeline.

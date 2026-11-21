@@ -53,6 +53,7 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
   TimeOfDay _quietStart = const TimeOfDay(hour: 22, minute: 0);
   TimeOfDay _quietEnd = const TimeOfDay(hour: 7, minute: 0);
   bool _webhook = false;
+  bool _push = false;
   String? _mode;
   bool _saving = false;
   bool get _editing => widget.existing != null;
@@ -88,6 +89,7 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
       _quietStart = _parseTime(existing.quietHoursStart) ?? _quietStart;
       _quietEnd = _parseTime(existing.quietHoursEnd) ?? _quietEnd;
       _webhook = existing.channels.contains('webhook');
+      _push = existing.channels.contains('push');
       _mode = existing.input['mode']?.toString();
     } else {
       _scheduleType = defaults['schedule_type']?.toString() ?? 'daily';
@@ -162,7 +164,11 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
       ...?widget.existing?.input,
       if (_mode != null && _mode!.isNotEmpty) 'mode': _mode,
     };
-    final channels = <String>['inapp', if (_webhook) 'webhook'];
+    final channels = <String>[
+      'inapp',
+      if (_webhook) 'webhook',
+      if (_push) 'push',
+    ];
     setState(() => _saving = true);
     try {
       if (_editing) {
@@ -396,6 +402,16 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
               ),
               value: _webhook,
               onChanged: (value) => setState(() => _webhook = value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Also deliver by push'),
+              subtitle: const Text(
+                'Uses the server push relay (FCM/APNs or another gateway). '
+                'Native alerts in VIRA Link do not need this.',
+              ),
+              value: _push,
+              onChanged: (value) => setState(() => _push = value),
             ),
             const SizedBox(height: 18),
             FilledButton.icon(

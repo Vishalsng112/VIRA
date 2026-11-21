@@ -23,6 +23,9 @@ which artifact is published.
 - **Agent Inbox** — proactive agent results, unread notifications, agent recipe
   cards, schedule creation/editing, pause/resume, delete, next-run times,
   run-now and run history.
+- **Native agent notifications** — a live notification stream while VIRA Link is
+  running, with an OS permission toggle in Settings. Notification taps open the
+  Agent Inbox.
 - Polls server-to-device commands such as pause/resume capture, config update and
   queue flush.
 - Lists, renames and revokes devices linked to your account.

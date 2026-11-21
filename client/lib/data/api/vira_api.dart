@@ -330,6 +330,55 @@ class ViraApi {
     }
   }
 
+  Stream<AgentNotification> streamNotifications() async* {
+    final request = http.Request('GET', _uri('/api/v1/notifications/stream'))
+      ..headers.addAll({
+        ..._headers(user: true),
+        'Accept': 'application/x-ndjson',
+      });
+    http.StreamedResponse response;
+    try {
+      response = await _client
+          .send(request)
+          .timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      throw ViraApiException(0, 'timeout', 'Notification stream timed out.');
+    } on Object {
+      throw ViraApiException(
+        0,
+        'network_error',
+        'Cannot reach the VIRA notification stream.',
+      );
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ViraApiException(
+        response.statusCode,
+        _fallbackCode(response.statusCode),
+        _fallbackMessage(response.statusCode),
+      );
+    }
+    final lines = response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+    await for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) continue;
+      Map<String, dynamic> data;
+      try {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is! Map) continue;
+        data = Map<String, dynamic>.from(decoded);
+      } on FormatException {
+        continue;
+      }
+      if (data['type'] != 'notification') continue;
+      final item = data['notification'];
+      if (item is Map) {
+        yield AgentNotification.fromJson(Map<String, dynamic>.from(item));
+      }
+    }
+  }
+
   Future<(DeviceInfo, String)> registerDevice({
     required String displayName,
     required DeviceProfile profile,

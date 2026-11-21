@@ -162,6 +162,11 @@ notifications:
   webhook_url: ""
   webhook_timeout_seconds: 10
   max_attempts: 3
+  # Push relay for FCM/APNs or another gateway. The relay receives
+  # {"tokens":[...], "notification":{...}} and must deliver to each token.
+  push_relay_url: ""
+  push_relay_token: ""
+  push_timeout_seconds: 10
 
 metrics:
   enabled: true
