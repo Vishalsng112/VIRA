@@ -38,11 +38,12 @@
     objects: null, releases: null, selectedDevice: null,
     notifications: null, schedules: null, recipes: null, unread: 0,
     scheduleRuns: null, selectedSchedule: null, editingScheduleId: null,
-    events: [], eventCount: 0, paused: false,
+    events: [], eventCount: 0, paused: false, authFailed: false,
     stream: "connecting", // connecting | connected | disconnected
     loaded: false,
   };
   let eventSource = null;
+  let refreshTimer = null;
 
   /* ---------- helpers ---------- */
   const esc = (v) => String(v ?? "")
@@ -151,8 +152,15 @@
 
   /* ---------- network ---------- */
   async function fetchWithAuth(url, options = {}) {
+    if (state.authFailed) return null;
     const res = await fetch(url, { credentials: "include", ...options });
-    if (res.status === 401) { window.location.href = "/login"; return null; }
+    if (res.status === 401) {
+      // A stale or revoked session should stop the polling loop, not spam 401s.
+      state.authFailed = true;
+      if (refreshTimer) clearInterval(refreshTimer);
+      window.location.href = "/login";
+      return null;
+    }
     return res;
   }
 
@@ -1263,6 +1271,7 @@
 
   /* ---------- refresh ---------- */
   async function refreshAll() {
+    if (state.authFailed) return;
     $("refresh-btn").classList.add("is-busy");
     await Promise.allSettled([
       load("user", loadUser), load("health", loadHealth), load("metrics", loadMetrics),
@@ -1775,5 +1784,5 @@
   updateEventMeta();
   refreshAll();
   connectStream();
-  setInterval(refreshAll, REFRESH_MS);
+  refreshTimer = setInterval(() => { if (!document.hidden && !state.authFailed) refreshAll(); }, REFRESH_MS);
 })();

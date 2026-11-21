@@ -25,7 +25,8 @@ which artifact is published.
   run-now and run history.
 - **Native agent notifications** — a live notification stream while VIRA Link is
   running, with an OS permission toggle in Settings. Notification taps open the
-  Agent Inbox.
+  Agent Inbox. Builds with Firebase options also register an FCM token for
+  delivery while the app is closed.
 - Polls server-to-device commands such as pause/resume capture, config update and
   queue flush.
 - Lists, renames and revokes devices linked to your account.

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../app/app_controller.dart';
+import 'firebase_push.dart';
 import 'local_notifications.dart';
 
 /// Keeps a live notification stream open while VIRA Link is connected.
@@ -29,6 +30,7 @@ class NotificationHub {
     await LocalNotifications.instance.initialize(
       onOpen: () async => controller.requestModule('inbox'),
     );
+    await PushRegistrationService.instance.start(controller);
     _connect();
   }
 
@@ -40,8 +42,11 @@ class NotificationHub {
     _subscription = null;
   }
 
-  Future<bool> requestPermission() =>
-      LocalNotifications.instance.requestPermission();
+  Future<bool> requestPermission() async {
+    final local = await LocalNotifications.instance.requestPermission();
+    final push = await PushRegistrationService.instance.requestPermission();
+    return local || push;
+  }
 
   void _connect() {
     if (!_running) return;

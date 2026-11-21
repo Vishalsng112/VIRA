@@ -64,8 +64,13 @@ All notable changes to VIRA are documented here. The format follows
   resume, delete, timezone, quiet hours, mode selection and webhook channel.
 - VIRA Link **native agent notifications**: live NDJSON notification stream,
   local OS notifications, Settings permission flow and tap-to-open Agent Inbox.
-- Server **push delivery channel**: per-user device tokens sent to a configurable
-  FCM/APNs/push relay with retries and dedupe.
+- VIRA Link **remote push**: optional Firebase Messaging token registration from
+  dart-defines, with Android delivery while the app is closed.
+- Server **push delivery channel**: device tokens sent via a configurable relay
+  or directly through FCM HTTP v1 with a service account.
+- Android build configuration for notifications (compileSdk 37, desugaring,
+  POST_NOTIFICATIONS).
+- FCM sender tests with JWT exchange and message payload validation.
 - Web dashboard **Inbox** view: agent notifications, recipe shortcuts, schedule
   create/edit/pause/delete, run-now and recent run history.
 - Backend recipe metadata (`schedule_modes`, `default_mode`) for client forms.
@@ -107,6 +112,16 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Fixed
 
+- Stale dashboard sessions no longer poll protected endpoints forever: the
+  dashboard stops its refresh timer and redirects to login on the first 401.
+- A revoked or expired device credential now stops the command poller and sync
+  loop, clears the stale device credential and returns to sign-in with an
+  actionable message instead of repeating 401s every 30 seconds.
+- Cancelling services now also cancels the device command timer.
+- The docs build now works on Python 3.12 by installing `setuptools` for
+  `distutils`, and the agent roadmap no longer links outside the docs tree.
+- Updated `mcp` to 1.30.0, `aiohttp` to 3.14.4 and `python-multipart` to
+  0.0.31 to clear the `pip-audit` findings.
 - `AgentMessageBus.unsubscribe()` now removes the registered callback instead of
   silently keeping the wrapper; bound methods can be unsubscribed too.
 - OpenAI and Anthropic `generate_structured()` now return a parsed `dict` (and

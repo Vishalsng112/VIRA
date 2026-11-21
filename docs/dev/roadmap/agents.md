@@ -16,7 +16,7 @@ Related documents:
 
 - [Agent architectures](../architecture/agent-architectures.md)
 - [Agent design](../architecture/agent-design.md)
-- [Product roadmap](../../../ROADMAP.md)
+- [Product roadmap](https://github.com/Vishalsng112/VIRA/blob/main/ROADMAP.md)
 - [Server roadmap](server.md)
 
 ---

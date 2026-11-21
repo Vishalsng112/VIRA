@@ -58,6 +58,7 @@ class AppController extends ChangeNotifier {
   Timer? _commandTimer;
   int _pendingCount = 0;
   String? _requestedModule;
+  bool _deviceAuthFailed = false;
 
   static Future<AppController> create() async {
     final controller = AppController._(
@@ -136,6 +137,7 @@ class AppController extends ChangeNotifier {
 
   Future<void> _boot() async {
     try {
+      _deviceAuthFailed = false;
       _profile = await probe.profile();
       await settings.ensureInstallationId();
       _stored = await credentials.load();
@@ -236,9 +238,10 @@ class AppController extends ChangeNotifier {
       }
       return isAdmin;
     } on ViraApiException catch (error) {
-      if (error.isAuthFailure && _isAdmin) {
-        _isAdmin = false;
-        notifyListeners();
+      if (error.isAuthFailure) {
+        await _handleAuthFailure(
+          'Your session expired. Sign in again to reconnect VIRA Link.',
+        );
       }
       rethrow;
     }
@@ -302,6 +305,7 @@ class AppController extends ChangeNotifier {
       _api = api;
       _isAdmin = isAdmin;
       _currentDevice = device;
+      _deviceAuthFailed = false;
       await _startServices();
       _state = AppConnectionState.connected;
       unawaited(refreshDevices());
@@ -802,13 +806,27 @@ class AppController extends ChangeNotifier {
           );
         }
       }
-    } on ViraApiException {
+    } on ViraApiException catch (error) {
+      if (error.isAuthFailure) {
+        await _handleAuthFailure(
+          'This device credential expired or was revoked. Sign in again to re-enroll this device.',
+        );
+      }
       // Offline or command endpoint unavailable; retry on the next tick.
     } on Object {
       // Never let remote-control polling affect capture/sync.
     } finally {
       _pollingCommands = false;
     }
+  }
+
+  Future<void> _handleAuthFailure(String message) async {
+    if (_deviceAuthFailed) return;
+    _deviceAuthFailed = true;
+    await disconnect();
+    _error = message;
+    _state = AppConnectionState.disconnected;
+    notifyListeners();
   }
 
   Future<Map<String, dynamic>> _applyCommand(
@@ -887,6 +905,14 @@ class AppController extends ChangeNotifier {
 
   void _onSyncChanged() {
     _pendingCount = _sync?.snapshot.value.pending ?? _pendingCount;
+    if (_sync?.snapshot.value.state == SyncState.revoked &&
+        !_deviceAuthFailed) {
+      unawaited(
+        _handleAuthFailure(
+          'This device credential expired or was revoked. Sign in again to re-enroll this device.',
+        ),
+      );
+    }
     notifyListeners();
   }
 

@@ -167,6 +167,11 @@ notifications:
   push_relay_url: ""
   push_relay_token: ""
   push_timeout_seconds: 10
+  # "relay" or "fcm". FCM uses the service account below and delivers to
+  # Android plus iOS/macOS when APNs is configured in the Firebase project.
+  push_provider: "relay"
+  fcm_service_account_file: ""
+  fcm_project_id: ""
 
 metrics:
   enabled: true
