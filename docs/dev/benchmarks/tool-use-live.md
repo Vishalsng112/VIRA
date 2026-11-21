@@ -23,7 +23,7 @@ Offline result: **7/7 scenarios passed**.
 
 ## Live run (10 repetitions)
 
-Server: `http://localhost:8000` · model: `ornith-1.5:9b` (the recommended local model).
+Server: `http://localhost:8000` · model: the then-recommended local model.
 
 | Scenario | Result | Runs passed | Tools observed | Detail |
 |---|---|---|---|---|

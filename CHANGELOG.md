@@ -20,6 +20,8 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Changed
 
+- Default local model is now `nemotron-3.5-bolt:e4b`: faster than the previous
+  default with better tool-protocol support.
 - Documentation navigation now includes the platform matrix, evaluations,
   agent platform, release process and showcase.
 - The shipped configuration auto-approves the isolated `sandbox` tool via
@@ -52,7 +54,7 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Changed
 
-- Default local model remains `ornith-1.5:9b`; model selection is persisted and
+- Default local model is `nemotron-3.5-bolt:e4b`; model selection is persisted and
   can be changed without restarting.
 - Docker images run with all capabilities dropped, a read-only root filesystem,
   `no-new-privileges`, process limits and a small `noexec` `/tmp`.

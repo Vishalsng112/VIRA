@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](#license)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](#quick-start)
 [![Server: Docker](https://img.shields.io/badge/server-Docker-blue.svg)](#quick-start)
-[![Model: ornith-1.5:9b](https://img.shields.io/badge/default%20model-ornith--1.5%3A9b-green.svg)](#the-default-model)
+[![Model: nemotron-3.5-bolt:e4b](https://img.shields.io/badge/default%20model-nemotron--3.5--bolt%3Ae4b-green.svg)](#the-default-model)
 
 [Quick start](#quick-start) · [Five-minute proof](#see-it-working) · [Product roadmap](ROADMAP.md) · [Security](docs/user/security.md) · [Docs](#documentation)
 
@@ -155,7 +155,7 @@ python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-ollama pull ornith-1.5:9b
+ollama pull nemotron-3.5-bolt:e4b
 ollama serve                       # if it is not already running
 
 python run.py
@@ -215,11 +215,11 @@ Request rate limits are enabled in `config.yaml` under `rate_limits`.
 
 ## The default model
 
-VIRA ships with **`ornith-1.5:9b`** through Ollama. This is the framework's final
+VIRA ships with **`nemotron-3.5-bolt:e4b`** through Ollama. This is the framework's final
 default model choice, and the agents and prompts are tuned around it.
 
 ```bash
-ollama pull ornith-1.5:9b
+ollama pull nemotron-3.5-bolt:e4b
 ```
 
 You can still use other Ollama models, OpenAI or Anthropic. Change
@@ -229,12 +229,12 @@ Local model tiers, by memory:
 
 | RAM | Model | Tool reliability |
 |---|---|---|
-| 8–16 GB | `ornith-1.5:9b` (default) | Good |
+| 8–16 GB | `nemotron-3.5-bolt:e4b` (default) | Good |
 | 16–32 GB | `qwen2.5:14b` | Better |
 | 32 GB+ | `qwen2.5:32b` | Best local |
 | 4–8 GB | `llama3.2:3b` | Experimental |
 
-Tool use may be unreliable below about 8 GB RAM or a 7B-parameter model. A
+Tool use may be unreliable below about 8 GB RAM or a 4B-parameter model. A
 cloud provider is a supported fallback, and administrators can switch the active
 Ollama model from the chat recovery panel after a failure.
 

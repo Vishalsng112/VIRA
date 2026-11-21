@@ -30,7 +30,7 @@ services:
       VIRA_PORT: 8000
       VIRA_CONFIG: /app/config.yaml
       VIRA_OLLAMA_URL: ${VIRA_OLLAMA_URL:-http://host.docker.internal:11434}
-      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-ornith-1.5:9b}
+      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-nemotron-3.5-bolt:e4b}
     volumes:
       - vira-data:/app/data
       - ./config.yaml:/app/config.yaml
@@ -57,7 +57,7 @@ services:
     environment:
       VIRA_CONFIG: /app/config.yaml
       VIRA_OLLAMA_URL: ${VIRA_OLLAMA_URL:-http://host.docker.internal:11434}
-      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-ornith-1.5:9b}
+      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-nemotron-3.5-bolt:e4b}
     volumes:
       - vira-data:/app/data
       - ./config.yaml:/app/config.yaml

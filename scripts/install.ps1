@@ -75,8 +75,8 @@ try {
 }
 
 if (-not $Model) {
-  if ($ramGb -lt 10) { $Model = "llama3.2:3b" }
-  elseif ($ramGb -lt 20) { $Model = "llama3.1:8b" }
+  if ($ramGb -lt 8) { $Model = "llama3.2:3b" }
+  elseif ($ramGb -lt 20) { $Model = "nemotron-3.5-bolt:e4b" }
   elseif ($ramGb -lt 36) { $Model = "qwen2.5:14b" }
   else { $Model = "qwen2.5:32b" }
 }

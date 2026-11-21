@@ -20,7 +20,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # optional: local model
-ollama pull ornith-1.5:9b
+ollama pull nemotron-3.5-bolt:e4b
 
 python run.py
 ```

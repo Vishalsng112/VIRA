@@ -25,7 +25,7 @@ Offline result: **7/7 scenarios passed**.
 
 The current live result is recorded separately in the
 [live tool-use benchmark](tool-use-live.md) because it depends on the host and
-the model. Against the recommended `ornith-1.5:9b` model on the maintainer
+the model. Against the then-recommended local model on the maintainer
 server, 10 repetitions produced:
 
 | Scenario | Runs passed |

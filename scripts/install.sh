@@ -146,10 +146,10 @@ RAM_GB=$(( RAM_BYTES / 1024 / 1024 / 1024 ))
 DISK_GB=$(( DISK_AVAIL_KB / 1024 / 1024 ))
 
 if [ -z "$MODEL" ]; then
-  if [ "$RAM_GB" -lt 10 ]; then
+  if [ "$RAM_GB" -lt 8 ]; then
     MODEL="llama3.2:3b"
   elif [ "$RAM_GB" -lt 20 ]; then
-    MODEL="llama3.1:8b"
+    MODEL="nemotron-3.5-bolt:e4b"
   elif [ "$RAM_GB" -lt 36 ]; then
     MODEL="qwen2.5:14b"
   else

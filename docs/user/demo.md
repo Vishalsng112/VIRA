@@ -99,7 +99,7 @@ Answers depend on your own device count and data.
 | `Cannot reach ...` | Check `curl http://localhost:8000/livez`; start the server. |
 | `HTTP 401` | Check the username/password, or create the admin in the browser first. |
 | `HTTP 503` | The Chatbot agent is disabled or no model is available. |
-| The model is slow | Local 9B models can take 20–60 seconds per answer. |
+| The model is slow | Local model speed depends on hardware; the default e4b model is fast, larger models can take 20–60 seconds per answer. |
 | Tool calls repeat or output is malformed | Run `python -m vira doctor`, then try a larger local model or a cloud provider. See [Choose a local model](models.md). |
 | The chat UI shows a failure | Use **Retry**, **Switch model & retry** (administrator) or **Show what failed** in the recovery panel. |
 

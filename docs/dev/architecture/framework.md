@@ -482,11 +482,11 @@ sensors:                               # list of sensor configs
     interval: 5.0                      # polling interval in seconds
 
 llm:
-  default_model: "ornith-1.5:9b"       # VIRA's final default local model choice
+  default_model: "nemotron-3.5-bolt:e4b"       # VIRA's final default local model choice
   models:
     - name: "local-llama"
       provider: "ollama"               # "ollama" | "openai" | "anthropic"
-      model: "ornith-1.5:9b"
+      model: "nemotron-3.5-bolt:e4b"
       base_url: "http://localhost:11434"
       temperature: 0.8
       num_ctx: 16384
@@ -522,8 +522,8 @@ VIRA supports three LLM backends via `vira/llm/`:
 | OpenAI | `OpenAILLM` | `provider: "openai"` | `api_key` in config or `$OPENAI_API_KEY` |
 | Anthropic | `AnthropicLLM` | `provider: "anthropic"` | `api_key` in config or `$ANTHROPIC_API_KEY` |
 
-VIRA ships configured for **`ornith-1.5:9b`** through Ollama. This is the final default
-model choice for the framework; install it with `ollama pull ornith-1.5:9b`. Other
+VIRA ships configured for **`nemotron-3.5-bolt:e4b`** through Ollama. This is the final default
+model choice for the framework; install it with `ollama pull nemotron-3.5-bolt:e4b`. Other
 providers and models remain fully supported and can be selected explicitly.
 
 The `LLMManager` selects the backend at runtime via `LLMFactory`. Agents call:

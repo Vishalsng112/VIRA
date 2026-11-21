@@ -206,11 +206,11 @@ def check_model(config: Dict[str, Any], base_url: str, ollama_ok: bool) -> Check
         billions = float(parameter_size.rstrip("Bb"))
     except ValueError:
         billions = None
-    if billions is not None and billions < 7:
+    if billions is not None and billions < 4:
         return Check(
             "model", "warn", f"'{model}' is very small ({parameter_size})",
-            detail="Tool use may be unreliable below about 7B parameters. Chat works, but multi-step tools can loop or return malformed JSON.",
-            fix="Use ornith-1.5:9b or larger for reliable tool use, or configure a cloud provider.",
+            detail="Tool use may be unreliable below about 4B parameters. Chat works, but multi-step tools can loop or return malformed JSON.",
+            fix="Use nemotron-3.5-bolt:e4b or larger for reliable tool use, or configure a cloud provider.",
         )
     wanted = configured_context(config)
     if context:

@@ -1,8 +1,8 @@
 # Choose a local model
 
-VIRA ships with **`ornith-1.5:9b`** through Ollama. That is the recommended
-first-run model: it is large enough to follow the tool protocol reliably and
-small enough for an 8–16 GB CPU-only machine.
+VIRA ships with **`nemotron-3.5-bolt:e4b`** through Ollama. That is the recommended
+first-run model: it is fast, follows the tool protocol reliably and fits an
+8–16 GB CPU-only machine.
 
 The Chatbot drives tools by emitting small JSON calls. Very small models can
 chat well and still fail that job by repeating calls, inventing tool names or
@@ -10,7 +10,7 @@ returning malformed JSON. Use this page to pick a model that matches your
 hardware before you conclude that VIRA is broken.
 
 !!! warning "Tool use below the recommended tier"
-    Tool use may be unreliable below about **8 GB RAM or a 7B-parameter model**.
+    Tool use may be unreliable below about **4 GB RAM or a 4B-parameter model**.
     If the agent repeats calls, ignores tools or returns broken JSON, move up a
     tier or use a cloud fallback.
 
@@ -19,7 +19,7 @@ hardware before you conclude that VIRA is broken.
 | Tier | RAM | Suggested model | Tool reliability | Notes |
 |---|---|---|---|---|
 | Minimal | 4–8 GB | `llama3.2:3b` | Experimental | Chat works; multi-step tool use is unreliable. Use for quick tests. |
-| Recommended | 8–16 GB | `ornith-1.5:9b` | Good | VIRA's default. CPU-only is acceptable; answers take 20–60 s. |
+| Recommended | 8–16 GB | `nemotron-3.5-bolt:e4b` | Good | VIRA's default. Fast on CPU; much better tool support than its size suggests. |
 | Comfortable | 16–32 GB | `qwen2.5:14b` | Better | Better instruction following and tool selection. |
 | Large | 32 GB+ | `qwen2.5:32b` | Best local | Best local quality; needs a GPU or a large-memory host to be usable. |
 
@@ -43,11 +43,11 @@ If you use a smaller model, keep `num_ctx` at **8192 or more**:
 
 ```yaml
 llm:
-  default_model: "ornith-1.5:9b"
+  default_model: "nemotron-3.5-bolt:e4b"
   models:
     - name: "local-llama"
       provider: "ollama"
-      model: "ornith-1.5:9b"
+      model: "nemotron-3.5-bolt:e4b"
       base_url: "http://localhost:11434"
       num_ctx: 8192
 ```

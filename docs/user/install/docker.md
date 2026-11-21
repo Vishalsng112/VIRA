@@ -38,13 +38,13 @@ Edit `.env` if needed:
 ```dotenv
 VIRA_BIND_ADDRESS=0.0.0.0
 VIRA_PORT=8000
-VIRA_OLLAMA_MODEL=ornith-1.5:9b
+VIRA_OLLAMA_MODEL=nemotron-3.5-bolt:e4b
 ```
 
 - `VIRA_BIND_ADDRESS=127.0.0.1` exposes the server only on this machine.
 - `VIRA_BIND_ADDRESS=0.0.0.0` allows other devices on your LAN to connect.
 - `VIRA_OLLAMA_MODEL` must match an Ollama model you pull. The repository
-  default is `ornith-1.5:9b`. If that model is not available from your Ollama
+  default is `nemotron-3.5-bolt:e4b`. If that model is not available from your Ollama
   registry, use any capable model, for example `llama3.2:3b`, in both
   `VIRA_OLLAMA_MODEL` and `ollama pull`.
 
@@ -70,7 +70,7 @@ docker compose --profile setup run --rm model-pull
 Or pull a different model manually after editing `VIRA_OLLAMA_MODEL`:
 
 ```bash
-docker compose exec ollama ollama pull ornith-1.5:9b
+docker compose exec ollama ollama pull nemotron-3.5-bolt:e4b
 ```
 
 ### 4. Open VIRA
@@ -371,7 +371,7 @@ host-ollama compose file is in use.
 ### Model not found
 
 ```bash
-docker compose exec ollama ollama pull ornith-1.5:9b
+docker compose exec ollama ollama pull nemotron-3.5-bolt:e4b
 ```
 
 Then set `VIRA_OLLAMA_MODEL` to the same name and restart `vira worker`.

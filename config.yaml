@@ -171,7 +171,7 @@ sensors:
 
 llm:
   # VIRA's final/default local model choice.
-  default_model: "ornith-1.5:9b"
+  default_model: "nemotron-3.5-bolt:e4b"
   models:
     # - name: "gpt-4"
     #   provider: "openai"
@@ -186,7 +186,7 @@ llm:
     #   max_tokens: 4096
     - name: "local-llama"
       provider: "ollama"
-      model: "ornith-1.5:9b"
+      model: "nemotron-3.5-bolt:e4b"
       # Docker: use http://ollama:11434 (bundled) or
       # http://host.docker.internal:11434 (native Ollama on the host).
       # VIRA_OLLAMA_URL overrides this value without editing the file.

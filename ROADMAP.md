@@ -159,7 +159,7 @@ first. This phase fixes the story and proves it with a reproducible demo.
 deferred by the owner. Live 10-run validation on the recommended local model
 passed: device 10/10, database 10/10, RAG 9/10, web 10/10.
 
-**Why:** a 9B local model is the default first impression. When it hesitates,
+**Why:** the default local model is the first impression. When it hesitates,
 repeats calls or leaks reasoning markers, users conclude the product is broken.
 This phase makes the first 15 minutes reliable.
 
@@ -212,7 +212,7 @@ This phase makes the first 15 minutes reliable.
 ### Phase 2 exit criteria
 
 - [x] The Phase 1 demo succeeds in at least 9/10 runs on the recommended local model.
-  Live validation against `ornith-1.5:9b`: the demo's device and database
+  Live validation against the then-recommended local model: the demo's device and database
   questions both passed 10/10; RAG passed 9/10 and web passed 10/10. Recorded in
   the [live benchmark](docs/dev/benchmarks/tool-use-live.md).
 - [ ] No final answer shows raw `</think` or internal reasoning tokens.

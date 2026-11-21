@@ -37,7 +37,7 @@ Docker deployments use `.env` for the values that most often change:
 |---|---|---|
 | `VIRA_BIND_ADDRESS` | Interface the server binds to | `127.0.0.1` |
 | `VIRA_PORT` | Host port | `8000` |
-| `VIRA_OLLAMA_MODEL` | Model the bundled Ollama pulls | `ornith-1.5:9b` |
+| `VIRA_OLLAMA_MODEL` | Model the bundled Ollama pulls | `nemotron-3.5-bolt:e4b` |
 | `VIRA_CONFIG` | Path to an alternate `config.yaml` | `config.yaml` |
 | `VIRA_TRUSTED_PROXIES` | Proxy IPs trusted for forwarded headers | `127.0.0.1` |
 

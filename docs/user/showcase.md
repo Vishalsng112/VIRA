@@ -24,7 +24,7 @@ current tree.
 ### 1. Family NAS assistant
 
 - Docker Compose on a Linux NAS or mini-PC;
-- bundled Ollama with the 9B default model;
+- bundled Ollama with the e4b default model;
 - VIRA Link on family phones for consent-gated usage/focus signals;
 - household users with separate accounts and per-device grants;
 - nightly database backup and a separately stored master key.

@@ -2,7 +2,7 @@
 
 The tiers are deliberately conservative: a model that cannot hold the tool
 catalogue and a few observations in context will look broken even when the
-server is healthy. Tool use below roughly 7B parameters or 8 GB of RAM is
+server is healthy. Tool use below roughly 4B parameters or 4 GB of RAM is
 possible, but it is not the default first impression VIRA promises.
 """
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 TOOL_USE_WARNING = (
-    "Tool use may be unreliable below about 8 GB RAM or a 7B-parameter model. "
+    "Tool use may be unreliable below about 4 GB RAM or a 4B-parameter model. "
     "If the agent repeats calls, ignores tools or returns malformed JSON, move "
     "to a larger local model or use a cloud fallback."
 )
@@ -27,10 +27,10 @@ TIERS = [
     {
         "id": "recommended",
         "min_ram_gb": 8,
-        "model": "ornith-1.5:9b",
-        "label": "9B · recommended default",
+        "model": "nemotron-3.5-bolt:e4b",
+        "label": "e4b · recommended default",
         "tool_reliability": "good",
-        "note": "The default VIRA model. Fits CPU-only machines with 8–16 GB RAM.",
+        "note": "The default VIRA model. Fast on CPU and reliable at VIRA's JSON tool protocol.",
     },
     {
         "id": "comfortable",

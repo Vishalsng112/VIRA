@@ -78,7 +78,7 @@ class DoctorCheckTests(unittest.TestCase):
         ):
             check = doctor.check_model(config, "http://ollama.test", True)
         self.assertEqual(check.status, "warn")
-        self.assertIn("7B", check.detail)
+        self.assertIn("4B", check.detail)
 
     def test_doctor_report_shape_without_external_services(self):
         with tempfile.TemporaryDirectory() as tmp:
