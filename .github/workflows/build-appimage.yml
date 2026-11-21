@@ -43,10 +43,12 @@ jobs:
         run: |
           VERSION="${INPUT_VERSION#v}"
           BUILD="${INPUT_BUILD:-$RUN_NUMBER}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
-          echo "tag=v${VERSION}-build${BUILD}" >> "$GITHUB_OUTPUT"
-          echo "file=VIRA-${VERSION}-build${BUILD}-x86_64.AppImage" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$VERSION"
+            echo "build=$BUILD"
+            echo "tag=v${VERSION}-build${BUILD}"
+            echo "file=VIRA-${VERSION}-build${BUILD}-x86_64.AppImage"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build AppImage
         env:

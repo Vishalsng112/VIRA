@@ -45,9 +45,11 @@ jobs:
         run: |
           VERSION="${INPUT_VERSION#v}"
           BASE="vira-link-${VERSION}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "base=$BASE" >> "$GITHUB_OUTPUT"
-          echo "tag=vira-link-v${VERSION}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$VERSION"
+            echo "base=$BASE"
+            echo "tag=vira-link-v${VERSION}"
+          } >> "$GITHUB_OUTPUT"
 
   verify:
     name: Analyze and test
