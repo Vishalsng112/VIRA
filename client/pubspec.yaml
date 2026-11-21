@@ -1,7 +1,7 @@
 name: vira_link
 description: "VIRA Link - the device companion app for a VIRA server."
 publish_to: 'none'
-version: 1.2.0+7
+version: 1.2.1+8
 
 environment:
   sdk: ^3.13.5

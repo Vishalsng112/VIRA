@@ -1,5 +1,5 @@
 const appName = 'VIRA Link';
-const appVersion = '1.2.0';
+const appVersion = '1.2.1';
 const protocolVersion = 1;
 
 /// How the app should choose its light or dark palette.

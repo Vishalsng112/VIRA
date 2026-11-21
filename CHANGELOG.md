@@ -6,6 +6,19 @@ All notable changes to VIRA are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-22
+
+### Fixed
+
+- Linux desktop builds now use Flutter 3.47.9, avoiding the Flutter 3.50
+  Wayland subsurface bug that rendered the UI at the wrong size or in a corner.
+- The Linux Clang 22 warning workaround is applied only when the compiler
+  supports the flag, so older CI toolchains build cleanly.
+
+### Changed
+
+- VIRA Link release builds are pinned to Flutter 3.47.9 with Dart 3.13.7.
+
 ## [0.5.0] - 2026-11-22
 
 ### Added
