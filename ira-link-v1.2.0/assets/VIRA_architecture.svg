@@ -1,0 +1,523 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1720" viewBox="0 0 1800 1720" role="img" aria-labelledby="title desc">
+  <title id="title">VIRA System Architecture</title>
+  <desc id="desc">End-to-end VIRA architecture: clients, API and edge, kernel runtime, agent platform, intelligence and memory, tools and extensions, persistence, and deployment operations.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F7F9FC"/>
+      <stop offset="0.55" stop-color="#F2F5FA"/>
+      <stop offset="1" stop-color="#EEF2F8"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4AA8FF"/>
+      <stop offset="0.58" stop-color="#0071E3"/>
+      <stop offset="1" stop-color="#0057B8"/>
+    </linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.92"/>
+      <stop offset="1" stop-color="#F8FAFD" stop-opacity="0.90"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#17233A" flood-opacity="0.08"/>
+    </filter>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#17233A" flood-opacity="0.06"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 1 1 L 11 6 L 1 11 z" fill="#8090A8"/>
+    </marker>
+    <marker id="arrowAccent" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 1 1 L 11 6 L 1 11 z" fill="#0071E3"/>
+    </marker>
+    <style>
+      .title { font: 700 36px -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Arial, sans-serif; fill: #111827; letter-spacing: -0.8px; }
+      .subtitle { font: 400 15px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #64748B; letter-spacing: 0.1px; }
+      .eyebrow { font: 700 11px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #0071E3; letter-spacing: 1.5px; text-transform: uppercase; }
+      .band-title { font: 700 19px -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Arial, sans-serif; fill: #1E293B; letter-spacing: -0.2px; }
+      .band-note { font: 400 12px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #8A94A6; }
+      .card { fill: #FFFFFF; stroke: #DDE5F0; stroke-width: 1; }
+      .card-soft { fill: #F8FAFD; stroke: #E2E9F3; stroke-width: 1; }
+      .card-title { font: 700 15px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #172033; }
+      .card-title-sm { font: 700 13px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #172033; }
+      .body { font: 400 11.5px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #5F6B7C; }
+      .body-strong { font: 600 11.5px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #344054; }
+      .mono { font: 500 10.5px 'SF Mono', ui-monospace, Menlo, Consolas, monospace; fill: #536275; }
+      .panel-title { font: 700 18px -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Arial, sans-serif; fill: #172033; letter-spacing: -0.2px; }
+      .tag { font: 700 9.5px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #0071E3; letter-spacing: 0.7px; text-transform: uppercase; }
+      .tag-dark { font: 700 9.5px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #475467; letter-spacing: 0.6px; text-transform: uppercase; }
+      .pill { fill: #EAF3FF; stroke: #CFE3FF; stroke-width: 1; }
+      .pill-green { fill: #EAF8EF; stroke: #CEEEDB; stroke-width: 1; }
+      .pill-amber { fill: #FFF7E8; stroke: #F5E2BC; stroke-width: 1; }
+      .pill-text { font: 700 9.5px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #0062C4; letter-spacing: 0.2px; }
+      .pill-text-green { font: 700 9.5px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #1A7F45; letter-spacing: 0.2px; }
+      .pill-text-amber { font: 700 9.5px -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Arial, sans-serif; fill: #9A5B00; letter-spacing: 0.2px; }
+      .arrow { fill: none; stroke: #8090A8; stroke-width: 2; marker-end: url(#arrow); }
+      .arrow-accent { fill: none; stroke: #0071E3; stroke-width: 2.2; marker-end: url(#arrowAccent); }
+      .arrow-dash { fill: none; stroke: #98A5B8; stroke-width: 1.8; stroke-dasharray: 6 6; marker-end: url(#arrow); }
+      .divider { stroke: #E2E9F3; stroke-width: 1; }
+      .legend-line { stroke: #8090A8; stroke-width: 2; fill: none; marker-end: url(#arrow); }
+      .legend-line-dash { stroke: #98A5B8; stroke-width: 1.8; stroke-dasharray: 6 6; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1720" fill="url(#bg)"/>
+  <circle cx="1700" cy="70" r="220" fill="#0071E3" opacity="0.045"/>
+  <circle cx="90" cy="1600" r="260" fill="#8B5CF6" opacity="0.035"/>
+
+  <!-- ================= HEADER ================= -->
+  <g>
+    <rect x="36" y="26" width="58" height="58" rx="17" fill="url(#brand)" filter="url(#softShadow)"/>
+    <text x="65" y="65" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', Arial, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF">V</text>
+    <text x="112" y="54" class="title">VIRA System Architecture</text>
+    <text x="112" y="78" class="subtitle">Local-first AI runtime · client, kernel, agents, tools, knowledge, data and operations</text>
+    <g transform="translate(1288 40)">
+      <rect x="0" y="0" width="192" height="30" rx="15" class="pill"/>
+      <text x="16" y="20" class="pill-text">SQLite default · PostgreSQL optional</text>
+    </g>
+    <g transform="translate(1492 40)">
+      <rect x="0" y="0" width="152" height="30" rx="15" class="pill-green"/>
+      <text x="16" y="20" class="pill-text-green">Local-first · private</text>
+    </g>
+    <g transform="translate(36 106)">
+      <line x1="0" y1="0" x2="46" y2="0" class="legend-line"/>
+      <text x="56" y="4" class="band-note">request / control path</text>
+      <line x1="238" y1="0" x2="284" y2="0" class="legend-line-dash"/>
+      <text x="294" y="4" class="band-note">optional / async / scale-out</text>
+      <circle cx="520" cy="0" r="5" fill="#0071E3"/>
+      <text x="533" y="4" class="band-note">VIRA runtime boundary</text>
+    </g>
+  </g>
+
+  <!-- ================= LEFT: SURFACES ================= -->
+  <g>
+    <rect x="36" y="144" width="360" height="1320" rx="26" fill="url(#band)" stroke="#DDE5F0" filter="url(#shadow)"/>
+    <text x="60" y="178" class="eyebrow">Surfaces</text>
+    <text x="60" y="202" class="panel-title">Clients &amp; interfaces</text>
+    <text x="60" y="222" class="band-note">People, devices and external clients</text>
+
+    <g transform="translate(56 244)">
+      <rect width="320" height="300" rx="18" class="card" filter="url(#softShadow)"/>
+      <rect x="18" y="18" width="34" height="34" rx="10" fill="#EAF3FF"/>
+      <text x="35" y="41" text-anchor="middle" class="tag" fill="#0071E3">L</text>
+      <text x="66" y="34" class="card-title">VIRA Link</text>
+      <text x="66" y="52" class="mono">Flutter companion</text>
+      <rect x="244" y="18" width="58" height="22" rx="11" class="pill"/>
+      <text x="254" y="33" class="pill-text">1 client</text>
+      <line x1="18" y1="74" x2="302" y2="74" class="divider"/>
+      <text x="18" y="98" class="body-strong">Platforms</text>
+      <text x="18" y="116" class="body">Android · Linux · Desktop · Web</text>
+      <text x="18" y="142" class="body-strong">Device lifecycle</text>
+      <text x="18" y="160" class="body">Pairing · enrollment · credential store</text>
+      <text x="18" y="186" class="body-strong">Collectors</text>
+      <text x="18" y="204" class="body">App usage · focus · battery · health</text>
+      <text x="18" y="220" class="body">Active window · idle · sessions</text>
+      <text x="18" y="246" class="body-strong">Offline by design</text>
+      <text x="18" y="264" class="body">Local ledgers · durable outbox · sync</text>
+      <text x="18" y="280" class="body">Command polling · local insight engine</text>
+    </g>
+
+    <g transform="translate(56 562)">
+      <rect width="320" height="246" rx="18" class="card" filter="url(#softShadow)"/>
+      <rect x="18" y="18" width="34" height="34" rx="10" fill="#EDF7F1"/>
+      <text x="35" y="41" text-anchor="middle" class="tag" fill="#1A7F45">W</text>
+      <text x="66" y="34" class="card-title">Web console</text>
+      <text x="66" y="52" class="mono">dashboard · chat · admin</text>
+      <line x1="18" y1="74" x2="302" y2="74" class="divider"/>
+      <text x="18" y="98" class="body">Overview · Devices · Agents · Events</text>
+      <text x="18" y="120" class="body">Extensions · Knowledge · Automations</text>
+      <text x="18" y="142" class="body">Usage · Organizations · Files · Updates</text>
+      <text x="18" y="168" class="body-strong">Chat workspace</text>
+      <text x="18" y="186" class="body">Conversations · search · agent picker</text>
+      <text x="18" y="202" class="body">Live tool traces · runtime context rail</text>
+      <text x="18" y="228" class="body">Apple-inspired light and dark themes</text>
+    </g>
+
+    <g transform="translate(56 826)">
+      <rect width="320" height="190" rx="18" class="card" filter="url(#softShadow)"/>
+      <rect x="18" y="18" width="34" height="34" rx="10" fill="#FFF7E8"/>
+      <text x="35" y="41" text-anchor="middle" class="tag" fill="#9A5B00">E</text>
+      <text x="66" y="34" class="card-title">External surfaces</text>
+      <text x="66" y="52" class="mono">API · MCP · plugin routes</text>
+      <line x1="18" y1="74" x2="302" y2="74" class="divider"/>
+      <text x="18" y="98" class="body">REST /api/v1 · OpenAPI contract</text>
+      <text x="18" y="120" class="body">SSE event stream · NDJSON chat stream</text>
+      <text x="18" y="142" class="body">MCP clients · marketplace tools</text>
+      <text x="18" y="164" class="body">Plugin HTTP routes · webhooks</text>
+    </g>
+
+    <g transform="translate(56 1034)">
+      <rect width="320" height="208" rx="18" class="card-soft" filter="url(#softShadow)"/>
+      <text x="18" y="28" class="card-title-sm">Local-first guarantees</text>
+      <line x1="18" y1="44" x2="302" y2="44" class="divider"/>
+      <text x="18" y="68" class="body">• User data stays on the machine by default.</text>
+      <text x="18" y="90" class="body">• Local Ollama is preferred before remote LLMs.</text>
+      <text x="18" y="112" class="body">• Collector consent is explicit and revocable.</text>
+      <text x="18" y="134" class="body">• Payloads and secrets are encrypted at rest.</text>
+      <text x="18" y="156" class="body">• Account export and delete are first-class.</text>
+      <text x="18" y="182" class="body">• All tool calls are authorized and audited.</text>
+    </g>
+
+    <g transform="translate(56 1260)">
+      <rect width="320" height="178" rx="18" class="card-soft" filter="url(#softShadow)"/>
+      <text x="18" y="28" class="card-title-sm">Enrollment path</text>
+      <line x1="18" y1="44" x2="302" y2="44" class="divider"/>
+      <text x="18" y="68" class="body">1. Pairing code or admin-created account</text>
+      <text x="18" y="90" class="body">2. Stable installation identity</text>
+      <text x="18" y="112" class="body">3. Device credential + access grant</text>
+      <text x="18" y="134" class="body">4. Heartbeat + batch event ingestion</text>
+      <text x="18" y="156" class="body">5. Consent, sync and command channel</text>
+    </g>
+  </g>
+
+  <!-- ================= RIGHT: DEPLOYMENT ================= -->
+  <g>
+    <rect x="1404" y="144" width="360" height="1320" rx="26" fill="url(#band)" stroke="#DDE5F0" filter="url(#shadow)"/>
+    <text x="1428" y="178" class="eyebrow">Operations</text>
+    <text x="1428" y="202" class="panel-title">Deployment &amp; scale</text>
+    <text x="1428" y="222" class="band-note">From one local process to a fleet</text>
+
+    <g transform="translate(1424 244)">
+      <rect width="320" height="206" rx="18" class="card" filter="url(#softShadow)"/>
+      <text x="18" y="28" class="card-title-sm">Single node · default</text>
+      <line x1="18" y1="44" x2="302" y2="44" class="divider"/>
+      <text x="18" y="68" class="body">python run.py · FastAPI + kernel</text>
+      <text x="18" y="90" class="body">SQLite WAL · local object store</text>
+      <text x="18" y="112" class="body">In-process event bus</text>
+      <text x="18" y="134" class="body">Optional worker process</text>
+      <text x="18" y="156" class="body">Local Ollama · no cloud dependency</text>
+      <text x="18" y="182" class="mono">best for: personal / household</text>
+    </g>
+
+    <g transform="translate(1424 470)">
+      <rect width="320" height="252" rx="18" class="card" filter="url(#softShadow)"/>
+      <text x="18" y="28" class="card-title-sm">Scale-out</text>
+      <line x1="18" y1="44" x2="302" y2="44" class="divider"/>
+      <text x="18" y="68" class="body">Stateless API replicas</text>
+      <text x="18" y="90" class="body">One or more durable workers</text>
+      <text x="18" y="112" class="body">PostgreSQL primary + read replica</text>
+      <text x="18" y="134" class="body">S3 / MinIO / R2 object storage</text>
+      <text x="18" y="156" class="body">Redis or NATS broker adapter</text>
+      <text x="18" y="178" class="body">DB-backed jobs remain the fallback</text>
+      <rect x="18" y="198" width="126" height="24" rx="12" class="pill-amber"/>
+      <text x="28" y="214" class="pill-text-amber">optional external infra</text>
+    </g>
+
+    <g transform="translate(1424 742)">
+      <rect width="320" height="228" rx="18" class="card" filter="url(#softShadow)"/>
+      <text x="18" y="28" class="card-title-sm">Data protection</text>
+      <line x1="18" y1="44" x2="302" y2="44" class="divider"/>
+      <text x="18" y="68" class="body">bcrypt passwords · hashed sessions</text>
+      <text x="18" y="90" class="body">Hashed device credentials</text>
+      <text x="18" y="112" class="body">Master-key encrypted payloads</text>
+      <text x="18" y="134" class="body">Consent + retention policies</text>
+      <text x="18" y="156" class="body">Atomic backups and restore</text>
+      <text x="18" y="178" class="body">Correlation IDs and audit trail</text>
+      <text x="18" y="202" class="mono">RPO/RTO: see operations docs</text>
+    </g>
+
+    <g transform="translate(1424 990)">
+      <rect width="320" height="190" rx="18" class="card" filter="url(#softShadow)"/>
+      <text x="18" y="28" class="card-title-sm">Observability</text>
+      <line x1="18" y1="44" x2="302" y2="44" class="divider"/>
+      <text x="18" y="68" class="body">/health · /metrics · structured logs</text>
+      <text x="18" y="90" class="body">Event lag · failed events · queue depth</text>
+      <text x="18" y="112" class="body">Job stats · fleet health · audit</text>
+      <text x="18" y="134" class="body">Alerts for expiry, backlog and failures</text>
+      <text x="18" y="158" class="mono">metrics → dashboards / external collectors</text>
+    </g>
+
+    <g transform="translate(1424 1200)">
+      <rect width="320" height="120" rx="18" class="card" filter="url(#softShadow)"/>
+      <text x="18" y="28" class="card-title-sm">Update channels</text>
+      <text x="18" y="52" class="body">stable · beta · dev</text>
+      <text x="18" y="74" class="body">Semver checks · minimum version gates</text>
+      <text x="18" y="96" class="body">Server and VIRA Link releases</text>
+    </g>
+
+    <g transform="translate(1424 1340)">
+      <rect width="320" height="104" rx="18" class="card-soft" filter="url(#softShadow)"/>
+      <text x="18" y="28" class="card-title-sm">Durable operations</text>
+      <text x="18" y="52" class="body">Outbox · jobs · retries · reclaim</text>
+      <text x="18" y="74" class="body">Retention · rollups · backups</text>
+    </g>
+  </g>
+
+  <!-- ================= CENTER: LAYERED RUNTIME ================= -->
+  <g>
+    <!-- EDGE / API BAND -->
+    <g>
+      <text x="440" y="168" class="band-title">01 · Edge, API &amp; device plane</text>
+      <text x="440" y="188" class="band-note">Authenticated ingress · multi-user · multi-device · durable streams</text>
+      <g transform="translate(440 204)">
+        <rect width="214" height="142" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Gateway</text>
+        <text x="16" y="48" class="card-title-sm">FastAPI + Uvicorn</text>
+        <text x="16" y="70" class="body">/api/v1 · REST · OpenAPI</text>
+        <text x="16" y="90" class="body">SSE + NDJSON streams</text>
+        <text x="16" y="110" class="body">Rate limits · correlation IDs</text>
+        <text x="16" y="130" class="body">Safe error contract</text>
+      </g>
+      <g transform="translate(674 204)">
+        <rect width="214" height="142" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Identity</text>
+        <text x="16" y="48" class="card-title-sm">Users &amp; sessions</text>
+        <text x="16" y="70" class="body">bcrypt · signed sessions</text>
+        <text x="16" y="90" class="body">Roles · admin gates</text>
+        <text x="16" y="110" class="body">Organizations · members</text>
+        <text x="16" y="130" class="body">Export · delete · audit</text>
+      </g>
+      <g transform="translate(908 204)">
+        <rect width="214" height="142" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Devices</text>
+        <text x="16" y="48" class="card-title-sm">Device plane</text>
+        <text x="16" y="70" class="body">Pairing · enrollment</text>
+        <text x="16" y="90" class="body">Credentials · heartbeat</text>
+        <text x="16" y="110" class="body">Batch ingest · commands</text>
+        <text x="16" y="130" class="body">Consent · access grants</text>
+      </g>
+      <g transform="translate(1142 204)">
+        <rect width="214" height="142" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Control</text>
+        <text x="16" y="48" class="card-title-sm">Admin &amp; fleet</text>
+        <text x="16" y="70" class="body">Fleet health · audit</text>
+        <text x="16" y="90" class="body">Jobs · backups · alerts</text>
+        <text x="16" y="110" class="body">Quotas · updates</text>
+        <text x="16" y="130" class="body">Usage &amp; cost dashboard</text>
+      </g>
+    </g>
+
+    <line x1="650" y1="366" x2="650" y2="390" class="arrow"/>
+    <line x1="1100" y1="366" x2="1100" y2="390" class="arrow"/>
+
+    <!-- KERNEL BAND -->
+    <g>
+      <text x="440" y="414" class="band-title">02 · Kernel &amp; event plane</text>
+      <text x="440" y="434" class="band-note">The local runtime: state, sensors, scheduling, security and durability</text>
+      <g transform="translate(440 450)">
+        <rect width="214" height="168" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Events</text>
+        <text x="16" y="48" class="card-title-sm">Event bus</text>
+        <text x="16" y="70" class="body">Async pub/sub · priority queue</text>
+        <text x="16" y="90" class="body">Dispatcher + pipeline</text>
+        <text x="16" y="110" class="body">Security · enrichment</text>
+        <text x="16" y="130" class="body">Wildcard subscribers</text>
+        <text x="16" y="150" class="body">Outbox publication</text>
+      </g>
+      <g transform="translate(674 450)">
+        <rect width="214" height="168" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">State</text>
+        <text x="16" y="48" class="card-title-sm">Runtime state</text>
+        <text x="16" y="70" class="body">State manager · checkpoints</text>
+        <text x="16" y="90" class="body">Context manager</text>
+        <text x="16" y="110" class="body">config.yaml · reload</text>
+        <text x="16" y="130" class="body">Module lifecycle</text>
+        <text x="16" y="150" class="body">Service registry</text>
+      </g>
+      <g transform="translate(908 450)">
+        <rect width="214" height="168" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Sensors</text>
+        <text x="16" y="48" class="card-title-sm">Server-local device</text>
+        <text x="16" y="70" class="body">Hardware · process · network</text>
+        <text x="16" y="90" class="body">Filesystem · user activity</text>
+        <text x="16" y="110" class="body">Wayland idle · desktop state</text>
+        <text x="16" y="130" class="body">Same ingestion path as remote</text>
+        <text x="16" y="150" class="body">Consent + validation</text>
+      </g>
+      <g transform="translate(1142 450)">
+        <rect width="214" height="168" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Durability</text>
+        <text x="16" y="48" class="card-title-sm">Jobs &amp; scale</text>
+        <text x="16" y="70" class="body">Durable DB job queue</text>
+        <text x="16" y="90" class="body">Workers · retries · reclaim</text>
+        <text x="16" y="110" class="body">Rollups · retention · backup</text>
+        <text x="16" y="130" class="body">External broker adapter</text>
+        <text x="16" y="150" class="body">Read-replica helper</text>
+      </g>
+    </g>
+
+    <line x1="650" y1="644" x2="650" y2="668" class="arrow"/>
+    <line x1="1100" y1="644" x2="1100" y2="668" class="arrow"/>
+
+    <!-- AGENT BAND -->
+    <g>
+      <text x="440" y="692" class="band-title">03 · Agent platform</text>
+      <text x="440" y="712" class="band-note">Durable reasoning, tool use, delegation and replayable execution</text>
+
+      <g transform="translate(440 728)">
+        <rect width="450" height="236" rx="18" class="card" filter="url(#softShadow)"/>
+        <text x="20" y="28" class="tag">Orchestration</text>
+        <text x="20" y="52" class="card-title">Agent orchestrator</text>
+        <text x="20" y="74" class="body">Agent registry · metadata + versioning · capability discovery</text>
+        <text x="20" y="94" class="body">Event router · runtime scheduler · re-entrant concurrency</text>
+        <line x1="20" y1="112" x2="430" y2="112" class="divider"/>
+        <text x="20" y="136" class="body-strong">ChatAgent loop</text>
+        <text x="20" y="156" class="body">Intent → recall lessons → context → tool loop → answer</text>
+        <text x="20" y="176" class="body">Tool catalog · relevance ranking · dynamic tool_search</text>
+        <text x="20" y="196" class="body">Specialist definitions · delegation with fresh context</text>
+        <text x="20" y="216" class="body">Guardrails · budgets · approvals · result validation</text>
+      </g>
+
+      <g transform="translate(910 728)">
+        <rect width="446" height="112" rx="18" class="card" filter="url(#softShadow)"/>
+        <text x="18" y="26" class="tag">Automation</text>
+        <text x="18" y="48" class="card-title-sm">Durable workflow engine</text>
+        <text x="18" y="68" class="body">DAG steps · retries · timeouts · compensation</text>
+        <text x="18" y="86" class="body">Step persistence · replay · resume · cancel · events</text>
+      </g>
+
+      <g transform="translate(910 854)">
+        <rect width="446" height="110" rx="18" class="card" filter="url(#softShadow)"/>
+        <text x="18" y="26" class="tag">Context</text>
+        <text x="18" y="48" class="card-title-sm">Assembly, prompts &amp; runs</text>
+        <text x="18" y="68" class="body">User context · consent · devices · health · focus</text>
+        <text x="18" y="86" class="body">Prompt/agent versions · run timeline · evaluation</text>
+      </g>
+    </g>
+
+    <line x1="650" y1="966" x2="650" y2="1016" class="arrow"/>
+    <line x1="1100" y1="966" x2="1100" y2="1016" class="arrow"/>
+
+    <!-- INTELLIGENCE BAND -->
+    <g>
+      <text x="440" y="1040" class="band-title">04 · Intelligence, memory &amp; knowledge</text>
+      <text x="440" y="1060" class="band-note">Local-first models, scoped memory, retrieval and human insight</text>
+      <g transform="translate(440 1076)">
+        <rect width="214" height="150" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Models</text>
+        <text x="16" y="48" class="card-title-sm">LLM manager</text>
+        <text x="16" y="70" class="body">Ollama (local) · OpenAI</text>
+        <text x="16" y="90" class="body">Anthropic · failover</text>
+        <text x="16" y="110" class="body">Model router · budgets</text>
+        <text x="16" y="130" class="body">Token/cost usage + quotas</text>
+      </g>
+      <g transform="translate(674 1076)">
+        <rect width="214" height="150" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Memory</text>
+        <text x="16" y="48" class="card-title-sm">Memory manager</text>
+        <text x="16" y="70" class="body">Scoped short/long-term memory</text>
+        <text x="16" y="90" class="body">Lessons · consolidation</text>
+        <text x="16" y="110" class="body">Hybrid lexical + hashed vectors</text>
+        <text x="16" y="130" class="body">Optional Ollama embeddings</text>
+      </g>
+      <g transform="translate(908 1076)">
+        <rect width="214" height="150" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Retrieval</text>
+        <text x="16" y="48" class="card-title-sm">RAG &amp; knowledge</text>
+        <text x="16" y="70" class="body">Documents · chunking</text>
+        <text x="16" y="90" class="body">Persistent vector store</text>
+        <text x="16" y="110" class="body">User/org scoped search</text>
+        <text x="16" y="130" class="body">rag_search tool · files/objects</text>
+      </g>
+      <g transform="translate(1142 1076)">
+        <rect width="214" height="150" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Insight</text>
+        <text x="16" y="48" class="card-title-sm">Insights engine</text>
+        <text x="16" y="70" class="body">Screen · apps · focus · unlocks</text>
+        <text x="16" y="90" class="body">Battery · storage · health</text>
+        <text x="16" y="110" class="body">Daily rollups · summaries</text>
+        <text x="16" y="130" class="body">Coach / study / device specialists</text>
+      </g>
+    </g>
+
+    <line x1="650" y1="1232" x2="650" y2="1280" class="arrow"/>
+    <line x1="1100" y1="1232" x2="1100" y2="1280" class="arrow"/>
+
+    <!-- TOOLS BAND -->
+    <g>
+      <text x="440" y="1304" class="band-title">05 · Tools, extensions &amp; storage</text>
+      <text x="440" y="1324" class="band-note">Capability discovery and extension points, all permissioned and audited</text>
+      <g transform="translate(440 1340)">
+        <rect width="214" height="130" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Tools</text>
+        <text x="16" y="48" class="card-title-sm">Registry &amp; executor</text>
+        <text x="16" y="70" class="body">Schemas · categories · tags</text>
+        <text x="16" y="90" class="body">Permissions · audit ledger</text>
+        <text x="16" y="110" class="body">Call records · policy checks</text>
+      </g>
+      <g transform="translate(674 1340)">
+        <rect width="214" height="130" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Built-ins</text>
+        <text x="16" y="48" class="card-title-sm">Core tool pack</text>
+        <text x="16" y="70" class="body">Filesystem · shell · git · web</text>
+        <text x="16" y="90" class="body">Utility · sandbox · chat stats</text>
+        <text x="16" y="110" class="body">Context · insights · RAG</text>
+      </g>
+      <g transform="translate(908 1340)">
+        <rect width="214" height="130" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">MCP</text>
+        <text x="16" y="48" class="card-title-sm">Marketplace &amp; policies</text>
+        <text x="16" y="70" class="body">Curated servers · connect lifecycle</text>
+        <text x="16" y="90" class="body">User/role/org allow-lists</text>
+        <text x="16" y="110" class="body">Server + tool-level deny lists</text>
+      </g>
+      <g transform="translate(1142 1340)">
+        <rect width="214" height="130" rx="16" class="card" filter="url(#softShadow)"/>
+        <text x="16" y="26" class="tag">Plugins</text>
+        <text x="16" y="48" class="card-title-sm">Extension SDK</text>
+        <text x="16" y="70" class="body">Manifest · versioning · permissions</text>
+        <text x="16" y="90" class="body">Tools · routes · sensors · agents</text>
+        <text x="16" y="110" class="body">Events · jobs · state · reload</text>
+      </g>
+    </g>
+
+    <line x1="650" y1="1488" x2="650" y2="1520" class="arrow"/>
+    <line x1="1100" y1="1488" x2="1100" y2="1520" class="arrow"/>
+
+    <!-- DATA BAND -->
+    <g>
+      <rect x="36" y="1516" width="1728" height="150" rx="24" fill="url(#band)" stroke="#DDE5F0" filter="url(#shadow)"/>
+      <text x="60" y="1546" class="band-title">06 · Persistence &amp; data domains</text>
+      <text x="60" y="1566" class="band-note">SQLite by default · PostgreSQL adapter · every domain is scoped and migratable</text>
+
+      <g transform="translate(60 1584)">
+        <rect width="264" height="58" rx="12" class="card-soft"/>
+        <text x="12" y="20" class="tag-dark">Identity</text>
+        <text x="12" y="38" class="body">users · sessions · roles · organizations</text>
+        <text x="12" y="52" class="body">memberships · audit</text>
+      </g>
+      <g transform="translate(340 1584)">
+        <rect width="264" height="58" rx="12" class="card-soft"/>
+        <text x="12" y="20" class="tag-dark">Devices</text>
+        <text x="12" y="38" class="body">devices · credentials · access · consents</text>
+        <text x="12" y="52" class="body">events · commands · pairing</text>
+      </g>
+      <g transform="translate(620 1584)">
+        <rect width="264" height="58" rx="12" class="card-soft"/>
+        <text x="12" y="20" class="tag-dark">Agents</text>
+        <text x="12" y="38" class="body">runs · run events · prompts · definitions</text>
+        <text x="12" y="52" class="body">workflows · steps · workflow events</text>
+      </g>
+      <g transform="translate(900 1584)">
+        <rect width="264" height="58" rx="12" class="card-soft"/>
+        <text x="12" y="20" class="tag-dark">Knowledge</text>
+        <text x="12" y="38" class="body">memories · embeddings · rag documents</text>
+        <text x="12" y="52" class="body">chunks · insight daily/weekly rollups</text>
+      </g>
+      <g transform="translate(1180 1584)">
+        <rect width="264" height="58" rx="12" class="card-soft"/>
+        <text x="12" y="20" class="tag-dark">Platform</text>
+        <text x="12" y="38" class="body">plugins · MCP · objects · tool calls</text>
+        <text x="12" y="52" class="body">llm usage · quotas · releases · jobs</text>
+      </g>
+      <g transform="translate(1460 1584)">
+        <rect width="264" height="58" rx="12" class="card-soft"/>
+        <text x="12" y="20" class="tag-dark">Operations</text>
+        <text x="12" y="38" class="body">outbox · jobs · backups · alerts</text>
+        <text x="12" y="52" class="body">auth audit · data requests</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ================= FLOW CONNECTORS ================= -->
+  <g>
+    <line x1="396" y1="310" x2="434" y2="310" class="arrow-accent"/>
+    <line x1="1396" y1="310" x2="1362" y2="310" class="arrow-dash"/>
+  </g>
+
+  <!-- Footer -->
+  <g>
+    <line x1="36" y1="1684" x2="1764" y2="1684" class="divider"/>
+    <text x="36" y="1704" class="band-note">VIRA · local-first AI runtime · see docs/SERVER_ROADMAP.md, docs/PLUGIN_SDK.md and docs/P4_ECOSYSTEM.md</text>
+    <text x="1764" y="1704" text-anchor="end" class="band-note">Architecture source of truth · v0.4</text>
+  </g>
+</svg>
