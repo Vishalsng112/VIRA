@@ -393,6 +393,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           body_path: release-notes.md
           prerelease: ${{ inputs.prerelease }}
+          make_latest: "false"
           fail_on_unmatched_files: true
           files: |
             dist/*
