@@ -4,6 +4,7 @@ import '../../app/app_scope.dart';
 import '../../app/widgets.dart';
 import '../../core/models/agent_inbox.dart';
 import '../../data/api/vira_api.dart';
+import 'schedule_editor_page.dart';
 
 enum _InboxView { notifications, schedules }
 
@@ -18,6 +19,7 @@ class _AgentInboxPageState extends State<AgentInboxPage> {
   _InboxView _view = _InboxView.notifications;
   List<AgentNotification> _notifications = const [];
   List<AgentSchedule> _schedules = const [];
+  List<AgentRecipe> _recipes = const [];
   int _unread = 0;
   bool _loading = true;
   String? _error;
@@ -46,12 +48,14 @@ class _AgentInboxPageState extends State<AgentInboxPage> {
         api.notifications(limit: 100),
         api.agentSchedules(),
         api.unreadNotificationCount(),
+        api.agentRecipes(),
       ]);
       if (!mounted) return;
       setState(() {
         _notifications = results[0] as List<AgentNotification>;
         _schedules = results[1] as List<AgentSchedule>;
         _unread = results[2] as int;
+        _recipes = results[3] as List<AgentRecipe>;
         _loading = false;
         _error = null;
       });
@@ -105,6 +109,127 @@ class _AgentInboxPageState extends State<AgentInboxPage> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => AgentScheduleRunsPage(schedule: schedule),
+      ),
+    );
+  }
+
+  AgentRecipe? _recipeFor(String agentId) {
+    for (final recipe in _recipes) {
+      if (recipe.agentId == agentId || recipe.id == agentId) return recipe;
+    }
+    return null;
+  }
+
+  Future<void> _openEditor({
+    AgentRecipe? recipe,
+    AgentSchedule? schedule,
+  }) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => ScheduleEditorPage(recipe: recipe, existing: schedule),
+      ),
+    );
+    if (changed == true && mounted) await _load();
+  }
+
+  Future<void> _toggleSchedule(AgentSchedule schedule) async {
+    try {
+      await _api?.updateAgentSchedule(schedule.id, {
+        'enabled': !schedule.enabled,
+      });
+      if (mounted) await _load();
+    } on ViraApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  Future<void> _deleteSchedule(AgentSchedule schedule) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete schedule?'),
+        content: Text(
+          'Delete "${schedule.name}"? Existing run history is removed too.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _api?.deleteAgentSchedule(schedule.id);
+      if (mounted) await _load();
+    } on ViraApiException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  void _showScheduleMenu(AgentSchedule schedule) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit schedule'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _openEditor(
+                  recipe: _recipeFor(schedule.agentId),
+                  schedule: schedule,
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                schedule.enabled
+                    ? Icons.pause_circle_outline
+                    : Icons.play_circle_outline,
+              ),
+              title: Text(
+                schedule.enabled ? 'Pause schedule' : 'Resume schedule',
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _toggleSchedule(schedule);
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.delete_outline,
+                color: Theme.of(sheetContext).colorScheme.error,
+              ),
+              title: Text(
+                'Delete schedule',
+                style: TextStyle(
+                  color: Theme.of(sheetContext).colorScheme.error,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _deleteSchedule(schedule);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -211,23 +336,43 @@ class _AgentInboxPageState extends State<AgentInboxPage> {
   }
 
   Widget _scheduleList(ThemeData theme) {
-    if (_schedules.isEmpty) {
-      return const EmptyState(
-        icon: Icons.schedule_outlined,
-        title: 'No schedules yet',
-        message: 'Create a Morning Brief, Focus Coach, Second Brain, Chief of Staff or Household schedule from the dashboard or API. It will appear here with its next run and history.',
-      );
-    }
+    final available = _recipes.where((recipe) => recipe.available).toList();
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final schedule in _schedules) ...[
-          _ScheduleTile(
-            schedule: schedule,
-            onRun: () => _runNow(schedule),
-            onRuns: () => _openRuns(schedule),
+        if (available.isNotEmpty) ...[
+          Text(
+            'Add to your day',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
+          const SizedBox(height: 8),
+          for (final recipe in available) ...[
+            _RecipeTile(
+              recipe: recipe,
+              onAdd: () => _openEditor(recipe: recipe),
+            ),
+            const SizedBox(height: 10),
+          ],
           const SizedBox(height: 10),
         ],
+        if (_schedules.isEmpty)
+          const EmptyState(
+            icon: Icons.schedule_outlined,
+            title: 'No schedules yet',
+            message: 'Pick an agent above, choose a time, and it will start leaving updates in your inbox.',
+          )
+        else
+          for (final schedule in _schedules) ...[
+            _ScheduleTile(
+              schedule: schedule,
+              onRun: () => _runNow(schedule),
+              onRuns: () => _openRuns(schedule),
+              onMenu: () => _showScheduleMenu(schedule),
+            ),
+            const SizedBox(height: 10),
+          ],
       ],
     );
   }
@@ -331,16 +476,78 @@ class _NotificationTile extends StatelessWidget {
   }
 }
 
+class _RecipeTile extends StatelessWidget {
+  const _RecipeTile({required this.recipe, required this.onAdd});
+
+  final AgentRecipe recipe;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return GlassCard(
+      padding: const EdgeInsets.all(16),
+      radius: 20,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  recipe.name,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              StatusPill(label: recipe.architecture, tone: StatusTone.info),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            recipe.pitch,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+          if (recipe.scheduleModes.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Modes: ${recipe.scheduleModes.join(', ')}',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonalIcon(
+              onPressed: onAdd,
+              icon: const Icon(Icons.add_alarm, size: 18),
+              label: const Text('Add schedule'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ScheduleTile extends StatelessWidget {
   const _ScheduleTile({
     required this.schedule,
     required this.onRun,
     required this.onRuns,
+    required this.onMenu,
   });
 
   final AgentSchedule schedule;
   final VoidCallback onRun;
   final VoidCallback onRuns;
+  final VoidCallback onMenu;
 
   @override
   Widget build(BuildContext context) {
@@ -369,6 +576,12 @@ class _ScheduleTile extends StatelessWidget {
               StatusPill(
                 label: schedule.enabled ? 'Active' : 'Paused',
                 tone: tone,
+              ),
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Schedule actions',
+                onPressed: onMenu,
+                icon: const Icon(Icons.more_vert),
               ),
             ],
           ),

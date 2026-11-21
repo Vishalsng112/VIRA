@@ -428,4 +428,103 @@ void main() {
     expect(detail.run.result, 'Today: review the plan.');
     expect(detail.timeline.single['type'], 'schedule.started');
   });
+
+  test('agent recipes and schedule mutations follow the contract', () async {
+    final client = MockClient((request) async {
+      switch ('${request.method} ${request.url.path}') {
+        case 'GET /api/v1/agent-recipes':
+          return http.Response(
+            jsonEncode({
+              'agents': [
+                {
+                  'id': 'focus-coach',
+                  'name': 'Focus Coach',
+                  'pitch': 'Measured coaching.',
+                  'status': 'implemented',
+                  'agent_id': 'focus-coach',
+                  'daily_trigger': 'evening',
+                  'architecture': 'single',
+                  'required_tools': ['insights'],
+                  'schedule_modes': ['morning', 'evening', 'weekly'],
+                  'default_mode': 'evening',
+                  'outputs': ['review'],
+                  'why_users_return': 'Daily habit.',
+                  'default_schedule': {
+                    'schedule_type': 'daily',
+                    'time_of_day': '18:30',
+                    'timezone': 'UTC',
+                    'input': {'mode': 'evening'},
+                  },
+                },
+              ],
+            }),
+            200,
+          );
+        case 'POST /api/v1/agent-schedules':
+          expect(request.headers['Authorization'], 'Bearer session-123');
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['agent_id'], 'focus-coach');
+          expect(body['input']['mode'], 'evening');
+          return http.Response(
+            jsonEncode({
+              'id': 's2',
+              'agent_id': 'focus-coach',
+              'name': 'Evening review',
+              'message': 'Review my day',
+              'schedule_type': 'daily',
+              'time_of_day': '18:30',
+              'timezone': 'UTC',
+              'enabled': true,
+              'channels': ['inapp'],
+              'input': {'mode': 'evening'},
+            }),
+            201,
+          );
+        case 'PATCH /api/v1/agent-schedules/s2':
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['enabled'], isFalse);
+          return http.Response(
+            jsonEncode({
+              'id': 's2',
+              'agent_id': 'focus-coach',
+              'name': 'Evening review',
+              'message': 'Review my day',
+              'schedule_type': 'daily',
+              'time_of_day': '18:30',
+              'timezone': 'UTC',
+              'enabled': false,
+              'channels': ['inapp'],
+              'input': {'mode': 'evening'},
+            }),
+            200,
+          );
+        case 'DELETE /api/v1/agent-schedules/s2':
+          return http.Response('{}', 204);
+      }
+      return http.Response('{}', 404);
+    });
+
+    final api = ViraApi('http://localhost:8000/', client: client)
+      ..sessionId = 'session-123';
+    final recipes = await api.agentRecipes();
+    expect(recipes.single.available, isTrue);
+    expect(recipes.single.scheduleModes, contains('evening'));
+    expect(recipes.single.defaultMode, 'evening');
+
+    final created = await api.createAgentSchedule(
+      agentId: 'focus-coach',
+      name: 'Evening review',
+      message: 'Review my day',
+      scheduleType: 'daily',
+      timezone: 'UTC',
+      timeOfDay: '18:30',
+      input: {'mode': 'evening'},
+    );
+    expect(created.id, 's2');
+    expect(created.input['mode'], 'evening');
+
+    final paused = await api.updateAgentSchedule('s2', {'enabled': false});
+    expect(paused.enabled, isFalse);
+    await api.deleteAgentSchedule('s2');
+  });
 }

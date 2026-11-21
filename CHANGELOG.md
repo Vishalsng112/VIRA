@@ -60,6 +60,9 @@ All notable changes to VIRA are documented here. The format follows
   demonstrating the Chief of Staff without external credentials.
 - VIRA Link **Agent Inbox**: unread notifications, full result text, schedule
   list with next run, run-now, run history and scheduled-run timeline.
+- VIRA Link **schedule management**: agent recipe cards, create/edit, pause/
+  resume, delete, timezone, quiet hours, mode selection and webhook channel.
+- Backend recipe metadata (`schedule_modes`, `default_mode`) for client forms.
 - Backend support for the client: unread notification count and
   `GET /api/v1/agent-schedules/{id}/runs/{run_id}` with a redacted timeline.
 - Authorized `knowledge_list` service/runtime helper for scoped knowledge review.

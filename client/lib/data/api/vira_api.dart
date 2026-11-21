@@ -532,6 +532,77 @@ class ViraApi {
         .toList();
   }
 
+  Future<List<AgentRecipe>> agentRecipes() async {
+    final body = await _decode(
+      await _send('GET', '/api/v1/agent-recipes', user: true),
+    );
+    return ((body['agents'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => AgentRecipe.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<AgentSchedule> createAgentSchedule({
+    required String agentId,
+    required String name,
+    required String message,
+    required String scheduleType,
+    required String timezone,
+    String? timeOfDay,
+    int? weekday,
+    int? intervalMinutes,
+    String? quietHoursStart,
+    String? quietHoursEnd,
+    List<String> channels = const ['inapp'],
+    Map<String, dynamic> input = const {},
+    bool enabled = true,
+  }) async {
+    final body = await _decode(
+      await _send(
+        'POST',
+        '/api/v1/agent-schedules',
+        user: true,
+        body: {
+          'agent_id': agentId,
+          'name': name,
+          'message': message,
+          'schedule_type': scheduleType,
+          'timezone': timezone,
+          'channels': channels,
+          'input': input,
+          'enabled': enabled,
+          'time_of_day': ?timeOfDay,
+          'weekday': ?weekday,
+          'interval_minutes': ?intervalMinutes,
+          'quiet_hours_start': ?quietHoursStart,
+          'quiet_hours_end': ?quietHoursEnd,
+        },
+      ),
+    );
+    return AgentSchedule.fromJson(body);
+  }
+
+  Future<AgentSchedule> updateAgentSchedule(
+    String scheduleId,
+    Map<String, dynamic> changes,
+  ) async {
+    final body = await _decode(
+      await _send(
+        'PATCH',
+        '/api/v1/agent-schedules/$scheduleId',
+        user: true,
+        body: changes,
+      ),
+    );
+    return AgentSchedule.fromJson(body);
+  }
+
+  Future<void> deleteAgentSchedule(String scheduleId) async {
+    await _decode(
+      await _send('DELETE', '/api/v1/agent-schedules/$scheduleId', user: true),
+    );
+  }
+
   Future<void> runAgentSchedule(String scheduleId) async {
     await _decode(
       await _send(

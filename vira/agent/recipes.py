@@ -15,6 +15,8 @@ RECOMMENDED_AGENTS: List[Dict[str, Any]] = [
         "agent_id": "morning-brief",
         "daily_trigger": "morning",
         "architecture": "single",
+        "schedule_modes": [],
+        "default_mode": None,
         "required_tools": ["insights", "user_context", "knowledge_search", "rag_search"],
         "default_schedule": {
             "schedule_type": "daily",
@@ -32,6 +34,8 @@ RECOMMENDED_AGENTS: List[Dict[str, Any]] = [
         "agent_id": "focus-coach",
         "daily_trigger": "morning, mid-day, evening",
         "architecture": "single",
+        "schedule_modes": ["morning", "checkin", "evening", "weekly"],
+        "default_mode": "evening",
         "required_tools": ["insights", "user_context"],
         "default_schedule": {
             "schedule_type": "daily",
@@ -50,6 +54,8 @@ RECOMMENDED_AGENTS: List[Dict[str, Any]] = [
         "agent_id": "second-brain",
         "daily_trigger": "on capture; weekly consolidation",
         "architecture": "single",
+        "schedule_modes": ["ask", "consolidate"],
+        "default_mode": "consolidate",
         "required_tools": ["knowledge_search", "knowledge_write", "rag_search"],
         "default_schedule": {
             "schedule_type": "weekly",
@@ -69,6 +75,8 @@ RECOMMENDED_AGENTS: List[Dict[str, Any]] = [
         "agent_id": "chief-of-staff",
         "daily_trigger": "morning and evening",
         "architecture": "centralized",
+        "schedule_modes": ["morning", "evening"],
+        "default_mode": "morning",
         "required_tools": ["mcp email", "mcp calendar", "mcp tasks"],
         "default_schedule": {
             "schedule_type": "daily",
@@ -87,6 +95,8 @@ RECOMMENDED_AGENTS: List[Dict[str, Any]] = [
         "agent_id": "household",
         "daily_trigger": "morning and evening; weekly review",
         "architecture": "single",
+        "schedule_modes": ["morning", "evening", "weekly"],
+        "default_mode": "morning",
         "required_tools": ["family household store"],
         "default_schedule": {
             "schedule_type": "daily",

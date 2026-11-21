@@ -11,7 +11,8 @@ installed agent; the five recommended agents are delivered next.
 ## Where you see results
 
 - **VIRA Link → Inbox** (mobile and desktop client): unread agent updates,
-  full result text, agent schedules, next run time, run-now and run history.
+  full result text, agent recipe cards, schedule creation/editing, pause/resume,
+  delete, next run time, run-now and run history.
 - **API**: `GET /api/v1/notifications`,
   `GET /api/v1/agent-schedules`,
   `GET /api/v1/agent-schedules/{id}/runs`.
@@ -233,6 +234,11 @@ curl -s http://localhost:8000/api/v1/agent-schedules/agents \
 This lists installed agents with their coordination architecture.
 
 ## Create your first schedule
+
+The easiest path is **VIRA Link → Inbox → Schedules → Add schedule**. Pick an
+agent recipe, choose the time, timezone, mode and quiet hours, then save.
+
+The same flow is available over the API:
 
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/agent-schedules \

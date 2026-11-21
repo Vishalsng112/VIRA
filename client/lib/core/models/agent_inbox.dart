@@ -205,3 +205,55 @@ class AgentScheduleRunDetail {
     );
   }
 }
+
+class AgentRecipe {
+  const AgentRecipe({
+    required this.id,
+    required this.name,
+    required this.pitch,
+    required this.status,
+    required this.agentId,
+    required this.dailyTrigger,
+    required this.architecture,
+    required this.requiredTools,
+    required this.scheduleModes,
+    required this.outputs,
+    required this.whyUsersReturn,
+    required this.defaultSchedule,
+    this.defaultMode,
+  });
+
+  final String id;
+  final String name;
+  final String pitch;
+  final String status;
+  final String agentId;
+  final String dailyTrigger;
+  final String architecture;
+  final List<String> requiredTools;
+  final List<String> scheduleModes;
+  final List<String> outputs;
+  final String whyUsersReturn;
+  final Map<String, dynamic> defaultSchedule;
+  final String? defaultMode;
+
+  bool get available => status == 'implemented';
+
+  factory AgentRecipe.fromJson(Map<String, dynamic> json) {
+    return AgentRecipe(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Agent',
+      pitch: json['pitch']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'planned',
+      agentId: json['agent_id']?.toString() ?? '',
+      dailyTrigger: json['daily_trigger']?.toString() ?? '',
+      architecture: json['architecture']?.toString() ?? 'single',
+      requiredTools: _strings(json['required_tools']),
+      scheduleModes: _strings(json['schedule_modes']),
+      outputs: _strings(json['outputs']),
+      whyUsersReturn: json['why_users_return']?.toString() ?? '',
+      defaultSchedule: _map(json['default_schedule']),
+      defaultMode: json['default_mode']?.toString(),
+    );
+  }
+}
