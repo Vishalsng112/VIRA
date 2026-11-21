@@ -15,7 +15,8 @@ def _ms(value: Any) -> int:
         return 0
 
 
-def aggregate_events(events: Iterable[Dict[str, Any]], days: int) -> Dict[str, Any]:
+def aggregate_events(events: Iterable[Dict[str, Any]], days: int,
+                     include_apps: bool = True) -> Dict[str, Any]:
     app_ms: Dict[str, int] = defaultdict(int)
     app_labels: Dict[str, str] = {}
     app_categories: Dict[str, str] = {}
@@ -118,7 +119,7 @@ def aggregate_events(events: Iterable[Dict[str, Any]], days: int) -> Dict[str, A
         for category, ms in sorted(categories.items(), key=lambda item: item[1], reverse=True)
     ]
     summary = _summary_text(days, totals, top_apps, focus_session_count, completed_sessions,
-                            focus_session_seconds, health_warnings)
+                            focus_session_seconds, health_warnings, include_apps)
     return {
         "days": days,
         "totals": {
@@ -147,13 +148,13 @@ def aggregate_events(events: Iterable[Dict[str, Any]], days: int) -> Dict[str, A
 
 def _summary_text(days: int, totals: Dict[str, int], top_apps: List[Dict[str, Any]],
                   sessions: int, completed: int, seconds: int,
-                  warnings: List[str]) -> str:
+                  warnings: List[str], include_apps: bool = True) -> str:
     screen_min = totals["screen_ms"] // 60000
     app_min = totals["app_ms"] // 60000
     top = top_apps[0]["label"] if top_apps else "no app data"
     parts = [
         f"Last {days} day(s): screen time {screen_min} min, app time {app_min} min.",
-        f"Top app: {top}.",
+        f"Top app: {top}." if include_apps else "Top app: hidden for privacy.",
         f"Focus: {sessions} session(s), {completed} completed, {seconds // 60} min total.",
         f"Unlocks: {totals['unlocks']}.",
     ]

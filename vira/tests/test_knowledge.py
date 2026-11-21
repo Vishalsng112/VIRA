@@ -6,7 +6,7 @@ from pathlib import Path
 from vira.auth import auth, database
 from vira.knowledge import consolidation, policy, service
 from vira.knowledge.models import KnowledgeItem
-from vira.knowledge.store import SqliteKnowledgeStore
+from vira.knowledge.store import SqliteKnowledgeStore, get_store
 from vira.tools.knowledge_tool import KnowledgeSearchTool, KnowledgeWriteTool
 
 
@@ -54,6 +54,35 @@ class KnowledgeBaseTest(unittest.IsolatedAsyncioTestCase):
             user_id=self.user_id, requested_by_user=True)
         results = await service.search("salary", user_id=self.other_id)
         self.assertFalse([r for r in results if r.get("id") == item["id"]])
+
+    async def test_list_items_is_user_scoped_and_authorized(self):
+        mine = await service.write(
+            "My private reminder.", user_id=self.user_id, requested_by_user=True)
+        theirs = await service.write(
+            "Someone else's reminder.", user_id=self.other_id, requested_by_user=True)
+        items = await service.list_items(user_id=self.user_id, scopes=["personal"])
+        ids = {item["id"] for item in items}
+        self.assertIn(mine["id"], ids)
+        self.assertNotIn(theirs["id"], ids)
+        denied = await service.list_items(
+            user_id=self.user_id, scopes=["personal"],
+            authorize=lambda action: False)
+        self.assertEqual(denied, [])
+
+    async def test_correct_creates_superseding_revision(self):
+        original = await service.write(
+            "The office is on floor 3.", user_id=self.user_id,
+            requested_by_user=True)
+        corrected = await service.correct(
+            original["id"], "The office is on floor 5.", user_id=self.user_id)
+        self.assertEqual(corrected["content"], "The office is on floor 5.")
+        self.assertEqual(corrected["revision"], 2)
+        self.assertEqual(corrected["supersedes"], original["id"])
+        previous = get_store().get(original["id"])
+        self.assertEqual(previous["status"], "deprecated")
+        with self.assertRaises(PermissionError):
+            await service.correct(
+                original["id"], "Hijacked", user_id=self.other_id)
 
     async def test_agent_scope_requires_the_role(self):
         item = await service.write(

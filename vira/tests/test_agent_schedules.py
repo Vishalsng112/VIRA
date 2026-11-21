@@ -94,8 +94,10 @@ class ScheduleStoreTests(unittest.TestCase):
     def test_crud_and_user_isolation(self):
         item = schedules.create_schedule(
             1, "chatbot", "Morning", "Summarise my day",
-            schedule_type="daily", time_of_day="07:30")
+            schedule_type="daily", time_of_day="07:30",
+            input_data={"mode": "morning"})
         self.assertEqual(item["user_id"], 1)
+        self.assertEqual(item["input"], {"mode": "morning"})
         self.assertTrue(item["next_run_at"])
         self.assertIsNotNone(schedules.get_schedule(item["id"], 1))
         self.assertIsNone(schedules.get_schedule(item["id"], 2))
@@ -186,7 +188,8 @@ class ProactiveExecutionTests(unittest.IsolatedAsyncioTestCase):
         item = schedules.create_schedule(
             1, "chatbot", "Morning brief", "Summarise my day",
             schedule_type="interval", interval_minutes=60,
-            task_profile={"decomposability": 0.8})
+            task_profile={"decomposability": 0.8},
+            input_data={"mode": "morning"})
         with database.transaction() as conn:
             conn.execute("UPDATE agent_schedules SET next_run_at = ? WHERE id = ?",
                          ((datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),
@@ -204,6 +207,7 @@ class ProactiveExecutionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.user_id, 1)
         self.assertTrue(request.metadata["proactive"])
         self.assertEqual(request.metadata["task_profile"], {"decomposability": 0.8})
+        self.assertEqual(request.input["mode"], "morning")
 
         notes = notifications.list_for_user(1)
         self.assertEqual(len(notes), 1)
@@ -312,10 +316,12 @@ class ScheduleApiTests(unittest.TestCase):
             "time_of_day": "07:30",
             "timezone": "UTC",
             "channels": ["inapp"],
+            "input": {"mode": "morning"},
         })
         self.assertEqual(created.status_code, 201)
         item = created.json()
         self.assertEqual(item["user_id"], 1)
+        self.assertEqual(item["input"], {"mode": "morning"})
 
         listed = self.client.get("/api/v1/agent-schedules")
         self.assertEqual(len(listed.json()["schedules"]), 1)

@@ -919,6 +919,13 @@ def _m017_agent_schedules(conn: sqlite3.Connection) -> None:
     )
 
 
+# --------------------------------------------------------------------------- #
+# 018 - structured input for scheduled agent runs
+# --------------------------------------------------------------------------- #
+def _m018_schedule_input(conn: sqlite3.Connection) -> None:
+    _add_column(conn, "agent_schedules", "input", "TEXT NOT NULL DEFAULT '{}'")
+
+
 MIGRATIONS: List[Tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "users_public_id_and_status", _m001_users),
     (2, "devices_credentials_access_events", _m002_devices),
@@ -937,6 +944,7 @@ MIGRATIONS: List[Tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (15, "knowledge_base", _m015_knowledge_base),
     (16, "workspaces", _m016_workspaces),
     (17, "agent_schedules_and_notification_delivery", _m017_agent_schedules),
+    (18, "agent_schedule_input", _m018_schedule_input),
 ]
 
 

@@ -39,9 +39,10 @@ def load_events(device_id: str, days: int) -> Tuple[int, List[Dict[str, Any]]]:
     return days, events
 
 
-def summarize_device(device_id: str, days: int) -> Dict[str, Any]:
+def summarize_device(device_id: str, days: int,
+                     include_apps: bool = True) -> Dict[str, Any]:
     days, events = load_events(device_id, days)
-    result = aggregate_events(events, days)
+    result = aggregate_events(events, days, include_apps=include_apps)
     result["device_id"] = device_id
     result["generated_at"] = datetime.now(timezone.utc).isoformat()
     return result

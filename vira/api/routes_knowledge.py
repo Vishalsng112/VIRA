@@ -32,6 +32,13 @@ class KnowledgePromoteRequest(BaseModel):
     force: bool = False
 
 
+class KnowledgeCorrectRequest(BaseModel):
+    content: str
+    summary: Optional[str] = None
+    tags: Optional[List[str]] = None
+    kind: Optional[str] = None
+
+
 def build_knowledge_router(user_dep) -> APIRouter:
     router = APIRouter(prefix="/api/v1/knowledge")
 
@@ -128,6 +135,29 @@ def build_knowledge_router(user_dep) -> APIRouter:
         if not chain:
             raise errors.NotFound("Knowledge item not found")
         return {"revisions": chain}
+
+    @router.patch("/items/{item_id}")
+    async def correct_item(
+        item_id: str,
+        body: KnowledgeCorrectRequest,
+        organization_id: Optional[str] = Header(None, alias="X-Organization-ID"),
+        user: UserPrincipal = Depends(user_dep),
+    ):
+        if not body.content.strip():
+            raise errors.ValidationFailed("content is required")
+        org_service.require_member(organization_id, user.user_id)
+        try:
+            return await service.correct(
+                item_id,
+                body.content,
+                user_id=user.user_id,
+                summary=body.summary,
+                tags=body.tags,
+                kind=body.kind,
+                organization_id=organization_id,
+            )
+        except (ValueError, PermissionError) as exc:
+            raise errors.ValidationFailed(str(exc))
 
     @router.post("/items/{item_id}/promote", status_code=201)
     async def promote(

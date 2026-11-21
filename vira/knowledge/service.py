@@ -143,6 +143,84 @@ async def search(
     return results[:limit]
 
 
+async def list_items(
+    *,
+    user_id: Optional[int],
+    scopes: Optional[Sequence[str]] = None,
+    agent_role: Optional[str] = None,
+    conversation_id: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    limit: int = 200,
+    authorize=None,
+) -> List[Dict[str, Any]]:
+    """List knowledge items visible to a caller, filtered by scope authority."""
+    scopes = list(scopes or ["personal", "agent", "global"])
+    allowed = policy.filter_authorized(policy.validate_scopes(scopes), authorize)
+    if not allowed:
+        return []
+    limit = max(1, min(int(limit), 500))
+    items = get_store().list_items(
+        user_id=user_id, organization_id=organization_id, limit=limit)
+    result = []
+    for item in items:
+        scope = item.get("scope")
+        if scope not in allowed:
+            continue
+        if scope == "personal" and str(item.get("user_id")) != str(user_id):
+            continue
+        if scope == "agent" and item.get("agent_role") != agent_role:
+            continue
+        if scope == "org" and item.get("organization_id") != organization_id:
+            continue
+        result.append(item)
+    return result[:limit]
+
+
+async def correct(
+    item_id: str,
+    content: str,
+    *,
+    user_id: int,
+    summary: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    kind: Optional[str] = None,
+    agent_role: Optional[str] = None,
+    organization_id: Optional[str] = None,
+    authorize=None,
+) -> Dict[str, Any]:
+    """Create a superseding revision of an item the user owns or may write."""
+    if not (content or "").strip():
+        raise ValueError("content is required")
+    store = get_store()
+    previous = store.get(item_id)
+    if previous is None:
+        raise ValueError("knowledge item not found")
+    scope = previous.get("scope")
+    if scope == "global":
+        raise PermissionError("global knowledge is corrected through promotion")
+    if previous.get("user_id") is not None and int(previous["user_id"]) != int(user_id):
+        raise PermissionError("knowledge item belongs to another user")
+    if scope == "org":
+        if not organization_id or previous.get("organization_id") != organization_id:
+            raise PermissionError("organization scope required")
+    if authorize is not None and not authorize(policy.write_action(scope)):
+        raise PermissionError(f"not allowed to write {scope} knowledge")
+    replacement = KnowledgeItem(
+        kind=kind or previous.get("kind") or KnowledgeKind.FACT.value,
+        content=content.strip(),
+        summary=summary or previous.get("summary"),
+        tags=list(tags if tags is not None else (previous.get("tags") or [])),
+        confidence=previous.get("confidence") or 0.5,
+        importance=previous.get("importance") or 0.0,
+        status=KnowledgeStatus.VERIFIED.value,
+        metadata={**(previous.get("metadata") or {}), "corrected": True},
+        source={**(previous.get("source") or {}), "corrected_from": item_id},
+    )
+    corrected = await store.supersede(item_id, replacement, actor=agent_role or "user")
+    corrected["supersedes"] = item_id
+    return corrected
+
+
 async def write(
     content: str,
     *,

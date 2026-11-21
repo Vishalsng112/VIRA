@@ -14,6 +14,7 @@ from loguru import logger
 
 from vira.agent.architectures import Architecture, ARCHITECTURE_PROFILES, SingleAgent
 from vira.agent.base import TaskRequest, TaskResult
+from vira.agent.tool_output import tool_error, tool_text
 
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -26,34 +27,6 @@ DEFAULT_CONTEXT_TOOLS = [
     {"name": "user_context"},
     {"name": "insights", "params": {"days": 1}},
 ]
-
-
-def _tool_text(value: Any) -> str:
-    if value is None:
-        return ""
-    if hasattr(value, "content"):
-        parts = []
-        for item in getattr(value, "content", []) or []:
-            text = getattr(item, "text", None)
-            if text:
-                parts.append(str(text))
-        if parts:
-            return "\n".join(parts)
-    if hasattr(value, "text"):
-        return str(value.text or "")
-    if isinstance(value, dict):
-        return str(value.get("text") or value.get("result") or value)
-    return str(value)
-
-
-def _tool_error(value: Any) -> bool:
-    flag = getattr(value, "isError", None)
-    if flag is None:
-        flag = getattr(value, "is_error", None)
-    if flag:
-        return True
-    text = _tool_text(value).strip().lower()
-    return text.startswith("error:") or "\nerror:" in text
 
 
 class MorningBriefAgent(SingleAgent):
@@ -119,8 +92,8 @@ class MorningBriefAgent(SingleAgent):
                 continue
             try:
                 result = await self.call_tool(name, **params)
-                text = _tool_text(result).strip()
-                if _tool_error(result):
+                text = tool_text(result).strip()
+                if tool_error(result):
                     unavailable.append({
                         "source": name,
                         "reason": text[:300] or "tool returned an error",

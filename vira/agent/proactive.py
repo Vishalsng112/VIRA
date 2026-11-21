@@ -153,13 +153,15 @@ class ProactiveScheduler:
             "agent_id": agent.agent_id,
             "architecture": getattr(agent, "architecture", "single"),
         })
+        payload = dict(schedule.get("input") or {})
+        payload.update({
+            "message": schedule["message"],
+            "trigger": "schedule",
+            "schedule_id": schedule_id,
+            "scheduled_for": scheduled_for,
+        })
         request = TaskRequest(
-            input={
-                "message": schedule["message"],
-                "trigger": "schedule",
-                "schedule_id": schedule_id,
-                "scheduled_for": scheduled_for,
-            },
+            input=payload,
             user_id=int(schedule["user_id"]),
             organization_id=schedule.get("organization_id"),
             run_id=run_id,

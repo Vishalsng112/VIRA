@@ -25,12 +25,17 @@ class InsightsTool(BaseTool):
                     "device_id": {"type": "string", "description": "Optional device id"},
                     "days": {"type": "integer", "minimum": 1, "maximum": 90,
                              "description": "Lookback window in days (default 7)"},
+                    "include_apps": {
+                        "type": "boolean",
+                        "description": ("Include top app names. Set false for "
+                                        "privacy-safe weekly reports."),
+                    },
                 },
             },
         )
 
     async def execute(self, user_id: Any = None, device_id: Optional[str] = None,
-                      days: int = 7, **kwargs) -> Any:
+                      days: int = 7, include_apps: bool = True, **kwargs) -> Any:
         try:
             numeric_user = int(user_id)
         except (TypeError, ValueError):
@@ -52,17 +57,23 @@ class InsightsTool(BaseTool):
                     "ERROR: that device is not linked to this user.", is_error=True)
         else:
             selected = devices[0]
-        data = summarize_device(selected["id"], days)
+        data = summarize_device(selected["id"], days, include_apps=include_apps)
         top = ", ".join(
             f"{app['label']} ({app['foreground_ms'] // 60000}m)"
             for app in data["top_apps"][:5]
         ) or "no app data"
+        categories = ", ".join(
+            f"{item['category']} ({item['foreground_ms'] // 60000}m)"
+            for item in data.get("categories", [])[:5]
+        ) or "no category data"
         warnings = data["health"].get("warnings", [])
         battery = data.get("battery") or {}
         lines = [
             f"Device: {selected['display_name']} ({selected.get('platform', 'unknown')})",
             data["summary"],
-            f"Top apps: {top}.",
+            (f"Top apps: {top}." if include_apps
+             else "Top apps: hidden for privacy."),
+            f"Categories: {categories}.",
             f"Focus score: {data['focus'].get('score', 0)}/100. "
             f"Focus sessions: {data['totals'].get('focus_sessions', 0)}.",
         ]

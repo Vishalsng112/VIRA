@@ -116,6 +116,21 @@ class AgentRuntime:
         return await knowledge_service.write(
             content, authorize=self._security.authorize, **kwargs)
 
+    async def knowledge_list(self, agent_id: str, *, scopes=None, **kwargs) -> Any:
+        """List scoped knowledge with the same authority as retrieval/write."""
+        from vira.knowledge import service as knowledge_service
+
+        return await knowledge_service.list_items(
+            scopes=scopes, authorize=self._security.authorize, **kwargs)
+
+    async def knowledge_correct(self, agent_id: str, item_id: str,
+                                content: str, **kwargs) -> Any:
+        """Create a superseding revision through the knowledge service."""
+        from vira.knowledge import service as knowledge_service
+
+        return await knowledge_service.correct(
+            item_id, content, authorize=self._security.authorize, **kwargs)
+
     async def knowledge_promote(self, agent_id: str, item_id: str, *,
                                 target_scope: str = "global", **kwargs) -> Any:
         """Promote knowledge, requiring an explicit promotion grant."""

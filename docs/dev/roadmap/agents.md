@@ -4,8 +4,9 @@ Status: active implementation plan
 Last updated: 2026-11-21
 Scope: proactive, recurring agents that make VIRA useful every day.
 
-**Current status:** P0 prerequisites and P1 Morning Brief are implemented and
-tested. P2 Focus & Wellbeing Coach is next.
+**Current status:** P0 prerequisites, P1 Morning Brief, P2 Focus & Wellbeing
+Coach and P3 Second Brain are implemented and tested. P4 Chief of Staff is
+next.
 
 This roadmap turns the paper-aligned agent architectures and VIRA's device,
 memory, knowledge and tool platform into five daily-use agents. It deliberately
@@ -126,7 +127,7 @@ require approval during a proactive run.
 - Delivery: `vira/notifications.py` plus the `notifications.deliver` worker job.
 - API: `vira/api/routes_schedules.py` (`/api/v1/agent-schedules`,
   `/api/v1/agent-recipes`).
-- Schema: migration 17 and PostgreSQL parity.
+- Schema: migrations 17–18 and PostgreSQL parity.
 - Tests: `vira/tests/test_agent_schedules.py`.
 
 ## P1 — Morning Brief — implemented
@@ -164,13 +165,13 @@ optional MCP calendar/task/email connectors.
 
 **Metrics:** daily active briefs, open rate, 7/30-day retention.
 
-## P2 — Focus and Wellbeing Coach
+## P2 — Focus and Wellbeing Coach — implemented
 
 **Pitch:** "Your agent sees your actual screen time, focus and device signals —
 privately."
 
-**Daily triggers:** a morning focus plan, optional mid-day check-in and an
-evening review. Weekly report on demand or scheduled.
+**Daily triggers:** morning focus plan, optional mid-day check-in and evening
+review. Weekly report on demand or scheduled.
 
 **Architecture:** `SingleAgent` for coaching. Weekly report may use
 `CentralizedAgentSystem` when there are multiple devices or categories.
@@ -178,17 +179,28 @@ evening review. Weekly report on demand or scheduled.
 **Uses:** VIRA Link app usage, screen sessions, focus sessions, battery/idle
 signals, `insights`, memory of goals.
 
-**Acceptance:**
-- Recommendations reference measured data, not generic advice.
-- Break reminders respect quiet hours and notification settings.
-- Weekly report can be exported without raw app titles.
+**Implementation:**
+- Agent: `vira/agent/Agents/focus_coach.py`, registered as `focus-coach`.
+- Schedule `input.mode` selects `morning`, `checkin`, `evening` or `weekly`.
+- Context comes from `user_context` + `insights`; goals come from memory.
+- Weekly mode requests `insights` with `include_apps=false`, so app names are
+  hidden; categories and measured numbers remain.
+- Quiet hours are enforced by the proactive scheduler before the run starts.
+- Deterministic fallback when the model is unavailable.
+
+- [x] Recommendations reference measured data, not generic advice.
+- [x] Break reminders respect quiet hours and notification settings.
+- [x] Weekly report can be exported without raw app titles.
+- [x] Morning/checkin/evening/weekly modes share one agent and one schedule API.
+
+**Acceptance evidence:** `python3 -m unittest vira.tests.test_focus_second_brain -v`.
 
 **Metrics:** daily active coaching users, focus sessions started, weekly report
 views.
 
 ---
 
-## P3 — Second Brain and Memory Curator
+## P3 — Second Brain and Memory Curator — implemented
 
 **Pitch:** "Tell VIRA once. It remembers — locally, with your permission."
 
@@ -201,11 +213,26 @@ single-agent because it is sequential.
 **Uses:** scoped knowledge base, memory ranking/feedback, RAG, conversation
 history, export/delete.
 
-**Acceptance:**
-- "What did I decide about X?" returns the source item and date.
-- Users can inspect, correct and delete what VIRA remembers.
-- Weekly consolidation reports duplicates and stale items without deleting
+**Implementation:**
+- Agent: `vira/agent/Agents/second_brain.py`, registered as `second-brain`.
+- `input.mode` selects `capture`, `ask`, `correct` or `consolidate`.
+- Capture writes verified **personal** knowledge with `requested_by_user=true`.
+- Recall uses merged knowledge search and answers with numbered citations and
+  stored dates; no hits means no model call and an honest "not found".
+- Correction creates a superseding revision; the old item is retained and
+  deprecated. Added `PATCH /api/v1/knowledge/items/{item_id}`.
+- Consolidation lists personal knowledge through the authorized service API and
+  reports duplicates, stale items and low-confidence items. It deletes nothing.
+- Added `knowledge_list` to the runtime/service so read access follows the same
+  authorization path as search and write.
+
+- [x] "What did I decide about X?" returns the source item and date.
+- [x] Users can inspect, correct and delete what VIRA remembers.
+- [x] Weekly consolidation reports duplicates and stale items without deleting
   anything automatically.
+- [x] Capture and recall are scoped to the authenticated user.
+
+**Acceptance evidence:** `python3 -m unittest vira.tests.test_focus_second_brain vira.tests.test_knowledge -v`.
 
 **Metrics:** captures per active user, retrieval success, 30-day retention,
 memory items per user.

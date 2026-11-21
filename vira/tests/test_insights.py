@@ -58,6 +58,17 @@ class InsightAggregationTests(unittest.TestCase):
         self.assertEqual(result["totals"]["app_ms"], 0)
         self.assertIn("no app data", result["summary"])
 
+    def test_include_apps_false_redacts_summary(self):
+        events = [_event("device.app.usage", {
+            "total_foreground_ms": 600000,
+            "categories": {"social": 400000, "productivity": 200000},
+            "apps": [{"package": "com.instagram.android", "label": "Instagram",
+                      "category": "social", "foreground_ms": 400000}],
+        })]
+        result = aggregate_events(events, 7, include_apps=False)
+        self.assertIn("hidden for privacy", result["summary"])
+        self.assertNotIn("Instagram", result["summary"])
+
 
 if __name__ == "__main__":
     unittest.main()

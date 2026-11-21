@@ -22,6 +22,7 @@ class ScheduleCreate(BaseModel):
     quiet_hours_end: Optional[str] = None
     channels: List[str] = ["inapp"]
     task_profile: Dict[str, Any] = Field(default_factory=dict)
+    input: Dict[str, Any] = Field(default_factory=dict)
     organization_id: Optional[str] = None
     enabled: bool = True
 
@@ -39,6 +40,7 @@ class ScheduleUpdate(BaseModel):
     quiet_hours_end: Optional[str] = None
     channels: Optional[List[str]] = None
     task_profile: Optional[Dict[str, Any]] = None
+    input: Optional[Dict[str, Any]] = None
     organization_id: Optional[str] = None
     enabled: Optional[bool] = None
 
@@ -144,6 +146,7 @@ def build_schedule_router(user_dep, kernel) -> APIRouter:
             quiet_hours_end=body.quiet_hours_end,
             channels=_channels(body.channels),
             task_profile=body.task_profile,
+            input_data=body.input,
             organization_id=body.organization_id,
             enabled=body.enabled,
         )

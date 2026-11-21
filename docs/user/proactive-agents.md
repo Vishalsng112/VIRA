@@ -15,8 +15,8 @@ installed agent; the five recommended agents are delivered next.
 | Agent | Daily trigger | Architecture | Status |
 |---|---|---|---|
 | Morning Brief | morning | single | **available** |
-| Focus & Wellbeing Coach | morning, mid-day, evening | single | planned |
-| Second Brain | capture + weekly consolidation | single | planned |
+| Focus & Wellbeing Coach | morning, mid-day, evening | single | **available** |
+| Second Brain | capture + weekly consolidation | single | **available** |
 | Chief of Staff | morning and evening | centralized | planned |
 | Household & Life Admin | morning, evening, weekly review | single | planned |
 
@@ -65,6 +65,76 @@ curl -s -X POST http://localhost:8000/api/v1/agent-schedules \
        "message": "Write my morning brief.", "schedule_type": "daily",
        "time_of_day": "07:30", "timezone": "Asia/Kolkata"}'
 ```
+
+## Focus & Wellbeing Coach
+
+Installed as `focus-coach`. One agent supports four modes through the schedule
+`input`:
+
+| Mode | What it produces |
+|---|---|
+| `morning` | A focus plan for today with 2–4 blocks and a break rule |
+| `checkin` | A two-sentence mid-day observation and nudge |
+| `evening` | An evening review with one win, one adjustment and tomorrow’s first block |
+| `weekly` | A weekly report with totals, category balance and three recommendations |
+
+Recommendations cite measured numbers from `insights` and `user_context`. Goals
+come from memory. Weekly mode hides specific app names by default; categories and
+totals remain.
+
+```bash
+# Evening review every day
+curl -s -X POST http://localhost:8000/api/v1/agent-schedules \
+  -H "Authorization: Bearer <session>" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "focus-coach", "name": "Evening review",
+       "message": "Review my focus today.", "schedule_type": "daily",
+       "time_of_day": "18:30", "timezone": "Asia/Kolkata",
+       "input": {"mode": "evening"}}'
+
+# Weekly report on Sunday evening, with app names hidden
+curl -s -X POST http://localhost:8000/api/v1/agent-schedules \
+  -H "Authorization: Bearer <session>" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "focus-coach", "name": "Weekly focus",
+       "message": "Write my weekly report.", "schedule_type": "weekly",
+       "weekday": 6, "time_of_day": "19:00",
+       "timezone": "Asia/Kolkata", "input": {"mode": "weekly"}}'
+```
+
+Quiet hours are applied by the scheduler, so a check-in or break reminder never
+fires during the user’s quiet window.
+
+## Second Brain
+
+Installed as `second-brain`. It supports three modes:
+
+| Mode | What it does |
+|---|---|
+| `capture` | Saves the note as verified personal knowledge |
+| `ask` | Answers from stored notes with numbered citations and dates |
+| `correct` | Creates a superseding revision of an existing item |
+| `consolidate` | Reports duplicates, stale items and low-confidence items without deleting anything |
+
+Capture is normally done from chat: “Remember that the vendor contract renews
+in March.” The important rule is that capture only stores what the user
+explicitly asked to remember.
+
+```bash
+# Weekly consolidation report
+curl -s -X POST http://localhost:8000/api/v1/agent-schedules \
+  -H "Authorization: Bearer <session>" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "second-brain", "name": "Second brain review",
+       "message": "Consolidate my notes.", "schedule_type": "weekly",
+       "weekday": 6, "time_of_day": "19:00",
+       "timezone": "Asia/Kolkata", "input": {"mode": "consolidate"}}'
+```
+
+Capture writes to the existing scoped knowledge base, so the knowledge API,
+export and delete flows continue to apply. Corrections create a new revision via
+`PATCH /api/v1/knowledge/items/{item_id}`; the previous revision is retained and
+marked deprecated.
 
 ## See what can be scheduled
 

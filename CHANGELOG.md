@@ -42,6 +42,16 @@ All notable changes to VIRA are documented here. The format follows
   labels missing sources as unavailable, records source provenance, falls back
   deterministically when the model is down, and delivers through the proactive
   schedule/notification pipeline.
+- Focus & Wellbeing Coach (`focus-coach`): morning/checkin/evening/weekly modes,
+  measured insights and goals, privacy-safe weekly reports and deterministic
+  fallback.
+- Second Brain (`second-brain`): chat and scheduled capture, cited recall,
+  non-destructive weekly consolidation and superseding corrections over
+  personal knowledge. Adds `PATCH /api/v1/knowledge/items/{item_id}`.
+- Structured schedule `input` payloads (migration 18) for agent modes.
+- Knowledge corrections via `PATCH /api/v1/knowledge/items/{item_id}` and the
+  `second-brain` `correct` mode; superseded revisions are retained.
+- Authorized `knowledge_list` service/runtime helper for scoped knowledge review.
 - Scoped knowledge base for agents: a single `knowledge_items` store with
   `conversation`/`personal`/`agent`/`org`/`global` scopes, append-only revisions,
   deduplication, promotion policy and a `knowledge.*` event trail. Adds

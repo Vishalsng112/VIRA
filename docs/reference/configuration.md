@@ -64,8 +64,10 @@ notifications:
   max_attempts: 3
 ```
 
-Schedules are created per user through `/api/v1/agent-schedules`. See
-[Proactive agents](../user/proactive-agents.md) for the workflow.
+Schedules are created per user through `/api/v1/agent-schedules`. Each schedule
+can carry a structured `input` object (for example
+`{"mode": "evening"}`) that is merged into the agent's `TaskRequest.input`.
+See [Proactive agents](../user/proactive-agents.md) for the workflow.
 
 ## Security-critical keys
 

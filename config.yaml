@@ -306,6 +306,35 @@ agents:
         # - name: mcp_server.calendar_today
         # - name: mcp_server.tasks_due
 
+  # Measured daily coaching. Use schedule input {"mode": "morning" | "checkin"
+  # | "evening" | "weekly"} to select the run type.
+  - name: FocusCoachAgent
+    module: vira.agent.Agents.focus_coach
+    class: FocusCoachAgent
+    agent_id: focus-coach
+    enabled: true
+    config:
+      mode: evening
+      max_tokens: 700
+      max_words: 220
+      include_apps: false
+      weekly_include_apps: false
+      include_memory: true
+
+  # Capture, grounded recall and weekly consolidation. Use schedule input
+  # {"mode": "capture" | "ask" | "consolidate"} when the message is ambiguous.
+  - name: SecondBrainAgent
+    module: vira.agent.Agents.second_brain
+    class: SecondBrainAgent
+    agent_id: second-brain
+    enabled: true
+    config:
+      mode: ask
+      max_tokens: 700
+      max_words: 220
+      stale_days: 90
+      low_confidence: 0.35
+
 mcp_server:
   command: ["python", "vira/tools/mcp_server.py"]   # path to your MCP server script
   permissions: ["read", "write", "execute"]

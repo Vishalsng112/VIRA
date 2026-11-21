@@ -797,3 +797,6 @@ CREATE INDEX IF NOT EXISTS idx_agent_schedule_runs_schedule
     ON agent_schedule_runs(schedule_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_agent_schedule_runs_user
     ON agent_schedule_runs(user_id, started_at);
+
+-- Structured schedule input (migration 18)
+ALTER TABLE agent_schedules ADD COLUMN IF NOT EXISTS input TEXT NOT NULL DEFAULT '{}';

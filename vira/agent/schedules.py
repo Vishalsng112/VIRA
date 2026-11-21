@@ -127,7 +127,7 @@ def next_run_at(schedule: Dict[str, Any],
 
 def _decode(row: Any) -> Dict[str, Any]:
     item = dict(row)
-    for key, default in (("channels", ["inapp"]), ("task_profile", {})):
+    for key, default in (("channels", ["inapp"]), ("task_profile", {}), ("input", {})):
         try:
             value = json.loads(item.get(key) or "")
         except (TypeError, ValueError):
@@ -147,6 +147,7 @@ def create_schedule(user_id: int, agent_id: str, name: str, message: str, *,
                     quiet_hours_end: Optional[str] = None,
                     channels: Optional[List[str]] = None,
                     task_profile: Optional[Dict[str, Any]] = None,
+                    input_data: Optional[Dict[str, Any]] = None,
                     organization_id: Optional[str] = None,
                     enabled: bool = True) -> Dict[str, Any]:
     validate_schedule_fields(schedule_type, time_of_day, weekday, interval_minutes)
@@ -167,15 +168,16 @@ def create_schedule(user_id: int, agent_id: str, name: str, message: str, *,
             "INSERT INTO agent_schedules "
             "(id, user_id, organization_id, agent_id, name, message, schedule_type, "
             "time_of_day, weekday, interval_minutes, timezone, quiet_hours_start, "
-            "quiet_hours_end, channels, task_profile, enabled, next_run_at, "
+            "quiet_hours_end, channels, task_profile, input, enabled, next_run_at, "
             "created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 schedule_id, user_id, organization_id, agent_id, name[:160],
                 message, schedule_type, time_of_day, weekday, interval_minutes,
                 timezone_name or "UTC", quiet_hours_start, quiet_hours_end,
                 json.dumps(channels or ["inapp"]),
                 json.dumps(task_profile or {}),
+                json.dumps(input_data or {}),
                 1 if enabled else 0, next_run, now, now,
             ),
         )
@@ -216,7 +218,7 @@ def update_schedule(schedule_id: str, user_id: int, **changes: Any) -> Optional[
                    if value is not None or key in {
                        "quiet_hours_start", "quiet_hours_end", "time_of_day",
                        "weekday", "interval_minutes", "task_profile", "channels",
-                       "organization_id"}})
+                       "input", "organization_id"}})
     validate_schedule_fields(
         merged["schedule_type"], merged.get("time_of_day"),
         merged.get("weekday"), merged.get("interval_minutes"))
@@ -230,7 +232,7 @@ def update_schedule(schedule_id: str, user_id: int, **changes: Any) -> Optional[
             "UPDATE agent_schedules SET agent_id = ?, name = ?, message = ?, "
             "schedule_type = ?, time_of_day = ?, weekday = ?, interval_minutes = ?, "
             "timezone = ?, quiet_hours_start = ?, quiet_hours_end = ?, channels = ?, "
-            "task_profile = ?, enabled = ?, next_run_at = ?, updated_at = ? "
+            "task_profile = ?, input = ?, enabled = ?, next_run_at = ?, updated_at = ? "
             "WHERE id = ? AND user_id = ?",
             (
                 merged["agent_id"], str(merged["name"])[:160], merged["message"],
@@ -239,6 +241,7 @@ def update_schedule(schedule_id: str, user_id: int, **changes: Any) -> Optional[
                 merged.get("timezone") or "UTC", merged.get("quiet_hours_start"),
                 merged.get("quiet_hours_end"), json.dumps(merged.get("channels") or ["inapp"]),
                 json.dumps(merged.get("task_profile") or {}),
+                json.dumps(merged.get("input") or {}),
                 1 if merged.get("enabled") else 0, next_run, now,
                 schedule_id, user_id,
             ),

@@ -463,6 +463,24 @@ class BaseAgent:
             kwargs.setdefault("organization_id", request.organization_id)
         return await self.runtime.knowledge_write(self.agent_id, content, **kwargs)
 
+    async def knowledge_list(self, **kwargs: Any) -> List[Any]:
+        request = self.current_request()
+        if request is not None:
+            kwargs.setdefault("user_id", request.user_id)
+            kwargs.setdefault("agent_role", self.role or self.name)
+            kwargs.setdefault("conversation_id", request.conversation_id)
+            kwargs.setdefault("organization_id", request.organization_id)
+        return list(await self.runtime.knowledge_list(self.agent_id, **kwargs))
+
+    async def knowledge_correct(self, item_id: str, content: str, **kwargs: Any):
+        request = self.current_request()
+        if request is not None:
+            kwargs.setdefault("user_id", request.user_id)
+            kwargs.setdefault("agent_role", self.role or self.name)
+            kwargs.setdefault("organization_id", request.organization_id)
+        return await self.runtime.knowledge_correct(
+            self.agent_id, item_id, content, **kwargs)
+
     async def send_event(self, event_type: str, data: Any,
                          target_agent_ids: Optional[List[str]] = None) -> None:
         if self.runtime is None:
