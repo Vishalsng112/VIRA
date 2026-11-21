@@ -199,7 +199,7 @@ sensors:
 
 llm:
   # VIRA's final/default local model choice.
-  default_model: "nemotron-3.5-bolt:e4b"
+  default_model: "qwen3.5:9b" #"nemotron-3.5-bolt:e4b"
   models:
     # - name: "gpt-4"
     #   provider: "openai"
@@ -214,13 +214,15 @@ llm:
     #   max_tokens: 4096
     - name: "local-llama"
       provider: "ollama"
-      model: "nemotron-3.5-bolt:e4b"
+      model: "qwen3.5:9b" #"nemotron-3.5-bolt:e4b"
       # Docker: use http://ollama:11434 (bundled) or
       # http://host.docker.internal:11434 (native Ollama on the host).
       # VIRA_OLLAMA_URL overrides this value without editing the file.
       base_url: "http://localhost:11434"
       temperature: 0.1
       num_ctx: 65536             # enough room for larger context and code output
+      #  set thinking mode to nothink
+      thinking_mode: "nothink"
 
 # To add another agent, create a class that extends vira.agent.base.BaseAgent
 # (or vira.agent.llm_agent.LLMAgent) and register it here:
