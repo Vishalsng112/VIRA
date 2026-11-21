@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import resource
 import shlex
@@ -56,13 +57,31 @@ _DEFAULT_ENV = {
 class BubblewrapBackend:
     """Creates Linux user-space sandboxes with a private filesystem namespace."""
 
-    def __init__(self, root: str = "/AgentWorkspace", bwrap_binary: str = "bwrap"):
+    def __init__(self, root: str = "/AgentWorkspace", bwrap_binary: str = "bwrap",
+                 readonly_mounts: Optional[Sequence[str]] = None):
         self.root = Path(root).resolve()
         self.bwrap_binary = bwrap_binary
         self._sandboxes: Dict[str, SandboxRef] = {}
         self._jobs: Dict[str, SandboxJob] = {}
         self._preflight_ok = False
+        # Server-configured host paths exposed read-only to every sandbox, e.g.
+        # an SDK at /opt/toolchain. Never model-controllable.
+        self.readonly_mounts: List[str] = self._validate_mounts(readonly_mounts or [])
         self._load_existing()
+
+    @staticmethod
+    def _validate_mounts(mounts: Sequence[str]) -> List[str]:
+        validated: List[str] = []
+        for raw in mounts:
+            path = Path(str(raw)).expanduser()
+            if not path.is_absolute() or ".." in path.parts:
+                raise ValueError(f"readonly_mounts must be absolute paths: {raw}")
+            if not path.exists() or not path.is_dir():
+                continue  # missing SDK mount is reported by the tool, not fatal
+            resolved = str(path.resolve())
+            if resolved not in validated:
+                validated.append(resolved)
+        return validated
 
     # ------------------------------------------------------------------ registry
     def _load_existing(self) -> None:
@@ -78,7 +97,7 @@ class BubblewrapBackend:
                 sandbox_id = str(data.get("sandbox_id") or directory.name)
                 if sandbox_id != directory.name or not _ID_RE.match(sandbox_id):
                     continue
-                workspace = directory / "workspace"
+                workspace = Path(data.get("workspace") or (directory / "workspace"))
                 if not workspace.is_dir():
                     continue
                 status = SandboxStatus(str(data.get("status") or "idle"))
@@ -94,6 +113,7 @@ class BubblewrapBackend:
                     agent_id=str(data.get("agent_id") or ""),
                     run_id=data.get("run_id"),
                     workspace=workspace,
+                    workspace_id=data.get("workspace_id"),
                     status=status,
                     policy=SandboxPolicy.from_dict(data.get("policy")),
                     archive_path=Path(archive) if archive else None,
@@ -110,11 +130,13 @@ class BubblewrapBackend:
                 continue
 
     def _write_metadata(self, sandbox: SandboxRef) -> None:
-        target = sandbox.workspace.parent / "metadata.json"
+        target = self._dir(sandbox) / "metadata.json"
         payload = {
             "sandbox_id": sandbox.sandbox_id,
             "agent_id": sandbox.agent_id,
             "run_id": sandbox.run_id,
+            "workspace": str(sandbox.workspace),
+            "workspace_id": sandbox.workspace_id,
             "status": sandbox.status.value,
             "policy": sandbox.policy.as_dict(),
             "archive_path": str(sandbox.archive_path) if sandbox.archive_path else None,
@@ -223,38 +245,63 @@ class BubblewrapBackend:
         user_id: Optional[int] = None,
         name: Optional[str] = None,
         metadata: Optional[Dict[str, str]] = None,
+        workspace_path: Optional[str] = None,
+        workspace_id: Optional[str] = None,
     ) -> SandboxRef:
-        self._require_bwrap()
-        await self._preflight()
         policy = policy or SandboxPolicy()
+        if policy.execution_mode == "bubblewrap":
+            self._require_bwrap()
+            await self._preflight()
         sandbox_id = sandbox_id or str(uuid.uuid4())
         if not _ID_RE.match(sandbox_id):
             raise ValueError(
                 "sandbox_id must be 1-64 characters: letters, digits, dot, dash or underscore"
             )
         parent = self.root / sandbox_id
-        workspace = parent / "workspace"
-        try:
-            workspace.mkdir(parents=True, exist_ok=False)
-        except FileExistsError as exc:
-            raise ValueError(f"Sandbox '{sandbox_id}' already exists") from exc
+        parent.mkdir(parents=True, exist_ok=False)
         (parent / "artifacts").mkdir(exist_ok=True)
+        managed_workspace = not bool(workspace_path)
+        if workspace_path:
+            workspace = Path(workspace_path).expanduser()
+            if not workspace.is_absolute():
+                raise ValueError("workspace_path must be absolute")
+            workspace.mkdir(parents=True, exist_ok=True)
+            workspace = workspace.resolve()
+        else:
+            workspace = parent / "workspace"
+            workspace.mkdir(parents=True, exist_ok=False)
         now = utc_now()
+        metadata = dict(metadata or {})
+        metadata["_managed_workspace"] = "1" if managed_workspace else "0"
         sandbox = SandboxRef(
             sandbox_id=sandbox_id,
             agent_id=agent_id,
             run_id=run_id,
             workspace=workspace,
+            workspace_id=workspace_id,
             policy=policy,
             owner_user_id=int(user_id) if user_id is not None else None,
             name=name,
-            metadata=dict(metadata or {}),
+            metadata=metadata,
             created_at=now,
             updated_at=now,
         )
         self._sandboxes[sandbox_id] = sandbox
         self._write_metadata(sandbox)
         return sandbox
+
+    # ------------------------------------------------------------- layout paths
+    def _dir(self, sandbox: SandboxRef) -> Path:
+        return self.root / sandbox.sandbox_id
+
+    def _artifacts(self, sandbox: SandboxRef) -> Path:
+        return self._dir(sandbox) / "artifacts"
+
+    def _owns_workspace(self, sandbox: SandboxRef) -> bool:
+        flag = str(sandbox.metadata.get("_managed_workspace", ""))
+        if flag in ("1", "0"):
+            return flag == "1"
+        return sandbox.workspace == self._dir(sandbox) / "workspace"
 
     # ------------------------------------------------------------------ command
     @staticmethod
@@ -280,9 +327,9 @@ class BubblewrapBackend:
         else:
             root, relative = "/workspace", "/" + candidate
         target = (sandbox.workspace if root == "/workspace"
-                  else sandbox.workspace.parent / "artifacts") / relative.lstrip("/")
+                  else self._artifacts(sandbox)) / relative.lstrip("/")
         base = (sandbox.workspace if root == "/workspace"
-                else sandbox.workspace.parent / "artifacts").resolve()
+                else self._artifacts(sandbox)).resolve()
         try:
             target = target.resolve()
             target.relative_to(base)
@@ -317,9 +364,11 @@ class BubblewrapBackend:
             argv = list(command)
 
         policy = sandbox.policy
-        parent = sandbox.workspace.parent
+        artifacts = self._artifacts(sandbox)
         venv_bin = sandbox.workspace / ".venv" / "bin"
         path = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+        if policy.extra_path:
+            path = policy.extra_path.strip(":") + ":" + path
         if venv_bin.is_dir():
             path = "/workspace/.venv/bin:" + path
         default_env = dict(_DEFAULT_ENV)
@@ -349,12 +398,16 @@ class BubblewrapBackend:
         # /AgentWorkspace/<id>/workspace unreachable.
         args += [
             "--bind", str(sandbox.workspace), "/workspace",
-            "--bind", str(parent / "artifacts"), "/artifacts",
+            "--bind", str(artifacts), "/artifacts",
         ]
         for private_path in ("/home", "/root", "/var", "/opt", "/srv",
                              "/mnt", "/media", "/data", str(self.root)):
             if Path(private_path).exists():
                 args += ["--tmpfs", private_path]
+        # Re-expose explicitly configured SDK/toolchain paths read-only after the
+        # private tmpfs hides them. Order matters: bind after the tmpfs.
+        for mount in self.readonly_mounts:
+            args += ["--ro-bind", mount, mount]
         # /etc/resolv.conf is commonly a symlink into /run/systemd/resolve.
         # Keep DNS working for networked sandboxes by exposing /run read-only.
         # Without networking the entire /run tree is private.
@@ -366,6 +419,68 @@ class BubblewrapBackend:
         if not policy.network_enabled:
             args.append("--unshare-net")
         return args + ["--"] + argv
+
+    # -------------------------------------------------------------- host mode
+    def _host_paths(self, sandbox: SandboxRef) -> Dict[str, str]:
+        return {
+            "/workspace": str(sandbox.workspace),
+            "/artifacts": str(self._artifacts(sandbox)),
+        }
+
+    def _host_cwd(self, sandbox: SandboxRef, cwd: Optional[str]) -> str:
+        workspace = sandbox.workspace.resolve()
+        artifacts = self._artifacts(sandbox).resolve()
+        if not cwd or cwd in (".", "./", "/workspace", "workspace"):
+            return str(workspace)
+        candidate = str(cwd)
+        if candidate.startswith("/workspace"):
+            target = workspace / candidate[len("/workspace"):].lstrip("/")
+        elif candidate.startswith("/artifacts"):
+            target = artifacts / candidate[len("/artifacts"):].lstrip("/")
+        else:
+            target = workspace / candidate
+        target = target.resolve()
+        try:
+            target.relative_to(workspace)
+        except ValueError:
+            target.relative_to(artifacts)  # raises if outside both
+        return str(target)
+
+    def _host_argv(self, sandbox: SandboxRef, command: Sequence[str] | str,
+                   shell: bool) -> List[str]:
+        paths = self._host_paths(sandbox)
+
+        def translate(value: str) -> str:
+            for virtual, real in paths.items():
+                if value == virtual or value.startswith(virtual + "/"):
+                    return real + value[len(virtual):]
+            return value
+
+        if shell:
+            if not sandbox.policy.allow_shell:
+                raise PermissionError("Shell execution is disabled by the sandbox policy")
+            script = (shlex.join([str(part) for part in command])
+                      if isinstance(command, (list, tuple)) else str(command))
+            if not script.strip():
+                raise ValueError("command must not be empty")
+            for virtual, real in paths.items():
+                script = script.replace(virtual, real)
+            shell_bin = "/bin/bash" if Path("/bin/bash").exists() else "/bin/sh"
+            return [shell_bin, "-lc", script]
+        if isinstance(command, str):
+            command = shlex.split(command)
+        if not command or any(not isinstance(part, str) or not part for part in command):
+            raise ValueError("command must be a non-empty sequence of non-empty strings")
+        return [translate(str(part)) for part in command]
+
+    def _host_env(self, sandbox: SandboxRef,
+                  env: Optional[Dict[str, str]]) -> Dict[str, str]:
+        merged = dict(os.environ)
+        merged.update(self._validate_env(env))
+        extra = sandbox.policy.extra_path.strip(":")
+        if extra:
+            merged["PATH"] = extra + ":" + merged.get("PATH", "/usr/local/bin:/usr/bin:/bin")
+        return merged
 
     # ------------------------------------------------------------------ execute
     async def _spawn(
@@ -379,9 +494,23 @@ class BubblewrapBackend:
         policy: Optional[SandboxPolicy] = None,
     ):
         effective = replace(sandbox, policy=policy) if policy is not None else sandbox
+        existing_tasks = self._task_count()
+        if effective.policy.execution_mode == "host":
+            argv = self._host_argv(effective, command, shell)
+            try:
+                return await asyncio.create_subprocess_exec(
+                    *argv,
+                    cwd=self._host_cwd(effective, cwd),
+                    env=self._host_env(effective, env),
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    preexec_fn=lambda: self._apply_limits(effective.policy, existing_tasks),
+                )
+            except OSError as exc:
+                raise RuntimeError(f"Could not start the host process: {exc}") from exc
         self._require_bwrap()
         await self._preflight()
-        existing_tasks = self._task_count()
         try:
             return await asyncio.create_subprocess_exec(
                 *self._command(effective, command, shell=shell, cwd=cwd, env=env),
@@ -681,7 +810,7 @@ class BubblewrapBackend:
         with tarfile.open(archive, "w:gz") as bundle:
             bundle.add(sandbox.workspace, arcname="workspace", filter=filter_member)
             bundle.add(
-                sandbox.workspace.parent / "artifacts",
+                self._artifacts(sandbox),
                 arcname="artifacts", filter=filter_member,
             )
         sandbox.archive_path = archive
@@ -776,7 +905,10 @@ class BubblewrapBackend:
             if job._task is not None and not job._task.done():
                 job._task.cancel()
             self._jobs.pop(job.job_id, None)
-        shutil.rmtree(sandbox.workspace.parent, ignore_errors=True)
+        sandbox_dir = self._dir(sandbox)
+        if self._owns_workspace(sandbox):
+            shutil.rmtree(sandbox.workspace, ignore_errors=True)
+        shutil.rmtree(sandbox_dir, ignore_errors=True)
         if sandbox.archive_path:
             sandbox.archive_path.unlink(missing_ok=True)
         sandbox.status = SandboxStatus.DELETED

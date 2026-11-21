@@ -38,6 +38,9 @@ def derive_lessons(user_message: str, result: LoopResult, max_lessons: int = 3) 
                                "adjust the params or use another approach.")
         elif s.kind == "unknown_tool":
             lessons.append(f"'{s.tool}' is not a tool; only call tools from the Tools list.")
+        elif s.kind == "invalid_tool_call":
+            lessons.append("Tool calls must be complete valid JSON; write one file "
+                           "per call instead of a large write_many payload.")
     if result.stopped == "max_steps":
         lessons.append(f"Ran out of steps on a task like \"{clip(user_message, 80)}\"; "
                        "use fewer, more targeted tool calls and answer sooner.")
@@ -46,9 +49,22 @@ def derive_lessons(user_message: str, result: LoopResult, max_lessons: int = 3) 
 
 
 class LessonStore:
-    def __init__(self, runtime, agent_id: str, enabled: bool = True, recall_limit: int = 3):
-        self.runtime, self.agent_id = runtime, agent_id
+    def __init__(self, runtime_or_agent, agent_id: str = None, enabled: bool = True,
+                 recall_limit: int = 3):
+        # Accept either (runtime, agent_id) for compatibility, or the agent
+        # itself so the id stays correct when the orchestrator assigns one.
+        if agent_id is None and hasattr(runtime_or_agent, "agent_id"):
+            self._agent = runtime_or_agent
+            self.runtime = runtime_or_agent.runtime
+        else:
+            self._agent = None
+            self.runtime = runtime_or_agent
+            self._agent_id = agent_id
         self.enabled, self.recall_limit = enabled, recall_limit
+
+    @property
+    def agent_id(self) -> str:
+        return self._agent.agent_id if self._agent is not None else self._agent_id
 
     async def recall(self, user_id: Optional[int], query: str) -> List[str]:
         if not self.enabled or user_id is None:

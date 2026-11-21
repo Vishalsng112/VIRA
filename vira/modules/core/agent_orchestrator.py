@@ -25,6 +25,8 @@ from vira.tools.chat_statistics import ChatStatisticsTool
 from vira.tools.insights import InsightsTool
 from vira.tools.context_tool import UserContextTool
 from vira.tools.rag_tool import RagSearchTool
+from vira.tools.knowledge_tool import KnowledgeSearchTool, KnowledgeWriteTool
+from vira.knowledge import events as knowledge_events
 from vira.auth import database
 from vira.mcp import store as mcp_store
 
@@ -96,6 +98,7 @@ class AgentOrchestratorModule(ViraModule):
         try:
             # Create tool registry and executor
             self.tool_registry = ToolRegistry()
+            knowledge_events.set_event_bus(self._event_bus)
             approval_config = self._config_manager.get("security.approvals", {}) or {}
             self.tool_executor = ToolExecutor(
                 self.tool_registry, self._security_manager,
@@ -108,17 +111,22 @@ class AgentOrchestratorModule(ViraModule):
             self.tool_registry.register(InsightsTool())
             self.tool_registry.register(UserContextTool())
             self.tool_registry.register(RagSearchTool())
+            self.tool_registry.register(KnowledgeSearchTool())
+            self.tool_registry.register(KnowledgeWriteTool())
             sandbox_config = self._config_manager.get("sandbox", {}) or {}
             default_policy = SandboxPolicy.from_dict({
                 key: sandbox_config[key]
                 for key in SandboxPolicy.__dataclass_fields__
                 if key in sandbox_config
             })
-            self.tool_registry.register(SandboxTool(SandboxManager(
+            sandbox_manager = SandboxManager(
                 root=sandbox_config.get("root", "/AgentWorkspace"),
                 bwrap_binary=sandbox_config.get("bwrap_binary", "bwrap"),
                 default_policy=default_policy,
-            )))
+                readonly_mounts=sandbox_config.get("readonly_mounts") or [],
+                workspace_root=self._config_manager.get("workspace.root"),
+            )
+            self.tool_registry.register(SandboxTool(sandbox_manager))
 
             # --- MCP Connection with enhanced logging ---
             mcp_config = self._config_manager.get("mcp_server", {}) or {}

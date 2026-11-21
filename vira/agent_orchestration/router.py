@@ -2,7 +2,7 @@ from loguru import logger
 import asyncio
 from typing import Optional, List
 from vira.kernel.event_bus import Event
-from vira.agent_orchestration.base import BaseAgent
+from vira.agent.base import BaseAgent
 from .registry import AgentRegistry, AgentState
 from vira.agent_orchestration.messages import AgentMessage
 from vira.agent_runtime.runtime import AgentRuntime

@@ -176,6 +176,22 @@ class SandboxWorkspaceTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.temp_dir.cleanup()
 
+    async def test_default_sandbox_id_alias_uses_current(self):
+        result = await self.tool.execute(
+            "write", agent_id="agent-a", user_id=7, sandbox_id="default",
+            path="alias.txt", content="hi")
+        payload = json.loads(result.content[0].text)
+        self.assertFalse(result.isError)
+        self.assertEqual(payload["sandbox_id"], self.sandbox_id)
+
+    async def test_unknown_sandbox_id_returns_guidance(self):
+        result = await self.tool.execute(
+            "write", agent_id="agent-a", user_id=7, sandbox_id="missing",
+            path="x.txt", content="hi")
+        self.assertTrue(result.isError)
+        self.assertIn("does not exist", result.content[0].text)
+        self.assertIn("omit sandbox_id", result.content[0].text)
+
     async def test_multi_file_workflow(self):
         written = await self.tool.execute(
             "write_many", agent_id="agent-a", user_id=7, sandbox_id=self.sandbox_id,

@@ -1,6 +1,8 @@
 import unittest
 from types import SimpleNamespace
 
+import asyncio
+
 from vira.agent.definitions import load_definitions, parse_definition
 from vira.agent.lessons import LessonStore, derive_lessons
 from vira.agent.loop import AgentLoop, LoopConfig
@@ -111,6 +113,86 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
         history = [{"role": "user", "content": "x" * 1400} for _ in range(40)]
         await self.loop(rt, max_prompt_chars=6000).run("q", history)
         self.assertLess(len(rt.prompts[0]), 6500)
+
+    async def test_truncated_tool_json_is_retried_not_returned(self):
+        rt = FakeRuntime([
+            '{"tool": "web_browse", "params": {"url": "truncated',
+            '{"tool": "web_browse", "params": {"url": "http://a.com"}}',
+            "final answer",
+        ])
+        res = await self.loop(rt, max_steps=4).run("q")
+        self.assertEqual(res.text, "final answer")
+        self.assertEqual(res.tool_calls, 1)
+        self.assertEqual([s.kind for s in res.steps],
+                         ["invalid_tool_call", "tool"])
+
+    async def test_multiple_tool_calls_in_one_reply_are_executed(self):
+        rt = FakeRuntime([
+            '{"tool": "web_browse", "params": {"url": "u1"}}\n'
+            '{"tool": "web_browse", "params": {"url": "u2"}}',
+            "done",
+        ])
+        res = await self.loop(rt, max_steps=4).run("q")
+        self.assertEqual(res.text, "done")
+        self.assertEqual(res.tool_calls, 2)
+        self.assertEqual([call[1]["url"] for call in rt.tool_calls], ["u1", "u2"])
+
+    async def test_truncated_tool_json_after_prose_is_retried(self):
+        rt = FakeRuntime([
+            'Here is the fix:\n{"tool": "web_browse", "params": {"url": "trunc',
+            '{"tool": "web_browse", "params": {"url": "http://a.com"}}',
+            "final answer",
+        ])
+        res = await self.loop(rt, max_steps=4).run("q")
+        self.assertEqual(res.text, "final answer")
+        self.assertEqual(res.tool_calls, 1)
+        self.assertEqual(res.steps[0].kind, "invalid_tool_call")
+
+    async def test_empty_model_reply_is_retried(self):
+        rt = FakeRuntime(["", "recovered"])
+        res = await self.loop(rt, max_steps=2).run("q")
+        self.assertEqual(res.text, "recovered")
+
+    async def test_failed_verification_forces_a_retry(self):
+        def failing(**kw):
+            raise ValueError("audit failed")
+
+        rt = FakeRuntime([
+            '{"tool": "web_browse", "params": {"operation": "build"}}',
+            "done",
+            "fixed",
+        ], failing)
+        res = await self.loop(rt, max_steps=4).run("q")
+        self.assertEqual(res.text, "fixed")
+        self.assertEqual(res.steps[0].kind, "tool")
+        self.assertTrue(any(step.kind == "nudge" for step in res.steps))
+
+    async def test_model_stall_is_retried(self):
+        class Stalling(FakeRuntime):
+            def __init__(self):
+                super().__init__([])
+                self.calls = 0
+
+            async def call_llm(self, agent_id, prompt, **kw):
+                self.calls += 1
+                if self.calls == 1:
+                    raise asyncio.TimeoutError()
+                return SimpleNamespace(text="recovered")
+
+        rt = Stalling()
+        res = await self.loop(rt, max_steps=2).run("q")
+        self.assertEqual(res.text, "recovered")
+        self.assertEqual(rt.calls, 2)
+
+    async def test_lesson_store_tracks_reassigned_agent_id(self):
+        class _Agent:
+            agent_id = "assigned-later"
+            runtime = FakeRuntime([])
+
+        store = LessonStore(_Agent())
+        self.assertEqual(store.agent_id, "assigned-later")
+        _Agent.agent_id = "changed"
+        self.assertEqual(store.agent_id, "changed")
 
     async def test_extra_tool_for_delegation(self):
         async def delegate(params):

@@ -20,6 +20,7 @@ import shlex
 from typing import Any, Dict
 
 from vira.sandbox import SandboxManager
+from vira.tools import context as tool_context
 from .base import BaseTool, ToolPermission, text_result
 
 OPERATIONS = [
@@ -59,7 +60,9 @@ class SandboxTool(BaseTool):
                 "Create and use an isolated Linux execution environment for real work: "
                 "write whole projects, run builds, scripts and tests, install pip/npm "
                 "packages, start long-running jobs and archive results. The workspace is "
-                "persistent for this agent and user; paths are always relative to it. "
+                "a user-visible project directory shared by agents; pass workspace='name' "
+                "or an absolute host path to choose it, otherwise the user's default "
+                "workspace is used. Paths are always relative to the workspace. "
                 "Typical flow: operation='write' (or 'write_many') -> operation='execute' "
                 "with command='python3 main.py' (strings run through a shell, so pipes, "
                 "'&&' and multi-line scripts work) -> operation='read'/'list' the output. "
@@ -83,6 +86,19 @@ class SandboxTool(BaseTool):
                         "description": "Target sandbox. Omit to use the current sandbox for this agent/user.",
                     },
                     "name": {"type": "string", "description": "Human label for create."},
+                    "workspace": {
+                        "type": "string",
+                        "description": (
+                            "Shared project workspace: a name (e.g. 'coffee-shop') "
+                            "under the workspace root, or an absolute host path "
+                            "when workspace.allow_user_paths is enabled. Omit to "
+                            "use the user's default workspace, which all agents share."
+                        ),
+                    },
+                    "workspace_path": {
+                        "type": "string",
+                        "description": "Alias for workspace when passing an absolute path.",
+                    },
                     "path": {
                         "type": "string",
                         "description": "Workspace-relative path, e.g. 'src/main.py' or '.'.",
@@ -166,7 +182,8 @@ class SandboxTool(BaseTool):
     # ------------------------------------------------------------------ helpers
     @staticmethod
     def _identity(agent_id: str, kwargs: Dict[str, Any]) -> tuple:
-        return agent_id, kwargs.get("user_id")
+        return (agent_id, kwargs.get("user_id"),
+                kwargs.get("workspace") or kwargs.get("workspace_path"))
 
     def _owner_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         if getattr(self.manager, "supports_user_ownership", False):
@@ -174,9 +191,26 @@ class SandboxTool(BaseTool):
             return {"user_id": user_id} if user_id is not None else {}
         return {}
 
+    @staticmethod
+    def _safe_policy(policy: Any) -> Optional[Dict[str, Any]]:
+        """Strip server-only fields from a model-supplied policy."""
+        if not isinstance(policy, dict):
+            return None
+        blocked = {"execution_mode", "extra_path", "readonly_mounts"}
+        return {key: value for key, value in policy.items() if key not in blocked}
+
     async def _create(self, agent_id: str, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        policy = kwargs.get("policy") if isinstance(kwargs.get("policy"), dict) else None
+        policy = self._safe_policy(kwargs.get("policy"))
         user_id = kwargs.get("user_id")
+        workspace = kwargs.get("workspace") or kwargs.get("workspace_path")
+        if hasattr(self.manager, "find_or_create"):
+            return await self.manager.find_or_create(
+                agent_id,
+                user_id,
+                workspace=workspace,
+                name=kwargs.get("name"),
+                policy=policy,
+            )
         if hasattr(self.manager, "create_for"):
             return await self.manager.create_for(
                 agent_id,
@@ -184,6 +218,7 @@ class SandboxTool(BaseTool):
                 kwargs.get("run_id"),
                 name=kwargs.get("name"),
                 policy=policy,
+                workspace=workspace,
             )
         return await self.manager.create(
             agent_id, kwargs.get("run_id"), **(policy or {}))
@@ -191,8 +226,20 @@ class SandboxTool(BaseTool):
     async def _sandbox_id(self, agent_id: str, kwargs: Dict[str, Any]) -> str:
         """Explicit id, else this user's current sandbox, else a fresh one."""
         explicit = kwargs.get("sandbox_id")
+        if isinstance(explicit, str) and explicit.strip().lower() in {
+                "", "default", "current", "latest", "none", "auto"}:
+            explicit = None
         key = self._identity(agent_id, kwargs)
         if explicit:
+            try:
+                await self.manager.get(explicit, agent_id,
+                                       **self._owner_kwargs(kwargs))
+            except Exception as exc:
+                current = self._current.get(key)
+                hint = (f" Use sandbox_id='{current}' or omit sandbox_id to reuse it."
+                        if current else
+                        " Omit sandbox_id (or call operation='create') to get one.")
+                raise ValueError(f"Sandbox '{explicit}' does not exist.{hint}") from exc
             self._current[key] = explicit
             return explicit
         current = self._current.get(key)
@@ -240,9 +287,15 @@ class SandboxTool(BaseTool):
         return normalized
 
     # ------------------------------------------------------------------ dispatch
-    async def execute(self, operation: str, agent_id: str, **kwargs: Any):
+    async def execute(self, operation: str = "", agent_id: str = "", **kwargs: Any):
         if not agent_id:
             return _json({"error": "Sandbox operations require an agent identity"}, is_error=True)
+        pinned = tool_context.workspace.get()
+        if pinned:
+            # The workspace chosen by the user/API for this run is authoritative.
+            kwargs["workspace"] = pinned
+            kwargs.pop("workspace_path", None)
+            kwargs.pop("workspace_id", None)
         raw = str(operation or "").strip().lower()
         operation = ALIASES.get(raw, raw)
         if operation not in OPERATIONS:
@@ -301,7 +354,7 @@ class SandboxTool(BaseTool):
             if not hasattr(self.manager, "update_policy"):
                 return _json({"error": "This sandbox backend cannot update policy"}, is_error=True)
             updated = await self.manager.update_policy(
-                sandbox_id, agent_id, policy, **owner)
+                sandbox_id, agent_id, self._safe_policy(policy), **owner)
             return _json({"ok": True, **updated})
 
         if operation == "delete":

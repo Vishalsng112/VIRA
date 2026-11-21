@@ -47,6 +47,8 @@ from vira.api.routes_admin import build_admin_router
 from vira.api.routes_notifications import build_notification_router
 from vira.api.routes_workflows import build_workflow_router
 from vira.api.routes_rag import build_rag_router
+from vira.api.routes_knowledge import build_knowledge_router
+from vira.api.routes_workspaces import build_workspace_router
 from vira.api.routes_plugins import build_plugin_router
 from vira.api.routes_mcp import build_mcp_router
 from vira.api.routes_organizations import build_organization_router
@@ -107,6 +109,8 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     agent_id: Optional[str] = None
+    # Shared workspace name or absolute path; sticky for every tool call in the run.
+    workspace: Optional[str] = None
     metadata: Dict[str, Any] = {}
     # Optional device context: validated against the caller's device grants.
     device_id: Optional[str] = None
@@ -1141,6 +1145,20 @@ def create_app(kernel: Kernel) -> FastAPI:
                     "Restart VIRA after changing config.yaml.",
                 ],
             )
+        if request.agent_id:
+            known = await registry.list_agents()
+            match = next(
+                (meta for meta in known
+                 if request.agent_id in (meta.agent_id, meta.name)), None)
+            if match is None:
+                raise _chat_http_error(
+                    400, f"Unknown agent_id '{request.agent_id}'", stage="request",
+                    user_message=request.message, recoverable=False,
+                    next_steps=[
+                        "Use an agent_id or name from /api/v1/agents.",
+                        "Use 'chatbot' for the general assistant.",
+                    ],
+                )
         correlation_id = correlation_id_of(http_request)
         idempotency_key = idempotency_key_override or http_request.headers.get("Idempotency-Key")
         if not idempotency_key and not request.retry_run_id:
@@ -1239,6 +1257,11 @@ def create_app(kernel: Kernel) -> FastAPI:
                     "run_id": run_id,
                     "user_id": user.user_id,
                     "device_id": device_id,
+                    # Explicit routing: only the named agent answers. Without it
+                    # the default ChatAgent handles the turn.
+                    "agent_id": request.agent_id,
+                    # Sticky workspace for every sandbox tool call in the run.
+                    "workspace": request.workspace or request.metadata.get("workspace"),
                 },
                 source="api",
                 correlation_id=correlation_id,
@@ -1399,6 +1422,8 @@ def create_app(kernel: Kernel) -> FastAPI:
     app.include_router(build_notification_router(get_current_user, auth_deps['get_device_principal']))
     app.include_router(build_workflow_router(kernel, get_current_user))
     app.include_router(build_rag_router(get_current_user))
+    app.include_router(build_knowledge_router(get_current_user))
+    app.include_router(build_workspace_router(get_current_user))
     app.include_router(build_plugin_router(kernel, auth_deps["require_admin"], get_current_user))
     app.include_router(build_mcp_router(kernel, auth_deps["require_admin"], get_current_user))
     app.include_router(build_organization_router(get_current_user))

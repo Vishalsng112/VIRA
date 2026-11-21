@@ -61,6 +61,11 @@ scheduler:
 sandbox:
   backend: bubblewrap
   root: /AgentWorkspace
+  # bubblewrap = isolated; host = run directly in the shared workspace with the
+  # host toolchain (opt-in; equivalent to granting shell access as the VIRA user).
+  execution_mode: bubblewrap
+  # Prepend host tool directories, e.g. "/opt/toolchain/bin:/snap/bin".
+  extra_path: ""
   # bwrap_binary: bwrap            # override when bubblewrap is not on PATH
   network_enabled: true
   timeout_seconds: 900
@@ -71,15 +76,33 @@ sandbox:
   allow_shell: true                # strings run through /bin/bash -lc inside the sandbox
   workspace_quota_mb: 2048         # soft disk quota enforced after file operations
   max_output_bytes: 200000         # per stream, keeps huge build logs out of the prompt
+  # Host SDK/toolchain paths exposed read-only inside every sandbox. Example:
+  # readonly_mounts: ["/opt/toolchain", "/snap"]
+  readonly_mounts: []
+
+# Shared, user-visible project workspaces. Agents attach sandboxes to these
+# directories; every agent for a user shares the default workspace.
+# Set default_execution_mode: host to let agents use the host's installed tools.
+workspace:
+  root: "~/VIRA/workspaces"
+  allow_user_paths: true
+  default_execution_mode: bubblewrap   # bubblewrap | host
 
 # Core provider-neutral tools. Keep this inside a project directory or another
 # explicitly approved root; sandbox remains the option for untrusted code.
 tools:
   workspace_root: .
 
+# Knowledge storage. "sql" runs on SQLite or PostgreSQL depending on
+# VIRA_DATABASE_URL; "memory" is ephemeral and intended for tests/evaluations.
+knowledge:
+  backend: sql        # sql | memory
+  cache: memory       # memory | none
+  cache_ttl_seconds: 30
+
+# Destructive tool calls (shell, filesystem writes, sandbox writes/exec/install)
+# create a single-use approval request instead of executing immediately.
 security:
-  # Destructive tool calls (shell, filesystem writes, sandbox writes/exec/install)
-  # create a single-use approval request instead of executing immediately.
   # Approve or deny through /api/v1/approvals.
   approvals:
     enabled: true
@@ -99,6 +122,11 @@ security:
     - "context.write"
     - "memory.store.*"
     - "memory.get.*"
+    - "memory.retrieve.*"
+    - "knowledge.read.*"
+    - "knowledge.write.*"
+    # Promotion into shared global knowledge is intentionally NOT granted by
+    # default; add "knowledge.promote.global" to allow an agent to promote.
     - "llm.call.*"
     - "tool.execute.*"
     - "tool.use.*"
@@ -194,24 +222,21 @@ llm:
       temperature: 0.1
       num_ctx: 65536             # enough room for larger context and code output
 
-# agents:
-#   - name: "AGENT_1"
-#     module: "vira.agent.examples.AGENT_MONITOR"
-#     class: "LoadMonitorAgent"
+# To add another agent, create a class that extends vira.agent.base.BaseAgent
+# (or vira.agent.llm_agent.LLMAgent) and register it here:
+#   - name: MyAgent
+#     module: my_agents.my_agent
+#     class: MyAgent
 #     enabled: true
-#     config:
-#       cpu_threshold: 75.0
-#       memory_threshold: 80.0
-#     subscribed_events:
-#       - "sensor.hardware.state"
-
-
-
+#     config: {}
+# BaseAgent supplies lifecycle, identity, tools/MCP, memory, knowledge,
+# progress events and a typed TaskRequest/TaskResult contract.
 
 agents:
   - name: Chatbot
     module: vira.agent.Agents.chat_agent
     class: ChatAgent
+    agent_id: chatbot
     enabled: true
     config:
       system_prompt: "You are VIRA, a friendly, helpful assistant. For news, recent events, people, prices or anything you are not sure about, do not answer from memory: call web_search first, then web_browse on the best result, then answer from what you read and name your sources. If a tool fails, say exactly what failed."
@@ -237,50 +262,6 @@ agents:
         allow: []               # e.g. ["sandbox", "web", "filesystem", "database_query.*"]
         pinned: ["sandbox"]
       # definitions_dir: "~/.vira/agents"   # your own sub-agent .md files
-
-  # - name: AutonomousBehaviorAgent
-  #   module: vira.agent.Agents.autonomus_agent
-  #   class: AutonomousAgent
-  #   enabled: true
-  #   config:
-  #     window_size: 30
-  #     anomaly_sigma: 2.0
-  #     anomaly_minimum: 80.0
-  #     consecutive_anomalies: 3
-  #     decision_cooldown_seconds: 300
-  #     learning_interval: 10
-  #     llm_triage: false         # true = local LLM adds severity/explanation to decisions
-
-  # - name: "AGENT_1"
-  #   module: "vira.agent.examples.AGENT_MONITOR"
-  #   class: "LoadMonitorAgent"
-  #   enabled: true
-  #   config:
-  #     cpu_threshold: 90
-  #     memory_threshold: 90
-  #   subscribed_events:
-  #     - "sensor.hardware.state"
-
-
-  # - name: "AGENT_2"
-  #   module: "vira.agent.examples.AGENT_MONITOR"
-  #   class: "LoadMonitorAgent"
-  #   enabled: true
-  #   config:
-  #     cpu_threshold: 90
-  #     memory_threshold: 90
-  #   subscribed_events:
-  # #     - "sensor.hardware.state"
-
-# agents:
-#   - name: Chatbot
-#     module: my_agents.chatbot
-#     class: ChatAgent
-#     enabled: true
-#     config:
-#       # ... any custom config
-#       subscribed_events: ["user.message"]
-
 
 mcp_server:
   command: ["python", "vira/tools/mcp_server.py"]   # path to your MCP server script

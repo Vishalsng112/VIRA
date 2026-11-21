@@ -25,6 +25,7 @@ from vira.devices import store as device_store
 from vira.devices import commands as command_store
 from vira.devices import pairing as pairing_store
 from vira.ops.backup import create_backup
+from vira.knowledge.consolidation import run_consolidation
 
 
 def _purge_retention(payload: Dict[str, Any]) -> str:
@@ -58,6 +59,7 @@ HANDLERS: Dict[str, Callable[[Dict[str, Any]], str]] = {
     "retention.purge": _purge_retention,
     "insights.rollup": _rollup,
     "backup.database": _backup,
+    "knowledge.consolidate": run_consolidation,
 }
 
 def _job_config() -> dict:
@@ -74,6 +76,7 @@ def _periodic_jobs() -> list:
         ("insights.rollup", {"days": int(cfg.get("rollup_days", 3))}, 300),
         ("retention.purge", {"job_days": int(cfg.get("retention_days", 14))}, 3600),
         ("backup.database", {"keep": int(cfg.get("backup_keep", 7))}, 86400),
+        ("knowledge.consolidate", {}, 21600),
     ]
 
 

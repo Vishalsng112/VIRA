@@ -673,6 +673,71 @@ CREATE TABLE IF NOT EXISTS update_releases (
     UNIQUE(product, channel, version)
 );
 CREATE INDEX IF NOT EXISTS idx_updates_lookup ON update_releases(product, channel, published_at);
+CREATE TABLE IF NOT EXISTS knowledge_items (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    organization_id TEXT,
+    scope TEXT NOT NULL CHECK (scope IN ('conversation', 'personal', 'agent', 'org', 'global')),
+    scope_id TEXT,
+    agent_role TEXT,
+    kind TEXT NOT NULL DEFAULT 'fact',
+    content TEXT NOT NULL,
+    summary TEXT,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    source TEXT NOT NULL DEFAULT '{}',
+    tags TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL DEFAULT 0.5,
+    importance REAL NOT NULL DEFAULT 0.0,
+    status TEXT NOT NULL DEFAULT 'draft',
+    revision INTEGER NOT NULL DEFAULT 1,
+    supersedes TEXT,
+    superseded_by TEXT,
+    valid_from TEXT,
+    valid_until TEXT,
+    expires_at TEXT,
+    content_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_scope ON knowledge_items(scope, scope_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_knowledge_user ON knowledge_items(user_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_knowledge_org ON knowledge_items(organization_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_knowledge_hash ON knowledge_items(content_hash);
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+    id TEXT PRIMARY KEY,
+    item_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    model TEXT NOT NULL,
+    dims INTEGER NOT NULL,
+    vector TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_item ON knowledge_chunks(item_id, chunk_index);
+CREATE TABLE IF NOT EXISTS knowledge_events (
+    id TEXT PRIMARY KEY,
+    item_id TEXT,
+    event TEXT NOT NULL,
+    actor TEXT,
+    agent_role TEXT,
+    data TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_events_item ON knowledge_events(item_id, created_at);
+CREATE TABLE IF NOT EXISTS workspaces (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    path TEXT NOT NULL,
+    owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    organization_id TEXT,
+    execution_mode TEXT NOT NULL DEFAULT 'bubblewrap',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_user_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_workspaces_path ON workspaces(path);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workspaces_name ON workspaces(owner_user_id, name);
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS installation_id TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS devices_installation_uq
     ON devices(created_by_user_id, installation_id)

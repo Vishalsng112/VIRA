@@ -19,7 +19,7 @@ the same allow-list, deduplication and retention.
 | Server as device | Local device created at boot, owned by admins, heartbeat + retention task; sensors publish via local ingestion | `devices/local_device.py`, `kernel/kernel.py` |
 | Isolation | SSE filtered per user/device grant (viewer payloads redacted, revocation honoured); `agent.response` addressed to the requester only; admin-only kernel/config/ops routes; `/config` redacts secrets; device-scoped memories | `devices/visibility.py`, `api/streams.py`, `api/app.py`, `auth/database.py` |
 | Chat | Optional `device_id` validated against grants; stored on messages; `POST /api/v1/conversations/{id}/messages` | `api/app.py` |
-| Agents | Router passes `device_id`/`actor_user_id`; scheduler queues events instead of dropping them; `ChatAgent` is re-entrant (no per-request instance state); a failed event no longer disables an agent; `AutonomousAgent` keeps baselines per device | `agent_orchestration/*`, `agent/*` |
+| Agents | Router passes `device_id`/`actor_user_id`; scheduler queues events instead of dropping them; `ChatAgent` is re-entrant (no per-request instance state); a failed event no longer disables an agent | `agent_orchestration/*`, `agent/*` |
 | API conventions | `/api/v1` aliases for legacy routes, error body `{detail, error:{code,message,correlation_id}}`, server-side `X-Correlation-ID`, cursor pagination | `api/deps.py` |
 | Client | Reference endpoint client: enroll, secure credential file, offline SQLite queue, backoff, heartbeat | `clients/endpoint_agent.py` |
 | Flutter client | VIRA Link: device enrollment, modular capture, offline outbox, heartbeat, batch sync, device management. Targets Android, iOS, web, Linux and Windows. | `client/` |

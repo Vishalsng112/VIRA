@@ -8,6 +8,33 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Added
 
+- Workspace-centric sandbox model: user-visible project directories under
+  `workspace.root`, one shared default workspace per user, multiple agents
+  attaching to the same workspace, per-request `workspace` selection injected
+  into tool calls, `workspace.allow_user_paths`, and `/api/v1/workspaces` CRUD.
+  Adds host execution mode (`execution_mode: host`) so agents use host-installed
+  toolchains, plus `sandbox.extra_path` and read-only SDK mounts. Deleting one
+  sandbox no longer deletes a shared workspace. See
+  `docs/dev/designs/workspaces.md`.
+- Reworked agent framework: one canonical `BaseAgent` with typed
+  `TaskRequest`/`TaskResult`, lifecycle hooks, per-task identity, tool policy
+  and helpers for LLM/tool/memory/knowledge/progress/response, plus a reusable
+  `LLMAgent` layer for prompt + multi-step tool loops and delegation.
+  `ChatAgent` is now a thin subclass connected to every registered local and MCP
+  tool; qualified MCP tools can be called even when not preselected. Read-only
+  tools now execute with their declared permission action instead of being
+  rejected as `execute`. See `docs/dev/architecture/agent-design.md`.
+- Scoped knowledge base for agents: a single `knowledge_items` store with
+  `conversation`/`personal`/`agent`/`org`/`global` scopes, append-only revisions,
+  deduplication, promotion policy and a `knowledge.*` event trail. Adds
+  `knowledge_search`/`knowledge_write` agent tools, a `/api/v1/knowledge` API,
+  merged retrieval over knowledge/documents/memories, and a
+  `knowledge.consolidate` worker job stub that the future AGI consolidation
+  algorithm can replace. See `docs/dev/designs/knowledge-base.md`.
+- Pluggable knowledge storage: `KnowledgeStore`/`KnowledgeRepository`/
+  `VectorIndex`/`KnowledgeCache` ports, a config-selected factory, an in-memory
+  backend, capability flags, a TTL cache with generation-based invalidation and
+  a conformance suite that runs the same contract against every backend.
 - Mature sandbox execution environments: persistent per-agent/per-user
   workspaces, shell and argv execution, multi-file project creation, background
   jobs with logs/kill, pip/npm dependency installs, archives with safe restore,
@@ -17,6 +44,14 @@ All notable changes to VIRA are documented here. The format follows
 - Plugin examples and MCP server examples with end-to-end tests.
 - Contributor guide, decision log, release cadence and issue templates.
 - Showcase page for deployment patterns and community demos.
+
+### Removed
+
+- Legacy agent implementations and their examples: `AutonomousAgent`,
+  `LoadMonitorAgent`, `SimpleAgent`, the duplicate
+  `vira/agent_orchestration/base.py`, the unused `vira/agent/messaging.py`, the
+  `think/plan/act/reflect` execution pipeline and their tests. `BaseAgent` now
+  requires `execute`; `ChatAgent` is the only shipped agent.
 
 ### Changed
 

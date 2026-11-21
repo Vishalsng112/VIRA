@@ -725,6 +725,123 @@ def _m011_device_installation(conn: sqlite3.Connection) -> None:
     )
 
 
+def _m015_knowledge_base(conn: sqlite3.Connection) -> None:
+    """Scoped, append-only knowledge base for agents and the future AGI KB."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS knowledge_items (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            organization_id TEXT,
+            scope TEXT NOT NULL
+                CHECK (scope IN ('conversation', 'personal', 'agent', 'org', 'global')),
+            scope_id TEXT,
+            agent_role TEXT,
+            kind TEXT NOT NULL DEFAULT 'fact'
+                CHECK (kind IN ('fact', 'preference', 'procedure', 'observation', 'document')),
+            content TEXT NOT NULL,
+            summary TEXT,
+            metadata TEXT NOT NULL DEFAULT '{}',
+            source TEXT NOT NULL DEFAULT '{}',
+            tags TEXT NOT NULL DEFAULT '[]',
+            confidence REAL NOT NULL DEFAULT 0.5,
+            importance REAL NOT NULL DEFAULT 0.0,
+            status TEXT NOT NULL DEFAULT 'draft'
+                CHECK (status IN ('draft', 'candidate', 'verified', 'promoted', 'deprecated')),
+            revision INTEGER NOT NULL DEFAULT 1,
+            supersedes TEXT,
+            superseded_by TEXT,
+            valid_from TIMESTAMP,
+            valid_until TIMESTAMP,
+            expires_at TIMESTAMP,
+            content_hash TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_scope "
+        "ON knowledge_items(scope, scope_id, status, created_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_user "
+        "ON knowledge_items(user_id, updated_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_org "
+        "ON knowledge_items(organization_id, updated_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_hash "
+        "ON knowledge_items(content_hash)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS knowledge_chunks (
+            id TEXT PRIMARY KEY,
+            item_id TEXT NOT NULL REFERENCES knowledge_items(id) ON DELETE CASCADE,
+            chunk_index INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            model TEXT NOT NULL,
+            dims INTEGER NOT NULL,
+            vector TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_item "
+        "ON knowledge_chunks(item_id, chunk_index)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS knowledge_events (
+            id TEXT PRIMARY KEY,
+            item_id TEXT,
+            event TEXT NOT NULL,
+            actor TEXT,
+            agent_role TEXT,
+            data TEXT NOT NULL DEFAULT '{}',
+            created_at TIMESTAMP NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_events_item "
+        "ON knowledge_events(item_id, created_at)"
+    )
+
+
+def _m016_workspaces(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS workspaces (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            path TEXT NOT NULL,
+            owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            organization_id TEXT,
+            execution_mode TEXT NOT NULL DEFAULT 'bubblewrap',
+            metadata TEXT NOT NULL DEFAULT '{}',
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspaces_owner "
+        "ON workspaces(owner_user_id, updated_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_workspaces_path ON workspaces(path)"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_workspaces_name "
+        "ON workspaces(owner_user_id, name)"
+    )
+
+
 MIGRATIONS: List[Tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "users_public_id_and_status", _m001_users),
     (2, "devices_credentials_access_events", _m002_devices),
@@ -740,6 +857,8 @@ MIGRATIONS: List[Tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (12, "agent_approvals", _m012_agent_approvals),
     (13, "generated_artifacts", _m013_generated_artifacts),
     (14, "memory_feedback", _m014_memory_feedback),
+    (15, "knowledge_base", _m015_knowledge_base),
+    (16, "workspaces", _m016_workspaces),
 ]
 
 

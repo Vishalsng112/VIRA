@@ -53,7 +53,7 @@ class ToolExecutor:
     async def execute(
         self,
         tool_name: str,
-        required_action: str = "execute",
+        required_action: Optional[str] = None,
         agent_id: Optional[str] = None,
         correlation_id: Optional[str] = None,
         caller_user_id: Optional[int] = None,
@@ -96,6 +96,13 @@ class ToolExecutor:
                          started, correlation_id=correlation_id, agent_id=agent_id)
             return result
 
+        if required_action is None:
+            actions = list(getattr(tool.permissions, "actions", []) or [])
+            required_action = next(
+                (action for action in ("execute", "write", "read")
+                 if action in actions),
+                actions[0] if actions else "execute",
+            )
         if required_action not in tool.permissions.actions:
             result = text_result(
                 f"Permission denied: '{tool_name}' does not allow '{required_action}'",
@@ -172,9 +179,11 @@ class ToolExecutor:
                 return result
 
         try:
-            # Sandbox tools need the caller identity for workspace ownership checks.
+            # Tools that work on agent-scoped resources need the caller identity.
             tool_kwargs = dict(kwargs)
-            if agent_id is not None and tool_name == "sandbox":
+            if agent_id is not None and (
+                    tool_name == "sandbox"
+                    or getattr(tool, "wants_agent_id", False)):
                 tool_kwargs["agent_id"] = agent_id
             result = await tool.execute(**tool_kwargs)
             status = "failed" if getattr(result, "isError", False) else "succeeded"

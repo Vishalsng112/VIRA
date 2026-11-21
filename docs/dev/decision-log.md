@@ -6,6 +6,72 @@ the **Decision proposal** issue template.
 
 Status values: **Proposed**, **Accepted**, **Superseded**, **Rejected**.
 
+## 2026-11-21 — One BaseAgent, with an LLMAgent layer
+
+**Status:** Accepted
+
+**Context:** VIRA had two `BaseAgent` implementations and `ChatAgent`
+reimplemented tool discovery, permissions, prompting, the tool loop, delegation
+and history. Read-only tools were rejected because the executor always checked
+the `execute` action, MCP tools were only half-wired, and per-conversation
+history lived in a class-level dict shared by every instance.
+
+**Decision:** Make `vira/agent/base.py` the only `BaseAgent` (lifecycle, task
+contract, per-task identity, helpers, tool policy) and add
+`vira/agent/llm_agent.py` for LLM/tool agents. `ChatAgent` becomes a thin
+subclass handling only chat events, history and responses. Tool permission
+actions are resolved from each tool's declared permissions. Any permitted tool,
+including qualified MCP tools, may be called by name even when it was not in the
+prompt's selected subset.
+
+**Consequences:** one lifecycle and one authoring model; new agents are a class
+with an `execute` method plus a tool policy. `BaseAgent.initialize` rejects
+classes without `execute`. The legacy `think/plan/act/reflect` pipeline and the
+example/sensor agents were removed; `ChatAgent` is the only shipped agent.
+
+## 2026-11-21 — One scoped knowledge store, not RAG per agent
+
+**Status:** Accepted
+
+**Context:** Agents need to persist what they learn so it can later feed a single
+dynamic AGI knowledge base. Per-user or per-agent vector stores would multiply
+indexes, break deduplication and conflict resolution, and tie knowledge to
+ephemeral runtime identifiers (`BaseAgent.agent_id` is a random UUID).
+
+**Decision:** Keep one knowledge store keyed by rows tagged with
+`scope ∈ {conversation, personal, agent, org, global}` plus `scope_id`.
+Retrieval takes the set of scopes a caller may read and merges results with
+uploaded documents and episodic memory. Agent scope uses a stable role name, not
+the runtime agent id. Corrections append revisions; only the promotion pipeline
+creates `global` knowledge.
+
+**Consequences:** shared learning, one embedding pipeline and one place to
+enforce isolation. Isolation depends on correct scope filtering, so read paths
+must be scope-aware and tested. Physical partitioning by scope remains a later
+scale optimisation, not a design primitive.
+
+## 2026-11-21 — SQL as the knowledge record, NoSQL as derived indexes
+
+**Status:** Accepted
+
+**Context:** The knowledge base needs multi-row transactions (dedupe,
+supersession, events) and scope/ACL filtering. Retrieval also needs vector,
+lexical and possibly graph indexes, which may be better served by NoSQL systems.
+Choosing one database for both concerns would limit the framework either way.
+
+**Decision:** Separate the authoritative record from derived stores. Items,
+revisions, provenance and scope live behind the `KnowledgeRepository` port
+(SQLite now, PostgreSQL at scale). Embeddings live behind `VectorIndex`; caches
+behind `KnowledgeCache`. Both are rebuildable and never authoritative. The
+factory selects adapters from `config.yaml`, and every adapter must pass the
+same conformance suite.
+
+**Consequences:** a future Qdrant, OpenSearch, Redis or graph backend is an
+adapter plus a config change, not a rewrite. Writes must keep the record and
+derived indexes consistent (outbox or synchronous update). The team must resist
+reading derived stores as if they were authoritative, and must keep SQL confined
+to adapters.
+
 ## 2026-11-21 — Local-first, single-process by default
 
 **Status:** Accepted

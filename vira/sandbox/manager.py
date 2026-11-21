@@ -31,9 +31,29 @@ class SandboxManager:
     MAX_LIST_RESULTS = 1_000
 
     def __init__(self, root: str = "/AgentWorkspace", bwrap_binary: str = "bwrap",
-                 default_policy: Optional[SandboxPolicy] = None):
-        self.backend = BubblewrapBackend(root=root, bwrap_binary=bwrap_binary)
+                 default_policy: Optional[SandboxPolicy] = None,
+                 readonly_mounts: Optional[Sequence[str]] = None,
+                 workspace_service=None, workspace_root: Optional[str] = None):
+        self.backend = BubblewrapBackend(
+            root=root, bwrap_binary=bwrap_binary,
+            readonly_mounts=readonly_mounts)
         self.default_policy = default_policy or SandboxPolicy()
+        self._workspace_service = workspace_service
+        self._workspace_root = workspace_root
+
+    def _workspaces(self):
+        if self._workspace_service is None:
+            from vira.workspace.service import WorkspaceService, get_service
+            if self._workspace_root:
+                self._workspace_service = WorkspaceService(
+                    root=self._workspace_root)
+            elif str(self.backend.root) != "/AgentWorkspace":
+                # Tests and custom sandbox roots keep workspaces beside them.
+                self._workspace_service = WorkspaceService(
+                    root=str(self.backend.root / "workspaces"))
+            else:
+                self._workspace_service = get_service()
+        return self._workspace_service
 
     # ------------------------------------------------------------------ lifecycle
     async def create(self, agent_id: str, run_id: Optional[str] = None, **policy) -> dict:
@@ -54,17 +74,79 @@ class SandboxManager:
         name: Optional[str] = None,
         policy: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
+        workspace: Optional[str] = None,
+        workspace_path: Optional[str] = None,
+        execution_mode: Optional[str] = None,
     ) -> dict:
+        """Create a sandbox attached to a shared workspace.
+
+        Several agents may attach to the same workspace; each gets its own
+        sandbox namespace.  With no workspace argument, the user's default
+        workspace is used, so all their agents share files by default.
+        """
+        record = self._workspaces().resolve(
+            workspace or workspace_path, user_id,
+            execution_mode=execution_mode)
         merged = {**self.default_policy.as_dict(), **(policy or {})}
+        merged["execution_mode"] = record["execution_mode"]
         sandbox = await self.backend.create(
             agent_id=agent_id,
             run_id=run_id,
             policy=SandboxPolicy.from_dict(merged),
             user_id=user_id,
-            name=name,
-            metadata=metadata,
+            name=name or record["name"],
+            metadata={**(metadata or {}), "workspace_name": record["name"]},
+            workspace_path=record["path"],
+            workspace_id=record["id"],
         )
         return self._serialize(sandbox)
+
+    @staticmethod
+    def _policy_raises(current: Dict[str, Any],
+                       wanted: Dict[str, Any]) -> Dict[str, Any]:
+        """Only raise limits; never lower an existing sandbox's policy."""
+        updates: Dict[str, Any] = {}
+        for key in ("timeout_seconds", "cpu_seconds", "memory_mb",
+                    "workspace_quota_mb", "max_processes", "max_output_bytes"):
+            try:
+                if key in wanted and float(wanted[key]) > float(current.get(key) or 0):
+                    updates[key] = wanted[key]
+            except (TypeError, ValueError):
+                continue
+        for key in ("network_enabled", "allow_shell", "allow_package_install"):
+            if wanted.get(key) is True and not current.get(key):
+                updates[key] = True
+        return updates
+
+    async def find_or_create(
+        self,
+        agent_id: str,
+        user_id: Optional[int] = None,
+        *,
+        workspace: Optional[str] = None,
+        workspace_path: Optional[str] = None,
+        name: Optional[str] = None,
+        policy: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, str]] = None,
+        execution_mode: Optional[str] = None,
+    ) -> dict:
+        record = self._workspaces().resolve(
+            workspace or workspace_path, user_id,
+            execution_mode=execution_mode)
+        existing = [
+            item for item in (await self.list(agent_id, user_id)).get("sandboxes", [])
+            if item.get("workspace_id") == record["id"]
+        ]
+        if existing:
+            ref = existing[0]
+            updates = self._policy_raises(ref.get("policy") or {}, policy or {})
+            if updates:
+                ref = await self.update_policy(
+                    ref["sandbox_id"], agent_id, updates, user_id=user_id)
+            return ref
+        return await self.create_for(
+            agent_id, user_id, name=name, policy=policy, metadata=metadata,
+            workspace=record["path"], execution_mode=record["execution_mode"])
 
     async def get(self, sandbox_id: str, agent_id: str,
                   user_id: Optional[int] = None) -> dict:
@@ -434,6 +516,8 @@ class SandboxManager:
             "run_id": sandbox.run_id,
             "name": sandbox.name,
             "workspace": str(sandbox.workspace),
+            "workspace_id": sandbox.workspace_id,
+            "workspace_name": (sandbox.metadata or {}).get("workspace_name"),
             "status": sandbox.status.value,
             "policy": sandbox.policy.as_dict(),
             "archive_path": str(sandbox.archive_path) if sandbox.archive_path else None,

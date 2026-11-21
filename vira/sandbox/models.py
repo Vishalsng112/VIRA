@@ -54,6 +54,11 @@ class SandboxPolicy:
     allow_shell: bool = True
     workspace_quota_mb: int = 2048
     max_output_bytes: int = 200_000
+    #: "bubblewrap" is isolated; "host" runs in the shared workspace with the
+    #: host toolchain (admin/workspace setting only, never model-controlled).
+    execution_mode: str = "bubblewrap"
+    #: Extra host PATH entries prepended for host mode / exposed in bubblewrap.
+    extra_path: str = ""
 
     def __post_init__(self) -> None:
         if self.timeout_seconds <= 0 or self.timeout_seconds > 86_400:
@@ -68,6 +73,8 @@ class SandboxPolicy:
             raise ValueError("workspace_quota_mb must be positive")
         if self.max_output_bytes <= 0:
             raise ValueError("max_output_bytes must be positive")
+        if self.execution_mode not in ("bubblewrap", "host"):
+            raise ValueError("execution_mode must be 'bubblewrap' or 'host'")
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -80,6 +87,8 @@ class SandboxPolicy:
             "allow_shell": self.allow_shell,
             "workspace_quota_mb": self.workspace_quota_mb,
             "max_output_bytes": self.max_output_bytes,
+            "execution_mode": self.execution_mode,
+            "extra_path": self.extra_path,
         }
 
     @classmethod
@@ -95,6 +104,7 @@ class SandboxRef:
     agent_id: str
     run_id: Optional[str]
     workspace: Path
+    workspace_id: Optional[str] = None
     status: SandboxStatus = SandboxStatus.CREATED
     policy: SandboxPolicy = field(default_factory=SandboxPolicy)
     archive_path: Optional[Path] = None

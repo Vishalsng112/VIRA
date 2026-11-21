@@ -85,15 +85,15 @@ def resolve_name(name: str, known: List[str]) -> str:
     return matches[0] if len(matches) == 1 else name
 
 
-def extract_tool_call(text: str, known: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
-    """Return {"tool", "params", "unknown"} for the first tool call in text.
+def extract_tool_calls(text: str, known: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """Every tool call found in text, in order, without duplicates.
 
-    A candidate counts when its name is a known tool, or when it is explicitly
-    shaped like {"tool": ..., "params": ...} (then flagged unknown=True so the
-    loop can tell the model which tools really exist).
+    Local models often emit several calls in one reply. The loop can execute
+    them sequentially instead of silently dropping all but the first.
     """
     known_set = set(known or [])
-    fallback = None
+    calls: List[Dict[str, Any]] = []
+    seen = set()
     for chunk in _balanced_objects(text or ""):
         obj = loads_lenient(chunk)
         if not isinstance(obj, dict):
@@ -101,12 +101,22 @@ def extract_tool_call(text: str, known: Optional[List[str]] = None) -> Optional[
         call = _resolve(obj)
         if not call:
             continue
-        call["tool"] = resolve_name(call["tool"], list(known_set))
-        if call["tool"] in known_set:
-            return {"tool": call["tool"], "params": call["params"], "unknown": False}
-        if call["explicit"] and fallback is None:
-            fallback = {"tool": call["tool"], "params": call["params"], "unknown": True}
-    return fallback
+        name = resolve_name(call["tool"], list(known_set))
+        unknown = name not in known_set
+        if unknown and not call["explicit"]:
+            continue
+        signature = (name, json.dumps(call["params"], sort_keys=True, default=str))
+        if signature in seen:
+            continue
+        seen.add(signature)
+        calls.append({"tool": name, "params": call["params"], "unknown": unknown})
+    return calls
+
+
+def extract_tool_call(text: str, known: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+    """Return the first tool call in text (compatibility helper)."""
+    calls = extract_tool_calls(text, known)
+    return calls[0] if calls else None
 
 
 def clip(text: Any, limit: int) -> str:

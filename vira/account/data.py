@@ -7,6 +7,7 @@ from vira.devices import store as device_store
 from vira.devices import consent as consent_store
 from vira.devices import commands as command_store
 from vira.insights.rollup import list_daily
+from vira.knowledge.store import get_store as get_knowledge_store
 
 MAX_EVENTS_PER_DEVICE = 5000
 
@@ -67,6 +68,7 @@ def export_user(user: UserPrincipal) -> Dict[str, Any]:
         "devices": device_items,
         "conversations": conversations,
         "memories": memories,
+        "knowledge": get_knowledge_store().export_user(user.user_id),
         "notifications": notifications,
         "audit": audit,
     }
@@ -78,7 +80,8 @@ def delete_user_data(user: UserPrincipal, delete_devices: bool = True) -> Dict[s
         device_ids = [row["id"] for row in conn.execute(
             "SELECT id FROM devices WHERE created_by_user_id = ?", (user_id,)
         ).fetchall()]
-        counts = {"devices": len(device_ids), "events": 0, "conversations": 0, "memories": 0}
+        counts = {"devices": len(device_ids), "events": 0, "conversations": 0,
+                  "memories": 0, "knowledge": 0}
         if device_ids:
             placeholders = ",".join("?" for _ in device_ids)
             for table in ("device_events", "device_latest_state", "insight_daily",
@@ -98,4 +101,7 @@ def delete_user_data(user: UserPrincipal, delete_devices: bool = True) -> Dict[s
         counts["memories"] = cur.rowcount
         conn.execute("DELETE FROM user_notifications WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM device_pairing_codes WHERE created_by_user_id = ?", (user_id,))
+    # Knowledge deletion goes through the storage port, not raw SQL. It runs
+    # after the transaction above because the adapter owns its own transaction.
+    counts["knowledge"] = get_knowledge_store().delete_for_user(user_id)
     return counts
