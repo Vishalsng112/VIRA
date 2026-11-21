@@ -15,7 +15,11 @@ void main() {
 
     await store.setDiagnosticsEnabled(true);
     expect(store.diagnosticsEnabled, isTrue);
-    for (var index = 0; index < SettingsStore.maxDiagnosticEvents + 4; index++) {
+    for (
+      var index = 0;
+      index < SettingsStore.maxDiagnosticEvents + 4;
+      index++
+    ) {
       await store.recordDiagnostic({'kind': 'error', 'index': index});
     }
     final events = store.diagnosticEvents();
@@ -36,5 +40,25 @@ void main() {
     expect(store.breakRemindersEnabled, isTrue);
     await store.setBreakRemindersEnabled(false);
     expect(store.breakRemindersEnabled, isFalse);
+  });
+
+  test('permission setup is one-time and remembers skips', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = await SettingsStore.open();
+
+    expect(store.permissionSetupCompleted, isFalse);
+    expect(store.notificationPermissionPrompted, isFalse);
+    expect(store.usageAccessDismissed, isFalse);
+
+    await store.setNotificationPermissionPrompted(true);
+    await store.setUsageAccessDismissed(true);
+    await store.setPermissionSetupCompleted(true);
+
+    expect(store.permissionSetupCompleted, isTrue);
+    expect(store.notificationPermissionPrompted, isTrue);
+    expect(store.usageAccessDismissed, isTrue);
+
+    await store.setUsageAccessDismissed(false);
+    expect(store.usageAccessDismissed, isFalse);
   });
 }

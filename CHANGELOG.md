@@ -6,6 +6,8 @@ All notable changes to VIRA are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-22
+
 ### Added
 
 - Workspace-centric sandbox model: user-visible project directories under
@@ -97,6 +99,10 @@ All notable changes to VIRA are documented here. The format follows
 - Plugin examples and MCP server examples with end-to-end tests.
 - Contributor guide, decision log, release cadence and issue templates.
 - Showcase page for deployment patterns and community demos.
+- VIRA Link first-run permission setup: notifications use Android's in-app
+  runtime prompt, activity insights are opt-in and off by default, and Android
+  Usage Access guidance adapts to sideloaded installs. Developers can run
+  `client/tool/grant_android_permissions.sh` after installing a debug APK.
 
 ### Removed
 
@@ -152,6 +158,25 @@ All notable changes to VIRA are documented here. The format follows
 - The shipped configuration auto-approves the isolated `sandbox` tool via
   `security.approvals.safe_tools`, so the ChatAgent can write and execute code
   without a per-call approval. Shell and host-filesystem writes remain gated.
+- VIRA Link now uses a shared responsive layout system: phone-width typography,
+  padding, controls and cards are tighter; stat cards use two columns on
+  phones; the navigation rail starts at tablet width instead of leaving web and
+  tablet layouts in a stretched phone shell; and desktop content is capped at a
+  readable width.
+- Page headers no longer duplicate the mobile app-bar title, and the Insights
+  focus card lays out its session total and action buttons cleanly on phones.
+- The server dashboard, sign-in and chat pages now share VIRA Link's
+  indigo→violet→pink palette, aurora background and glass surfaces. The server
+  dashboard keeps two KPI columns on phones, and the chat composer/sidebar were
+  tightened for small screens.
+- The chat workspace now lists the real registered agents with `ChatAgent`
+  selected by default, adds a one-click **Clear all** action backed by
+  `DELETE /conversations`, uses concrete starter prompts, replaces the footer
+  links with compact Dashboard/Sign out actions, and renders the send/stop
+  controls as proper SVG icons.
+- Added a reusable VIRA logo set (SVG plus 32/64/128/192/512px PNGs, favicon,
+  Android launcher icons and Flutter assets) and applied it across the server
+  and VIRA Link.
 
 ## [0.4.0] - 2026-11-21
 

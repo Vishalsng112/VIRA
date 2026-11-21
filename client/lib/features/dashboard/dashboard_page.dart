@@ -2,8 +2,10 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/layout.dart';
 import '../../app/theme.dart';
 import '../../app/widgets.dart';
+import '../../core/config/app_config.dart';
 import '../../data/storage/outbox_store.dart';
 import '../shell/app_shell.dart';
 import '../../services/capture/capture_service.dart';
@@ -16,6 +18,8 @@ class DashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = AppScope.of(context);
+    final compact = ViraLayout.isCompact(context);
+    final gap = ViraLayout.gap(context);
     final snapshot = controller.syncSnapshot;
     final collectors = controller.collectors;
     final active = collectors
@@ -25,11 +29,11 @@ class DashboardPage extends StatelessWidget {
       onRefresh: controller.syncNow,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+        padding: ViraLayout.pageInsets(context),
         children: [
           Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1080),
+              constraints: const BoxConstraints(maxWidth: 1120),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -40,23 +44,24 @@ class DashboardPage extends StatelessWidget {
                         'Here is a simple look at your device and what VIRA knows. '
                         'No technical knowledge needed — the details are at the bottom.',
                   ),
-                  const SizedBox(height: 18),
+                  SizedBox(height: compact ? 14 : 18),
                   _Hero(controller: controller, snapshot: snapshot),
-                  if (_collectorsNeedingAttention(controller).isNotEmpty) ...[
-                    const SizedBox(height: 14),
+                  if (!controller.usageAccessDismissed &&
+                      _collectorsNeedingAttention(controller).isNotEmpty) ...[
+                    SizedBox(height: gap),
                     _PermissionsBanner(controller: controller),
                   ],
-                  const SizedBox(height: 14),
+                  SizedBox(height: gap),
                   _QuickStats(
                     controller: controller,
                     snapshot: snapshot,
                     active: active,
                     total: collectors.length,
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: gap),
                   LayoutBuilder(
                     builder: (context, constraints) {
-                      final wide = constraints.maxWidth >= 860;
+                      final wide = constraints.maxWidth >= 760;
                       final sharing = _SharingCard(controller: controller);
                       final connection = _ConnectionCard(
                         controller: controller,
@@ -65,7 +70,7 @@ class DashboardPage extends StatelessWidget {
                         return Column(
                           children: [
                             sharing,
-                            const SizedBox(height: 14),
+                            SizedBox(height: gap),
                             connection,
                           ],
                         );
@@ -74,15 +79,15 @@ class DashboardPage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(flex: 3, child: sharing),
-                          const SizedBox(width: 14),
+                          SizedBox(width: gap),
                           Expanded(flex: 2, child: connection),
                         ],
                       );
                     },
                   ),
-                  const SizedBox(height: 14),
+                  SizedBox(height: gap),
                   const _HowItWorks(),
-                  const SizedBox(height: 14),
+                  SizedBox(height: gap),
                   _AdvancedDetails(controller: controller, snapshot: snapshot),
                 ],
               ),
@@ -186,10 +191,9 @@ class _Hero extends StatelessWidget {
 
 List<CollectorState> _collectorsNeedingAttention(AppController controller) {
   return controller.collectors.where((state) {
+    if (!state.enabled) return false;
     if (state.status == 'permission_denied') return true;
-    return state.enabled &&
-        state.status == 'unavailable' &&
-        state.collector.canRequestAccess;
+    return state.status == 'unavailable' && state.collector.canRequestAccess;
   }).toList();
 }
 
@@ -197,6 +201,13 @@ Future<void> _showPermissionSheet(
   BuildContext context,
   AppController controller,
 ) async {
+  final needsUsageAccess = controller.collectors.any(
+    (state) =>
+        state.enabled &&
+        state.status == 'permission_denied' &&
+        (state.collector.id == collectorAppUsage ||
+            state.collector.id == collectorScreenSession),
+  );
   await showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -210,9 +221,8 @@ Future<void> _showPermissionSheet(
           children: [
             Text(
               'Permissions and notifications',
-              style: Theme.of(
-                sheetContext,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(sheetContext).textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 6),
             Text(
@@ -253,22 +263,55 @@ Future<void> _showPermissionSheet(
                     leading: const Icon(Icons.notifications_none_rounded),
                     title: const Text('Notifications'),
                     subtitle: const Text(
-                      'In-app break reminders are available now. OS notifications '
-                      'are not scheduled by this build, so VIRA will not ask for '
-                      'notification permission yet.',
+                      'Android asks for notification permission during first-run '
+                      'setup. You can request it again from Settings.',
                     ),
                     trailing: const StatusPill(
-                      label: 'In-app only',
+                      label: 'Requested once',
                       tone: StatusTone.info,
                     ),
                   ),
                 ],
               ),
             ),
+            if (needsUsageAccess && controller.isSideloaded) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(sheetContext).colorScheme.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'If the Usage Access switch is greyed out, Android is blocking '
+                  'apps installed outside the Play Store. Open App info → ⋮ → '
+                  'Allow restricted settings, then return here.',
+                  style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(sheetContext)
+                        .colorScheme
+                        .onTertiaryContainer,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 10),
-            FilledButton(
-              onPressed: () => Navigator.pop(sheetContext),
-              child: const Text('Done'),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: () async {
+                    await controller.setActivityInsightsEnabled(false);
+                    await controller.dismissUsageAccess();
+                    if (sheetContext.mounted) Navigator.pop(sheetContext);
+                  },
+                  child: const Text('Not now'),
+                ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: const Text('Done'),
+                ),
+              ],
             ),
           ],
         ),
@@ -289,7 +332,9 @@ String _permissionExplanation(CollectorState state) {
     return 'Needs an operating-system permission. Tap Allow to open the right settings page.';
   }
   if (state.status == 'available') {
-    return state.enabled ? 'Available and shared.' : 'Available but turned off.';
+    return state.enabled
+        ? 'Available and shared.'
+        : 'Available but turned off.';
   }
   if (state.status == 'degraded') {
     return state.lastError ?? 'Limited on this platform right now.';
@@ -305,12 +350,13 @@ class _PermissionsBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = ViraLayout.isCompact(context);
     final pending = _collectorsNeedingAttention(controller);
     final denied = pending.where((s) => s.status == 'permission_denied').length;
     return Card(
       color: theme.colorScheme.tertiaryContainer,
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: EdgeInsets.all(compact ? 14 : 18),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -421,9 +467,9 @@ class _QuickStats extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         const spacing = 12.0;
-        final columns = constraints.maxWidth >= 900
+        final columns = constraints.maxWidth >= 800
             ? 4
-            : constraints.maxWidth >= 380
+            : constraints.maxWidth >= 300
             ? 2
             : 1;
         final width =
@@ -456,15 +502,22 @@ class _SharingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = ViraLayout.isCompact(context);
     final collectors = controller.collectors;
     return SectionCard(
       title: 'What this device shares',
       subtitle: 'Turn anything off at any time. VIRA only receives what is switched on here.',
-      trailing: FilledButton.tonalIcon(
-        onPressed: controller.captureNow,
-        icon: const Icon(Icons.refresh_rounded, size: 18),
-        label: const Text('Refresh'),
-      ),
+      trailing: compact
+          ? IconButton.filledTonal(
+              tooltip: 'Refresh',
+              onPressed: controller.captureNow,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+            )
+          : FilledButton.tonalIcon(
+              onPressed: controller.captureNow,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Refresh'),
+            ),
       child: Column(
         children: [
           for (final state in collectors)
@@ -500,23 +553,25 @@ class _SharingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = ViraLayout.isCompact(context);
     final meta = _collectorMeta(state.collector.id, state.collector.title);
     final permission = state.status == 'permission_denied';
+    final iconSize = compact ? 38.0 : 42.0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: iconSize,
+            height: iconSize,
             decoration: BoxDecoration(
               color: meta.color.withValues(alpha: 0.13),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(compact ? 12 : 14),
             ),
-            child: Icon(meta.icon, size: 20, color: meta.color),
+            child: Icon(meta.icon, size: compact ? 18 : 20, color: meta.color),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: compact ? 10 : 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -723,18 +778,20 @@ class _ConnectionLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = ViraLayout.isCompact(context);
+    final size = compact ? 34.0 : 38.0;
     return Row(
       children: [
         Container(
-          width: 38,
-          height: 38,
+          width: size,
+          height: size,
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.13),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(compact ? 10 : 12),
           ),
-          child: Icon(icon, size: 19, color: color),
+          child: Icon(icon, size: compact ? 17 : 19, color: color),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: compact ? 10 : 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -766,11 +823,12 @@ class _HowItWorks extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = ViraLayout.isCompact(context);
     return GlassCard(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(compact ? 14 : 18),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 720;
+          final wide = constraints.maxWidth >= 640;
           final steps = [
             _Step(
               Icons.visibility_outlined,

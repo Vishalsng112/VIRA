@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/layout.dart';
 import '../../app/widgets.dart';
 import '../../core/config/app_config.dart';
 import '../../data/storage/outbox_store.dart';
@@ -19,11 +21,11 @@ class SettingsPage extends StatelessWidget {
     final snapshot = controller.syncSnapshot;
     final device = controller.currentDevice;
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: ViraLayout.pageInsets(context),
       children: [
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 880),
+            constraints: const BoxConstraints(maxWidth: 920),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -136,7 +138,8 @@ class SettingsPage extends StatelessWidget {
                   child: Column(
                     children: [
                       for (final state in controller.collectors)
-                        if (state.status == 'permission_denied')
+                        if (state.enabled &&
+                            state.status == 'permission_denied')
                           ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: const Icon(Icons.lock_outline),
@@ -162,6 +165,41 @@ class SettingsPage extends StatelessWidget {
                               child: const Text('Allow'),
                             ),
                           ),
+                      if (!kIsWeb &&
+                          defaultTargetPlatform == TargetPlatform.android)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.insights_outlined),
+                          title: const Text('Activity insights access'),
+                          subtitle: Text(
+                            controller.isSideloaded
+                                ? 'Controls app usage and screen time. If Android '
+                                      'greys out the switch, open App info → ⋮ → '
+                                      'Allow restricted settings.'
+                                : 'Controls app usage and screen time. Android '
+                                      'requires Usage Access for these signals.',
+                          ),
+                          trailing: TextButton(
+                            onPressed: () async {
+                              final opened = await controller
+                                  .requestCollectorAccess(collectorAppUsage);
+                              if (!context.mounted) return;
+                              if (!opened) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Android did not open the Usage Access settings page.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text('Open settings'),
+                          ),
+                        ),
+                      if (!kIsWeb &&
+                          defaultTargetPlatform == TargetPlatform.android)
+                        const Divider(height: 20),
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('In-app break reminders'),
@@ -180,20 +218,20 @@ class SettingsPage extends StatelessWidget {
                         title: const Text('Agent notifications'),
                         subtitle: const Text(
                           'Show native alerts for scheduled agent results while '
-                          'VIRA Link is running. Remote delivery when the app is '
-                          'closed needs a configured push relay.',
+                          'VIRA Link is running. Android asks for notification '
+                          'permission during first-run setup.',
                         ),
                         trailing: TextButton(
                           onPressed: () async {
                             final granted = await NotificationHub.instance
-                                .requestPermission();
+                                .requestPermission(controller: controller);
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
                                 content: Text(
                                   granted
                                       ? 'Native agent notifications are enabled.'
-                                      : 'Notification permission was not granted.',
+                                      : 'Notification permission was not granted. Enable it in Android app settings.',
                                 ),
                               ),
                             );

@@ -37,6 +37,29 @@ The client is built from the [`client/`](https://github.com/Vishalsng112/VIRA/tr
 directory in this repository. Build outputs are produced by the
 [client workflow](https://github.com/Vishalsng112/VIRA/actions/workflows/build-client.yml).
 
+## First run and Android permissions
+
+The first time a device connects, VIRA Link shows a one-time **Set up your
+device** screen:
+
+- **Notifications** — Android's standard permission prompt, requested in-app.
+  You can skip it and enable it later in Settings.
+- **Activity insights** — optional app-usage and screen-time capture. It is off
+  by default. Enabling it opens Android's **Usage Access** page because Android
+  does not let an app grant that special access itself.
+
+Android 13 and newer block some special access for apps installed outside the
+Play Store. If the Usage Access switch is greyed out, open **App info → ⋮ →
+Allow restricted settings**, then return and try again. This does not happen for
+Play Store installs.
+
+Developers using USB/ADB can grant the same access after a fresh install:
+
+```bash
+cd client
+./tool/grant_android_permissions.sh
+```
+
 ## Build and run from source
 
 ```bash

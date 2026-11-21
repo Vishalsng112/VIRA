@@ -41,6 +41,7 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "usagePermission" -> result.success(hasUsagePermission())
                     "openUsageSettings" -> result.success(openUsageSettings())
+                    "installerPackage" -> result.success(installerPackage())
                     "appUsage" -> {
                         val lookback = (call.argument<Number>("lookback_ms") ?: 300000L).toLong()
                         executor.execute {
@@ -101,6 +102,17 @@ class MainActivity : FlutterActivity() {
             true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    /// The installer package lets the UI explain Android's restricted-settings
+    /// gate only when the app was not installed from the Play Store.
+    private fun installerPackage(): String? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            packageManager.getInstallSourceInfo(packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getInstallerPackageName(packageName)
         }
     }
 

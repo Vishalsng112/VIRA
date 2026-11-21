@@ -2,10 +2,12 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/layout.dart';
 import '../../app/modules.dart';
 import '../../app/widgets.dart';
 import '../../core/config/app_config.dart';
 import '../onboarding/onboarding_page.dart';
+import '../permissions/permission_setup_page.dart';
 import '../../services/sync/sync_service.dart';
 
 /// Lets any page move the shell to another module (for example,
@@ -120,6 +122,9 @@ class _AppShellState extends State<AppShell> {
     if (controller.state != AppConnectionState.connected) {
       return const OnboardingPage();
     }
+    if (!controller.permissionSetupCompleted) {
+      return const PermissionSetupPage();
+    }
     final modules = appModulesFor(isAdmin: controller.isAdmin);
     final selected = modules.indexWhere((item) => item.id == _selectedId);
     final selectedIndex = selected < 0 ? 0 : selected;
@@ -129,7 +134,7 @@ class _AppShellState extends State<AppShell> {
       openModule: _open,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 900;
+          final wide = constraints.maxWidth >= ViraLayout.desktopBreakpoint;
           if (!wide) return _mobile(controller, modules, module, selectedIndex);
           return _desktop(
             controller,
@@ -157,7 +162,7 @@ class _AppShellState extends State<AppShell> {
         bottom: false,
         child: Column(
           children: [
-            _MobileHeader(module: module, controller: controller),
+            _MobileHeader(controller: controller),
             Expanded(
               child: KeyedSubtree(
                 key: ValueKey(module.id),
@@ -168,13 +173,18 @@ class _AppShellState extends State<AppShell> {
         ),
       ),
       bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+        minimum: EdgeInsets.fromLTRB(
+          ViraLayout.isCompact(context) ? 10 : 14,
+          0,
+          ViraLayout.isCompact(context) ? 10 : 14,
+          10,
+        ),
         child: GlassBar(
           radius: 28,
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           child: NavigationBar(
             selectedIndex: bottomIndex < 0 ? bottom.length : bottomIndex,
-            height: 64,
+            height: ViraLayout.isCompact(context) ? 58 : 64,
             onDestinationSelected: (index) {
               if (index >= bottom.length) {
                 _openMore(modules, context);
@@ -185,13 +195,25 @@ class _AppShellState extends State<AppShell> {
             destinations: [
               for (final item in bottom)
                 NavigationDestination(
-                  icon: Icon(item.icon, size: 23),
-                  selectedIcon: Icon(item.selectedIcon, size: 23),
+                  icon: Icon(
+                    item.icon,
+                    size: ViraLayout.isCompact(context) ? 21 : 23,
+                  ),
+                  selectedIcon: Icon(
+                    item.selectedIcon,
+                    size: ViraLayout.isCompact(context) ? 21 : 23,
+                  ),
                   label: item.label,
                 ),
-              const NavigationDestination(
-                icon: Icon(Icons.grid_view_rounded, size: 23),
-                selectedIcon: Icon(Icons.grid_view_rounded, size: 23),
+              NavigationDestination(
+                icon: Icon(
+                  Icons.grid_view_rounded,
+                  size: ViraLayout.isCompact(context) ? 21 : 23,
+                ),
+                selectedIcon: Icon(
+                  Icons.grid_view_rounded,
+                  size: ViraLayout.isCompact(context) ? 21 : 23,
+                ),
                 label: 'More',
               ),
             ],
@@ -219,7 +241,7 @@ class _AppShellState extends State<AppShell> {
     int selectedIndex,
     BoxConstraints constraints,
   ) {
-    final extended = constraints.maxWidth >= 1240;
+    final extended = constraints.maxWidth >= ViraLayout.extendedRailBreakpoint;
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: SafeArea(
@@ -305,20 +327,28 @@ class _AppShellState extends State<AppShell> {
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: Column(
-                  children: [
-                    _WideHeader(module: module, controller: controller),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(28),
-                        child: KeyedSubtree(
-                          key: ValueKey(module.id),
-                          child: module.builder(context),
-                        ),
-                      ),
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: ViraLayout.contentMaxWidth,
                     ),
-                  ],
+                    child: Column(
+                      children: [
+                        _WideHeader(module: module, controller: controller),
+                        const SizedBox(height: 10),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(28),
+                            child: KeyedSubtree(
+                              key: ValueKey(module.id),
+                              child: module.builder(context),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -349,7 +379,7 @@ class BrandFooter extends StatelessWidget {
       itemBuilder: (context) => const [
         PopupMenuItem(
           enabled: false,
-          child: Text('VIRA Link 1.0.0 · private by design'),
+          child: Text('VIRA Link $appVersion · private by design'),
         ),
       ],
       child: Container(
@@ -371,26 +401,25 @@ class BrandFooter extends StatelessWidget {
 }
 
 class _MobileHeader extends StatelessWidget {
-  const _MobileHeader({required this.module, required this.controller});
+  const _MobileHeader({required this.controller});
 
-  final AppModule module;
   final AppController controller;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 12, 14, 6),
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 4),
       child: Row(
         children: [
-          const BrandMark(size: 34),
-          const SizedBox(width: 12),
+          const BrandMark(size: 30),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  module.label,
+                  'VIRA Link',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.3,
@@ -398,6 +427,8 @@ class _MobileHeader extends StatelessWidget {
                 ),
                 Text(
                   _syncLabel(controller: controller),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),

@@ -432,14 +432,28 @@ async function loadRuntimeContext() {
       api("/orchestration"),
       api("/api/v1/agent-definitions"),
     ]);
-    const agents = (orchestration?.agents || []).filter((agent) => agent.enabled !== false);
+    const agents = (orchestration?.agents || [])
+      .filter((agent) => agent.enabled !== false)
+      .sort((a, b) => {
+        const rank = (agent) => (
+          agent.id === "chatbot" || String(agent.name || "").toLowerCase() === "chatagent"
+        ) ? 0 : 1;
+        return rank(a) - rank(b) || String(a.name || "").localeCompare(String(b.name || ""));
+      });
+    const chatAgent = agents.find((agent) =>
+      agent.id === "chatbot" || String(agent.name || "").toLowerCase() === "chatagent"
+    ) || agents[0];
+    if (!state.agentId || !agents.some((agent) => agent.id === state.agentId)) {
+      state.agentId = chatAgent?.id || "";
+    }
     const select = $("#agent-select");
-    select.innerHTML = ['<option value="">VIRA</option>', ...agents.map((agent) =>
-      `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.name)}</option>`)].join("");
-    if (state.agentId && !agents.some((agent) => agent.id === state.agentId)) state.agentId = "";
+    select.innerHTML = agents.length
+      ? agents.map((agent) =>
+          `<option value="${escapeHtml(agent.id)}">${escapeHtml(agent.name)}</option>`).join("")
+      : '<option value="">ChatAgent</option>';
     select.value = state.agentId;
 
-    const active = agents.find((agent) => agent.id === state.agentId) || agents[0];
+    const active = agents.find((agent) => agent.id === state.agentId) || chatAgent;
     $("#context-runtime").textContent = orchestration?.running ? "Online" : "Stopped";
     $("#context-runtime-sub").textContent = orchestration?.running
       ? `${agents.length} agent(s) · ${orchestration?.tools?.total || 0} tools`
@@ -517,6 +531,23 @@ async function startNewChat(shouldFocus = true) {
   renderMessages([]);
   setStatus("");
   if (shouldFocus) $("#message-input").focus();
+}
+
+async function deleteAllConversations() {
+  if (!state.conversations.length) {
+    setStatus("There are no chats to delete.");
+    return;
+  }
+  if (!window.confirm(`Delete all ${state.conversations.length} chat${state.conversations.length === 1 ? "" : "s"}? This cannot be undone.`)) return;
+  try {
+    await api("/conversations", { method: "DELETE" });
+    state.conversations = [];
+    await startNewChat(false);
+    await loadConversations();
+    setStatus("All chats deleted.");
+  } catch (error) {
+    setStatus(error.message, true);
+  }
 }
 
 async function deleteConversation(id) {
@@ -702,6 +733,7 @@ $("#incognito-toggle").addEventListener("change", (event) => {
   state.incognito = event.target.checked;
 });
 $("#refresh-chats").addEventListener("click", loadConversations);
+$("#clear-chats").addEventListener("click", deleteAllConversations);
 $("#conversation-search").addEventListener("input", (event) => {
   state.search = event.target.value;
   renderConversations();

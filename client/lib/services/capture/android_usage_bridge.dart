@@ -64,14 +64,27 @@ class AndroidUsageBridge
     }
   }
 
+  /// The package that installed VIRA Link. Play Store installs report
+  /// `com.android.vending`; sideloaded APKs report the package installer, ADB
+  /// or null. Used only to tailor the restricted-settings guidance.
+  Future<String?> installerPackage() async {
+    if (!_isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<String>('installerPackage');
+    } on MissingPluginException {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
   @override
   Future<List<AppUsageSample>> appUsage({required Duration lookback}) async {
     if (!_isAndroid) return const [];
     try {
-      final raw = await _channel.invokeMethod<List<dynamic>>(
-        'appUsage',
-        {'lookback_ms': lookback.inMilliseconds},
-      );
+      final raw = await _channel.invokeMethod<List<dynamic>>('appUsage', {
+        'lookback_ms': lookback.inMilliseconds,
+      });
       final samples = (raw ?? const [])
           .whereType<Map>()
           .map((item) {
@@ -86,10 +99,7 @@ class AndroidUsageBridge
               foregroundMs: millis,
               lastUsedAt: lastUsed == null
                   ? null
-                  : DateTime.fromMillisecondsSinceEpoch(
-                      lastUsed,
-                      isUtc: true,
-                    ),
+                  : DateTime.fromMillisecondsSinceEpoch(lastUsed, isUtc: true),
             );
           })
           .where(

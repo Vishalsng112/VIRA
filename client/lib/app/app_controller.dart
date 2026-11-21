@@ -17,6 +17,7 @@ import '../data/storage/outbox_store.dart';
 import '../data/storage/session_ledger.dart';
 import '../data/storage/settings_store.dart';
 import '../data/storage/usage_ledger.dart';
+import '../services/capture/android_usage_bridge.dart';
 import '../services/capture/capture_service.dart';
 import '../services/capture/platform_probe.dart';
 import '../services/sync/sync_service.dart';
@@ -59,6 +60,8 @@ class AppController extends ChangeNotifier {
   int _pendingCount = 0;
   String? _requestedModule;
   bool _deviceAuthFailed = false;
+  final AndroidUsageBridge _usageAccess = AndroidUsageBridge();
+  bool _sideloaded = false;
 
   static Future<AppController> create() async {
     final controller = AppController._(
@@ -100,6 +103,15 @@ class AppController extends ChangeNotifier {
   AppThemeMode get themeMode => settings.themeMode;
   bool get diagnosticsEnabled => settings.diagnosticsEnabled;
   bool get breakRemindersEnabled => settings.breakRemindersEnabled;
+  bool get permissionSetupCompleted => settings.permissionSetupCompleted;
+  bool get usageAccessDismissed => settings.usageAccessDismissed;
+  bool get isSideloaded => _sideloaded;
+  bool get activityInsightsEnabled => collectors.any(
+    (state) =>
+        (state.collector.id == collectorAppUsage ||
+            state.collector.id == collectorScreenSession) &&
+        state.enabled,
+  );
   String? get requestedModule => _requestedModule;
 
   /// Ask the shell to open a module (used by notification taps).
@@ -139,6 +151,7 @@ class AppController extends ChangeNotifier {
     try {
       _deviceAuthFailed = false;
       _profile = await probe.profile();
+      _sideloaded = await _detectSideloaded();
       await settings.ensureInstallationId();
       _stored = await credentials.load();
       _isAdmin = _stored.isAdmin;
@@ -164,6 +177,16 @@ class AppController extends ChangeNotifier {
         ..sessionId = stored.sessionId
         ..deviceId = stored.deviceId
         ..deviceToken = stored.deviceToken;
+
+  Future<bool> _detectSideloaded() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
+    try {
+      final installer = await _usageAccess.installerPackage();
+      return installer != 'com.android.vending';
+    } on Object {
+      return false;
+    }
+  }
 
   Future<void> _startServices() async {
     final api = _api;
@@ -264,6 +287,7 @@ class AppController extends ChangeNotifier {
       final login = await api.login(username, password);
       final isAdmin = _hasAdminRole(login);
       final profile = _profile ?? await probe.profile();
+      _sideloaded = await _detectSideloaded();
       final name = deviceName.trim().isEmpty
           ? suggestedDeviceName
           : deviceName.trim();
@@ -573,7 +597,43 @@ class AppController extends ChangeNotifier {
 
   Future<void> setCollectorEnabled(String id, bool value) async {
     await _capture?.setEnabled(id, value);
+    if (value && (id == collectorAppUsage || id == collectorScreenSession)) {
+      await settings.setUsageAccessDismissed(false);
+    }
     _pendingCount = await outbox.depth();
+    notifyListeners();
+  }
+
+  Future<bool> hasUsageAccess() async {
+    final capture = _capture;
+    if (capture == null) return false;
+    return capture.hasAccess(collectorAppUsage);
+  }
+
+  Future<void> setActivityInsightsEnabled(bool enabled) async {
+    await _capture?.setActivityInsightsEnabled(enabled);
+    await settings.setUsageAccessDismissed(!enabled);
+    _pendingCount = await outbox.depth();
+    notifyListeners();
+  }
+
+  /// Marks the first-run permission screen as done. Collectors stay off unless
+  /// Usage Access is already granted, so a skipped step never creates a broken
+  /// "needs permission" banner later.
+  Future<void> completePermissionSetup({
+    bool enableActivityInsights = false,
+  }) async {
+    if (enableActivityInsights && await hasUsageAccess()) {
+      await setActivityInsightsEnabled(true);
+    } else if (!activityInsightsEnabled) {
+      await settings.setUsageAccessDismissed(true);
+    }
+    await settings.setPermissionSetupCompleted(true);
+    notifyListeners();
+  }
+
+  Future<void> dismissUsageAccess() async {
+    await settings.setUsageAccessDismissed(true);
     notifyListeners();
   }
 

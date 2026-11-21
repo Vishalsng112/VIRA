@@ -7,43 +7,61 @@
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
           "Helvetica Neue", "Segoe UI", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --bg: #f5f5f7;
-  --card: rgba(255, 255, 255, 0.88);
+  --bg: #f6f7fe;
+  --card: rgba(255, 255, 255, 0.72);
   --card-solid: #ffffff;
   --field: #ffffff;
-  --border: rgba(0, 0, 0, 0.10);
+  --border: rgba(0, 0, 0, 0.08);
   --border-strong: rgba(0, 0, 0, 0.16);
   --text: #1d1d1f;
   --muted: #6e6e73;
   --faint: #86868b;
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
-  --accent-soft: rgba(0, 113, 227, 0.10);
+  --accent: #5b6cff;
+  --accent-hover: #4a5bef;
+  --accent-soft: rgba(91, 108, 255, 0.12);
+  --violet: #9b6bff;
+  --pink: #ff7ab6;
+  --cyan: #52d6e8;
   --ok: #248a3d;
-  --ok-soft: rgba(52, 199, 89, 0.14);
+  --ok-soft: rgba(74, 222, 155, 0.18);
   --bad: #d70015;
-  --bad-soft: rgba(255, 59, 48, 0.12);
-  --shadow: 0 30px 80px rgba(0, 0, 0, 0.14);
+  --bad-soft: rgba(255, 122, 182, 0.16);
+  --brand-gradient: linear-gradient(145deg, #5b6cff 0%, #9b6bff 55%, #ff7ab6 100%);
+  --bg-gradient:
+    radial-gradient(60% 70% at 15% 15%, rgba(91, 108, 255, 0.16), transparent 60%),
+    radial-gradient(55% 65% at 85% 10%, rgba(155, 107, 255, 0.14), transparent 58%),
+    radial-gradient(55% 65% at 75% 90%, rgba(255, 122, 182, 0.10), transparent 60%),
+    linear-gradient(135deg, #f7f8ff 0%, #eef1ff 48%, #fff3fa 100%);
+  --shadow: 0 30px 80px rgba(74, 91, 143, 0.18);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #000000;
-  --card: rgba(28, 28, 30, 0.82);
-  --card-solid: #1c1c1e;
-  --field: #2c2c2e;
-  --border: rgba(255, 255, 255, 0.10);
-  --border-strong: rgba(255, 255, 255, 0.18);
+  --bg: #070a16;
+  --card: rgba(17, 22, 43, 0.78);
+  --card-solid: #11162b;
+  --field: #1b2240;
+  --border: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.20);
   --text: #f5f5f7;
   --muted: #a1a1a6;
   --faint: #8e8e93;
-  --accent: #0a84ff;
-  --accent-hover: #409cff;
-  --accent-soft: rgba(10, 132, 255, 0.18);
-  --ok: #30d158;
-  --ok-soft: rgba(48, 209, 88, 0.16);
-  --bad: #ff453a;
-  --bad-soft: rgba(255, 69, 58, 0.16);
+  --accent: #8e9bff;
+  --accent-hover: #a8b1ff;
+  --accent-soft: rgba(142, 155, 255, 0.20);
+  --violet: #b18cff;
+  --pink: #ff9ac8;
+  --cyan: #7ce6f2;
+  --ok: #4ade9b;
+  --ok-soft: rgba(74, 222, 155, 0.16);
+  --bad: #ff6961;
+  --bad-soft: rgba(255, 105, 97, 0.18);
+  --brand-gradient: linear-gradient(145deg, #6c7cff 0%, #a97bff 55%, #ff8fc2 100%);
+  --bg-gradient:
+    radial-gradient(60% 70% at 15% 15%, rgba(91, 108, 255, 0.22), transparent 60%),
+    radial-gradient(55% 65% at 85% 10%, rgba(155, 107, 255, 0.18), transparent 58%),
+    radial-gradient(55% 65% at 75% 90%, rgba(255, 122, 182, 0.12), transparent 60%),
+    linear-gradient(135deg, #070a16 0%, #0c1024 48%, #14102c 100%);
   --shadow: 0 30px 90px rgba(0, 0, 0, 0.58);
 }
 
@@ -55,11 +73,8 @@ body {
   place-items: center;
   padding: 2rem 1.25rem;
   color: var(--text);
-  background:
-    radial-gradient(60% 70% at 15% 15%, rgba(0, 113, 227, 0.16), transparent 60%),
-    radial-gradient(55% 65% at 85% 10%, rgba(191, 90, 242, 0.12), transparent 58%),
-    radial-gradient(55% 65% at 75% 90%, rgba(52, 199, 89, 0.10), transparent 60%),
-    var(--bg);
+  background: var(--bg-gradient);
+  background-attachment: fixed;
   font: 400 0.9375rem/1.55 var(--font);
   -webkit-font-smoothing: antialiased;
 }
@@ -82,11 +97,9 @@ body::before {
 }
 .auth-brand { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 1.6rem; }
 .auth-mark {
-  display: grid; place-items: center; width: 2.45rem; height: 2.45rem;
-  border-radius: 0.75rem;
-  background: linear-gradient(145deg, #42a5ff, #0071e3 58%, #005bb8);
-  color: #fff; font-weight: 700; font-size: 1.1rem;
-  box-shadow: 0 8px 20px rgba(0, 113, 227, 0.32), inset 0 1px 0 rgba(255,255,255,.35);
+  display: block; width: 2.45rem; height: 2.45rem; flex: none;
+  border-radius: 0.75rem; object-fit: cover;
+  box-shadow: 0 8px 20px rgba(91, 108, 255, 0.32);
 }
 .auth-brand strong { font-size: 1.05rem; letter-spacing: -0.02em; }
 .auth-brand div span { display: block; color: var(--faint); font-size: 0.72rem; margin-top: -0.05rem; }

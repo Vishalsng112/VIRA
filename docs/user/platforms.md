@@ -55,7 +55,7 @@ shasum -a 256 -c checksums.txt    # macOS
 | Battery | Yes | No | Yes | Partial | No | API-dependent |
 | Focus / idle | Yes | No | Yes | Yes | Yes | No |
 | Active window | — | — | X11, Sway, Hyprland, KDE; GNOME via extension | Yes | Yes | No |
-| Notifications | In-app only | In-app only | In-app only | In-app only | In-app only | In-app only |
+| Notifications | Yes (while running) | In-app only | In-app only | In-app only | In-app only | In-app only |
 | Crash diagnostics | Opt-in | Opt-in | Opt-in | Opt-in | Opt-in | Opt-in |
 
 ## macOS support decision
@@ -79,16 +79,30 @@ Known limits:
 
 ## Permissions and notifications
 
-- The first-run permission banner on **Overview** lists signals that need an OS
-  permission and opens the right settings page where the platform supports it.
+- After the first successful connection, VIRA Link shows a one-time **Set up
+  your device** screen with two optional permissions.
+- **Notifications** use Android's standard runtime prompt, requested in-app.
+  Native notifications are used for agent results while VIRA Link is running.
+  Delivery while the app is closed needs a configured push relay.
+- **Activity insights** (app usage and screen time) are **off by default**.
+  Enabling them opens Android's Usage Access page. Android does not allow an app
+  to grant this special access itself.
+- If VIRA Link was installed outside the Play Store and the Usage Access switch
+  is greyed out, Android is applying its sideloading restriction. Open
+  **App info → ⋮ → Allow restricted settings** once, then retry. Play Store
+  installs do not show this block.
 - **Settings → Permissions and notifications** repeats the list, explains every
-  unavailable signal and lets you turn in-app break reminders on or off.
-- **OS notifications are not scheduled by this build.** VIRA uses in-app
-  reminders. It will request notification permission only when scheduled
-  notifications are implemented, so it does not ask for a permission it cannot
-  use.
+  unavailable signal, and lets you open the same system pages again.
 - Every collector remains independently disableable. Turning one off stops new
   events; queued events still sync.
+
+Developers installing with USB/ADB can grant the special access after each fresh
+install:
+
+```bash
+cd client
+./tool/grant_android_permissions.sh
+```
 
 ## Diagnostics
 

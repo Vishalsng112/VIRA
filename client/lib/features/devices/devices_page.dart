@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/layout.dart';
 import '../../app/widgets.dart';
 import '../../core/models/device_info.dart';
 import '../../data/storage/outbox_store.dart';
@@ -49,7 +50,8 @@ class _DevicesPageState extends State<DevicesPage> {
     if (name == null || !mounted) return;
     final error = await controller.renameDevice(device.deviceId, name);
     if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
     }
   }
 
@@ -82,7 +84,8 @@ class _DevicesPageState extends State<DevicesPage> {
     if (confirmed != true || !mounted) return;
     final error = await controller.revokeDevice(device.deviceId);
     if (error != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
     }
   }
 
@@ -94,7 +97,7 @@ class _DevicesPageState extends State<DevicesPage> {
     return RefreshIndicator(
       onRefresh: controller.refreshDevices,
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: ViraLayout.pageInsets(context),
         children: [
           Center(
             child: ConstrainedBox(
@@ -151,8 +154,7 @@ class _DevicesPageState extends State<DevicesPage> {
                     const EmptyState(
                       icon: Icons.devices_other,
                       title: 'No devices listed',
-                      message:
-                          'Pull to refresh. If your session expired, reconnect this device from Settings.',
+                      message: 'Pull to refresh. If your session expired, reconnect this device from Settings.',
                     )
                   else
                     ...devices.map(

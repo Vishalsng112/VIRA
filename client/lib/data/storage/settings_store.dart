@@ -19,6 +19,10 @@ class SettingsStore {
   static const _themeKey = 'settings.theme_mode';
   static const _diagnosticsKey = 'settings.diagnostics_enabled';
   static const _remindersKey = 'settings.break_reminders';
+  static const _permissionSetupKey = 'settings.permission_setup_completed';
+  static const _notificationPromptKey =
+      'settings.notification_permission_prompted';
+  static const _usageAccessDismissedKey = 'settings.usage_access_dismissed';
   static const _diagnosticEventsKey = 'settings.diagnostic_events';
   static const maxDiagnosticEvents = 12;
 
@@ -87,6 +91,27 @@ class SettingsStore {
   Future<void> setBreakRemindersEnabled(bool value) =>
       _prefs.setBool(_remindersKey, value);
 
+  /// The one-time permission setup screen is shown after the first successful
+  /// device connection. Existing installs see it once after upgrading.
+  bool get permissionSetupCompleted =>
+      _prefs.getBool(_permissionSetupKey) ?? false;
+  Future<void> setPermissionSetupCompleted(bool value) =>
+      _prefs.setBool(_permissionSetupKey, value);
+
+  /// Android shows the notification prompt only once. Remember that we asked,
+  /// even if the user denied it, so the app never nags on every launch.
+  bool get notificationPermissionPrompted =>
+      _prefs.getBool(_notificationPromptKey) ?? false;
+  Future<void> setNotificationPermissionPrompted(bool value) =>
+      _prefs.setBool(_notificationPromptKey, value);
+
+  /// Set when the user chose "Not now" for activity insights. It is cleared
+  /// automatically when they turn the collectors back on.
+  bool get usageAccessDismissed =>
+      _prefs.getBool(_usageAccessDismissedKey) ?? false;
+  Future<void> setUsageAccessDismissed(bool value) =>
+      _prefs.setBool(_usageAccessDismissedKey, value);
+
   List<Map<String, dynamic>> diagnosticEvents() {
     final raw = _prefs.getString(_diagnosticEventsKey);
     if (raw == null || raw.isEmpty) return <Map<String, dynamic>>[];
@@ -117,6 +142,5 @@ class SettingsStore {
     await _prefs.setString(_diagnosticEventsKey, jsonEncode(events));
   }
 
-  Future<void> clearDiagnosticHistory() =>
-      _prefs.remove(_diagnosticEventsKey);
+  Future<void> clearDiagnosticHistory() => _prefs.remove(_diagnosticEventsKey);
 }

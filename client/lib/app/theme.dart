@@ -50,11 +50,13 @@ const _radius = 24.0;
 const _pill = StadiumBorder();
 const _seed = ViraPalette.indigo;
 
-ThemeData buildLightTheme() => _theme(Brightness.light);
+ThemeData buildLightTheme({bool compact = false}) =>
+    _theme(Brightness.light, compact: compact);
 
-ThemeData buildDarkTheme() => _theme(Brightness.dark);
+ThemeData buildDarkTheme({bool compact = false}) =>
+    _theme(Brightness.dark, compact: compact);
 
-ThemeData _theme(Brightness brightness) {
+ThemeData _theme(Brightness brightness, {bool compact = false}) {
   final dark = brightness == Brightness.dark;
   final scheme = ColorScheme.fromSeed(seedColor: _seed, brightness: brightness)
       .copyWith(
@@ -94,27 +96,49 @@ ThemeData _theme(Brightness brightness) {
     canvasColor: Colors.transparent,
     textTheme: text.copyWith(
       displaySmall: text.displaySmall?.copyWith(
+        fontSize: compact ? 30 : text.displaySmall?.fontSize,
         fontWeight: FontWeight.w700,
         letterSpacing: -1.6,
       ),
       headlineMedium: text.headlineMedium?.copyWith(
+        fontSize: compact ? 26 : text.headlineMedium?.fontSize,
         fontWeight: FontWeight.w700,
         letterSpacing: -1.0,
       ),
       headlineSmall: text.headlineSmall?.copyWith(
+        fontSize: compact ? 22 : text.headlineSmall?.fontSize,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.6,
       ),
       titleLarge: text.titleLarge?.copyWith(
+        fontSize: compact ? 20 : text.titleLarge?.fontSize,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.3,
       ),
       titleMedium: text.titleMedium?.copyWith(
+        fontSize: compact ? 15.5 : text.titleMedium?.fontSize,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.2,
       ),
-      bodyLarge: text.bodyLarge?.copyWith(height: 1.4),
-      bodyMedium: text.bodyMedium?.copyWith(height: 1.45),
+      titleSmall: text.titleSmall?.copyWith(
+        fontSize: compact ? 14 : text.titleSmall?.fontSize,
+        fontWeight: FontWeight.w600,
+      ),
+      bodyLarge: text.bodyLarge?.copyWith(
+        fontSize: compact ? 15 : text.bodyLarge?.fontSize,
+        height: 1.4,
+      ),
+      bodyMedium: text.bodyMedium?.copyWith(
+        fontSize: compact ? 13.5 : text.bodyMedium?.fontSize,
+        height: 1.45,
+      ),
+      bodySmall: text.bodySmall?.copyWith(
+        fontSize: compact ? 12 : text.bodySmall?.fontSize,
+        height: 1.35,
+      ),
+      labelSmall: text.labelSmall?.copyWith(
+        fontSize: compact ? 10.5 : text.labelSmall?.fontSize,
+      ),
     ),
     splashFactory: InkSparkle.splashFactory,
     visualDensity: VisualDensity.standard,
@@ -151,7 +175,10 @@ ThemeData _theme(Brightness brightness) {
       fillColor: dark
           ? Colors.white.withValues(alpha: 0.06)
           : Colors.white.withValues(alpha: 0.72),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: compact ? 15 : 18,
+        vertical: compact ? 13 : 16,
+      ),
       hintStyle: TextStyle(
         color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
       ),
@@ -177,31 +204,46 @@ ThemeData _theme(Brightness brightness) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(0, 50),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+        minimumSize: Size(0, compact ? 46 : 50),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 20 : 24,
+          vertical: compact ? 12 : 14,
+        ),
         shape: _pill,
-        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+        textStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: compact ? 14 : 15,
+        ),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(0, 48),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
+        minimumSize: Size(0, compact ? 44 : 48),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 17 : 20,
+          vertical: compact ? 11 : 13,
+        ),
         shape: _pill,
         side: BorderSide(color: scheme.outlineVariant),
-        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        textStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: compact ? 13.5 : 14,
+        ),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         shape: _pill,
-        textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        textStyle: TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: compact ? 13.5 : 14,
+        ),
       ),
     ),
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(
         shape: const CircleBorder(),
-        padding: const EdgeInsets.all(10),
+        padding: EdgeInsets.all(compact ? 8 : 10),
       ),
     ),
     navigationRailTheme: NavigationRailThemeData(
@@ -223,7 +265,7 @@ ThemeData _theme(Brightness brightness) {
       ),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      height: 68,
+      height: compact ? 60 : 68,
       elevation: 0,
       backgroundColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
@@ -233,7 +275,7 @@ ThemeData _theme(Brightness brightness) {
       ),
       labelTextStyle: WidgetStatePropertyAll(
         TextStyle(
-          fontSize: 11,
+          fontSize: compact ? 10 : 11,
           fontWeight: FontWeight.w600,
           color: scheme.onSurface,
         ),
@@ -269,7 +311,10 @@ ThemeData _theme(Brightness brightness) {
     ),
     listTileTheme: ListTileThemeData(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 16,
+        vertical: compact ? 2 : 5,
+      ),
     ),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith(

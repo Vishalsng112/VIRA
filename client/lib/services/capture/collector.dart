@@ -46,6 +46,10 @@ abstract class Collector {
   /// True when the collector can open an OS settings page to request access.
   bool get canRequestAccess => false;
 
+  /// Checks the current OS permission without collecting an event. Collectors
+  /// that do not need special access return true.
+  Future<bool> hasAccess() async => true;
+
   Future<CollectorResult> collect(PlatformProbe probe);
 
   Future<bool> requestAccess() async => false;

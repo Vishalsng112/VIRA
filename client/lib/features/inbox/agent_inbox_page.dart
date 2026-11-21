@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_scope.dart';
+import '../../app/layout.dart';
 import '../../app/widgets.dart';
 import '../../core/models/agent_inbox.dart';
 import '../../data/api/vira_api.dart';
@@ -240,7 +241,7 @@ class _AgentInboxPageState extends State<AgentInboxPage> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: ViraLayout.pageInsets(context),
         children: [
           Row(
             children: [

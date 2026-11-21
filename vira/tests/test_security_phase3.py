@@ -157,10 +157,15 @@ class IsolationTests(unittest.TestCase):
     def test_chat_isolation(self):
         conversation = database.create_conversation(self.alice, "Alice private")
         database.append_message(conversation, self.alice, "user", "alice secret")
+        other = database.create_conversation(self.bob, "Bob private")
+        database.append_message(other, self.bob, "user", "bob secret")
         self.assertIsNone(database.get_conversation(conversation, self.bob))
         self.assertEqual(database.list_messages(conversation, self.bob), [])
         self.assertFalse(database.delete_conversation(conversation, self.bob))
         self.assertTrue(database.get_conversation(conversation, self.alice))
+        self.assertEqual(database.delete_all_conversations(self.alice), 1)
+        self.assertIsNone(database.get_conversation(conversation, self.alice))
+        self.assertIsNotNone(database.get_conversation(other, self.bob))
 
     def test_memory_isolation(self):
         database.store_memory(self.alice, "alice private memory", memory_type="long_term")

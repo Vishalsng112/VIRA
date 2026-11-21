@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/layout.dart';
 import '../../app/widgets.dart';
 import '../../data/api/vira_api.dart';
 import '../../data/storage/outbox_store.dart';
@@ -228,7 +229,12 @@ class _AdminPageState extends State<AdminPage>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+          padding: EdgeInsets.fromLTRB(
+            ViraLayout.pagePadding(context),
+            14,
+            ViraLayout.pagePadding(context),
+            10,
+          ),
           child: Row(
             children: [
               Expanded(

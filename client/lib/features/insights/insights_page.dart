@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/layout.dart';
 import '../../app/widgets.dart';
 import '../../core/catalog/app_catalog.dart';
 import '../../core/config/app_config.dart';
@@ -104,9 +105,8 @@ class _InsightsPageState extends State<InsightsPage> {
 
   int get _longestSessionMs => _selectedSessions.fold(
     0,
-    (longest, day) => day.longestSessionMs > longest
-        ? day.longestSessionMs
-        : longest,
+    (longest, day) =>
+        day.longestSessionMs > longest ? day.longestSessionMs : longest,
   );
 
   int get _currentSessionMs => _sessionToday.currentSessionMs;
@@ -175,7 +175,7 @@ class _InsightsPageState extends State<InsightsPage> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: ViraLayout.pageInsets(context),
         children: [
           Center(
             child: ConstrainedBox(
@@ -261,9 +261,8 @@ class _InsightsPageState extends State<InsightsPage> {
                           : 'App usage is currently captured on Android. Desktop active-window capture is on the roadmap.',
                       action: android
                           ? FilledButton.icon(
-                              onPressed: () => _controller.requestCollectorAccess(
-                                collectorAppUsage,
-                              ),
+                              onPressed: () => _controller
+                                  .requestCollectorAccess(collectorAppUsage),
                               icon: const Icon(Icons.lock_open_outlined),
                               label: const Text('Open Usage Access settings'),
                             )
@@ -288,33 +287,34 @@ class _InsightsPageState extends State<InsightsPage> {
                     const SizedBox(height: 16),
                     if (apps.isNotEmpty)
                       SectionCard(
-                      title: 'Top apps',
-                      subtitle: _range == _Range.today
-                          ? 'Foreground time today'
-                          : 'Foreground time over the last 7 days',
-                      child: Column(
-                        children: [
-                          for (final app in apps.take(10))
-                            _AppRow(app: app, maxMs: apps.first.foregroundMs),
-                        ],
+                        title: 'Top apps',
+                        subtitle: _range == _Range.today
+                            ? 'Foreground time today'
+                            : 'Foreground time over the last 7 days',
+                        child: Column(
+                          children: [
+                            for (final app in apps.take(10))
+                              _AppRow(app: app, maxMs: apps.first.foregroundMs),
+                          ],
+                        ),
                       ),
-                    ),
                     if (apps.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    SectionCard(
-                      title: 'Categories',
-                      subtitle: 'How your time is distributed.',
-                      child: _CategoryBreakdown(
-                        totals: _categoryTotals,
-                        totalMs: _totalMs,
+                      const SizedBox(height: 16),
+                      SectionCard(
+                        title: 'Categories',
+                        subtitle: 'How your time is distributed.',
+                        child: _CategoryBreakdown(
+                          totals: _categoryTotals,
+                          totalMs: _totalMs,
+                        ),
                       ),
-                    ),
                     ],
                     const SizedBox(height: 16),
                     if (_interactiveMs > 0) ...[
                       SectionCard(
                         title: 'Screen & sessions',
-                        subtitle: 'Screen time and rest signals for this range.',
+                        subtitle:
+                            'Screen time and rest signals for this range.',
                         child: Column(
                           children: [
                             InfoRow(
@@ -377,8 +377,7 @@ class _InsightsPageState extends State<InsightsPage> {
   String get _topCategory {
     final totals = _categoryTotals;
     if (totals.isEmpty) return AppCategory.other;
-    return (totals.entries.toList()
-          ..sort((a, b) => b.value.compareTo(a.value)))
+    return (totals.entries.toList()..sort((a, b) => b.value.compareTo(a.value)))
         .first
         .key;
   }
@@ -479,6 +478,7 @@ class _FocusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = ViraLayout.isCompact(context);
     final now = DateTime.now();
     final today = recent.where((session) {
       final local = session.startedAt.toLocal();
@@ -496,25 +496,26 @@ class _FocusCard extends StatelessWidget {
         : (activeMs / active!.plannedMs).clamp(0.0, 1.0);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(compact ? 16 : 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
               children: [
                 Container(
-                  width: 42,
-                  height: 42,
+                  width: compact ? 38 : 42,
+                  height: compact ? 38 : 42,
                   decoration: BoxDecoration(
                     color: theme.colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     Icons.center_focus_strong,
+                    size: compact ? 20 : 24,
                     color: theme.colorScheme.onPrimaryContainer,
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: compact ? 10 : 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -533,10 +534,19 @@ class _FocusCard extends StatelessWidget {
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (active == null && compact) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          '${formatDurationMs(completedMs + activeMs)} today',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                if (active == null)
+                if (active == null && !compact)
                   Text(
                     '${formatDurationMs(completedMs + activeMs)} today',
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -622,7 +632,9 @@ class _Summary extends StatelessWidget {
         icon: Icons.apps,
         label: 'Most used',
         value: topApp?.label ?? 'No app data',
-        caption: topApp == null ? 'Grant Usage Access' : formatDurationMs(topApp!.foregroundMs),
+        caption: topApp == null
+            ? 'Grant Usage Access'
+            : formatDurationMs(topApp!.foregroundMs),
       ),
       StatCard(
         icon: Icons.category_outlined,
@@ -634,9 +646,9 @@ class _Summary extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         const spacing = 12.0;
-        final columns = constraints.maxWidth >= 860
+        final columns = constraints.maxWidth >= 760
             ? 4
-            : constraints.maxWidth >= 360
+            : constraints.maxWidth >= 300
             ? 2
             : 1;
         final width =
@@ -837,7 +849,8 @@ class _CategoryBreakdown extends StatelessWidget {
                     child: LinearProgressIndicator(
                       value: totalMs <= 0 ? 0 : entry.value / totalMs,
                       minHeight: 8,
-                      backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                      backgroundColor:
+                          theme.colorScheme.surfaceContainerHighest,
                     ),
                   ),
                 ),

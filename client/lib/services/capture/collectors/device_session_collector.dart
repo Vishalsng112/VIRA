@@ -12,10 +12,8 @@ import '../platform_probe_base.dart';
 /// and user interaction) so no extra permission or background service is
 /// needed beyond Usage Access.
 class DeviceSessionCollector extends Collector {
-  DeviceSessionCollector({
-    required this.ledger,
-    SessionSource? source,
-  }) : source = source ?? AndroidUsageBridge();
+  DeviceSessionCollector({required this.ledger, SessionSource? source})
+    : source = source ?? AndroidUsageBridge();
 
   final SessionLedger ledger;
   final SessionSource source;
@@ -35,9 +33,12 @@ class DeviceSessionCollector extends Collector {
   @override
   Duration get interval => const Duration(minutes: 5);
   @override
-  bool get enabledByDefault => true;
+  bool get enabledByDefault => false;
   @override
   bool get canRequestAccess => true;
+
+  @override
+  Future<bool> hasAccess() => source.hasPermission();
 
   @override
   Future<bool> requestAccess() => source.openSettings();

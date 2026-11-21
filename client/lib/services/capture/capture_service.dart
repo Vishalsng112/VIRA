@@ -118,10 +118,8 @@ class CaptureService {
     for (final entry in _states.entries) entry.key: entry.value.status,
   };
 
-  int get lastEventCount => _states.values.fold(
-    0,
-    (total, state) => total + state.lastEventCount,
-  );
+  int get lastEventCount =>
+      _states.values.fold(0, (total, state) => total + state.lastEventCount);
 
   DeviceHealthSnapshot? get health {
     for (final collector in _collectors) {
@@ -191,6 +189,18 @@ class CaptureService {
     if (enabled) _nextDue[id] = DateTime.now();
     onChanged?.call();
     return enabled ? runDue(force: true) : 0;
+  }
+
+  Future<bool> hasAccess(String id) async {
+    _ensureStates();
+    final collector = _states[id]?.collector;
+    return await collector?.hasAccess() ?? false;
+  }
+
+  /// Enable or disable both collectors that share Android Usage Access.
+  Future<void> setActivityInsightsEnabled(bool enabled) async {
+    await setEnabled(collectorAppUsage, enabled);
+    await setEnabled(collectorScreenSession, enabled);
   }
 
   Future<void> setCaptureEnabled(bool enabled) async {

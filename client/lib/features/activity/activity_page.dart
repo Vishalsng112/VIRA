@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/layout.dart';
 import '../../app/widgets.dart';
 import '../../core/models/captured_event.dart';
 import '../../data/storage/outbox_store.dart';
@@ -64,7 +65,7 @@ class _ActivityPageState extends State<ActivityPage> {
     final theme = Theme.of(context);
     final items = _view == _ActivityView.pending ? _pending : _history;
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: ViraLayout.pageInsets(context),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 980),

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../core/config/app_config.dart';
 import '../../core/models/captured_event.dart';
 import '../../core/models/chat_models.dart';
 import '../../core/models/device_info.dart';
@@ -42,9 +43,12 @@ class BatchResult {
 }
 
 class ViraApi {
-  ViraApi(String baseUrl, {http.Client? client, this.clientVersion = '1.0.0'})
-    : baseUrl = normalizeBaseUrl(baseUrl),
-      _client = client ?? http.Client();
+  ViraApi(
+    String baseUrl, {
+    http.Client? client,
+    this.clientVersion = appVersion,
+  }) : baseUrl = normalizeBaseUrl(baseUrl),
+       _client = client ?? http.Client();
 
   static const protocolVersion = 1;
 

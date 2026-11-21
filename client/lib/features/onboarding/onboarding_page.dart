@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/app_scope.dart';
+import '../../app/layout.dart';
 import '../../app/widgets.dart';
 import '../../data/api/vira_api.dart';
 
@@ -174,7 +175,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: ViraLayout.pageInsets(context),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 980),
               child: LayoutBuilder(

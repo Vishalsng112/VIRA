@@ -936,6 +936,11 @@ def create_app(kernel: Kernel) -> FastAPI:
             raise HTTPException(status_code=404, detail="Conversation not found")
         return {"status": "deleted", "conversation_id": conversation_id}
 
+    @app.delete("/conversations")
+    async def delete_all_conversations(user: auth.Principal = Depends(get_current_user)):
+        count = auth_database.delete_all_conversations(user.user_id)
+        return {"status": "deleted", "count": count}
+
     @app.get("/conversations/{conversation_id}/messages")
     async def list_messages(
         conversation_id: str,
@@ -1414,6 +1419,7 @@ def create_app(kernel: Kernel) -> FastAPI:
     # New clients must use these; the unversioned paths remain as legacy adapters.
     app.add_api_route("/api/v1/conversations", create_conversation, methods=["POST"])
     app.add_api_route("/api/v1/conversations", list_conversations, methods=["GET"])
+    app.add_api_route("/api/v1/conversations", delete_all_conversations, methods=["DELETE"])
     app.add_api_route("/api/v1/conversations/{conversation_id}", get_conversation, methods=["GET"])
     app.add_api_route("/api/v1/conversations/{conversation_id}", update_conversation, methods=["PATCH"])
     app.add_api_route("/api/v1/conversations/{conversation_id}", delete_conversation, methods=["DELETE"])

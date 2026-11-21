@@ -20,29 +20,48 @@ class NotificationHub {
   Timer? _retry;
   AppController? _controller;
   bool _running = false;
+  Future<void>? _starting;
   int _attempt = 0;
 
   bool get running => _running;
 
-  Future<void> start(AppController controller) async {
+  Future<void> start(AppController controller) {
+    final starting = _starting;
+    if (starting != null) return starting;
+    if (_running) return Future.value();
+    return _starting = _start(controller);
+  }
+
+  Future<void> _start(AppController controller) async {
     _controller = controller;
     _running = true;
-    await LocalNotifications.instance.initialize(
-      onOpen: () async => controller.requestModule('inbox'),
-    );
-    await PushRegistrationService.instance.start(controller);
-    _connect();
+    try {
+      await LocalNotifications.instance.initialize(
+        onOpen: () async => controller.requestModule('inbox'),
+      );
+      await PushRegistrationService.instance.start(controller);
+      if (_running) _connect();
+    } on Object catch (error) {
+      _running = false;
+      debugPrint('Notification hub failed to start: $error');
+    } finally {
+      _starting = null;
+    }
   }
 
   void stop() {
     _running = false;
+    _starting = null;
     _retry?.cancel();
     _retry = null;
     _subscription?.cancel();
     _subscription = null;
   }
 
-  Future<bool> requestPermission() async {
+  /// Requests notification permission, starting the local notification plugin
+  /// first when the first-run permission screen asks before the stream is up.
+  Future<bool> requestPermission({AppController? controller}) async {
+    if (controller != null) await start(controller);
     final local = await LocalNotifications.instance.requestPermission();
     final push = await PushRegistrationService.instance.requestPermission();
     return local || push;

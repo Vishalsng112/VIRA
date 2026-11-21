@@ -11,10 +11,8 @@ import '../usage_events.dart';
 /// The collector emits one aggregated event per interval and also updates the
 /// local daily ledger so Insights works offline.
 class AppUsageCollector extends Collector {
-  AppUsageCollector({
-    required this.ledger,
-    AppUsageSource? source,
-  }) : source = source ?? AndroidUsageBridge();
+  AppUsageCollector({required this.ledger, AppUsageSource? source})
+    : source = source ?? AndroidUsageBridge();
 
   final UsageLedger ledger;
   final AppUsageSource source;
@@ -34,9 +32,12 @@ class AppUsageCollector extends Collector {
   @override
   Duration get interval => const Duration(minutes: 5);
   @override
-  bool get enabledByDefault => true;
+  bool get enabledByDefault => false;
   @override
   bool get canRequestAccess => true;
+
+  @override
+  Future<bool> hasAccess() => source.hasPermission();
 
   @override
   Future<bool> requestAccess() => source.openSettings();
@@ -65,14 +66,15 @@ class AppUsageCollector extends Collector {
     if (raw.isEmpty) {
       return const CollectorResult.available([]);
     }
-    final samples = raw
-        .map(
-          (sample) => sample.copyWith(
-            category: categoryForApp(sample.packageName, sample.label),
-          ),
-        )
-        .toList()
-      ..sort((a, b) => b.foregroundMs.compareTo(a.foregroundMs));
+    final samples =
+        raw
+            .map(
+              (sample) => sample.copyWith(
+                category: categoryForApp(sample.packageName, sample.label),
+              ),
+            )
+            .toList()
+          ..sort((a, b) => b.foregroundMs.compareTo(a.foregroundMs));
     final limited = samples.take(80).toList();
     await ledger.record(limited);
 

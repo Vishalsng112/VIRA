@@ -1039,6 +1039,26 @@ def delete_conversation(conversation_id: str, user_id: int) -> bool:
         return cursor.rowcount == 1
 
 
+def delete_all_conversations(user_id: int) -> int:
+    """Delete every regular and incognito conversation for one user."""
+    with get_connection() as conn:
+        regular = conn.execute(
+            "SELECT COUNT(*) AS count FROM conversations WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()["count"]
+        incognito = conn.execute(
+            "SELECT COUNT(*) AS count FROM incognito_conversations WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()["count"]
+        conn.execute("DELETE FROM messages WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM incognito_messages WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM agent_runs WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM conversations WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM incognito_conversations WHERE user_id = ?", (user_id,))
+        conn.commit()
+        return int(regular) + int(incognito)
+
+
 def append_message(
     conversation_id: str,
     user_id: int,

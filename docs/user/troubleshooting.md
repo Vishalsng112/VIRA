@@ -62,6 +62,25 @@ restart.
 - Allow port `8000` through the host firewall.
 - Keep `auth.https_only: false` only for local HTTP; use HTTPS otherwise.
 
+## Android Usage Access switch is greyed out
+
+Android 13 and newer restrict some special access for apps installed outside the
+Play Store. If the **Permit access to app usage data** switch is disabled and
+shows **Controlled by restricted setting**:
+
+1. Open **Settings → Apps → Manage apps → VIRA Link**.
+2. Tap the **⋮** menu in the top-right.
+3. Choose **Allow restricted settings** and confirm.
+4. Return to **Usage access → VIRA Link** and turn the switch on.
+
+Play Store installs do not hit this restriction. For USB/ADB development builds
+you can grant it directly:
+
+```bash
+cd client
+./tool/grant_android_permissions.sh
+```
+
 ## Where are the logs?
 
 ```bash

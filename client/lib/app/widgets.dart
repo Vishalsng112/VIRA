@@ -2,6 +2,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:material_ui/material_ui.dart';
 
+import 'layout.dart';
 import 'theme.dart';
 
 enum StatusTone { neutral, info, success, warning, error }
@@ -88,7 +89,7 @@ class GlassCard extends StatelessWidget {
   const GlassCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(20),
+    this.padding,
     this.margin,
     this.radius = 24,
     this.onTap,
@@ -98,7 +99,7 @@ class GlassCard extends StatelessWidget {
   });
 
   final Widget child;
-  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
   final double radius;
   final VoidCallback? onTap;
@@ -108,6 +109,8 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resolvedPadding =
+        padding ?? EdgeInsets.all(ViraLayout.cardPadding(context));
     final dark = Theme.of(context).brightness == Brightness.dark;
     final overlay =
         tint ??
@@ -151,7 +154,7 @@ class GlassCard extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(radius),
-            child: Padding(padding: padding, child: child),
+            child: Padding(padding: resolvedPadding, child: child),
           ),
         ),
       ),
@@ -312,7 +315,7 @@ class SectionCard extends StatelessWidget {
     this.trailing,
     this.leading,
     required this.child,
-    this.padding = const EdgeInsets.all(20),
+    this.padding,
   });
 
   final String title;
@@ -320,7 +323,7 @@ class SectionCard extends StatelessWidget {
   final Widget? trailing;
   final Widget? leading;
   final Widget child;
-  final EdgeInsetsGeometry padding;
+  final EdgeInsetsGeometry? padding;
 
   @override
   Widget build(BuildContext context) {
@@ -388,6 +391,7 @@ class PageHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = ViraLayout.isCompact(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -397,10 +401,10 @@ class PageHeader extends StatelessWidget {
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.primary,
               fontWeight: FontWeight.w800,
-              letterSpacing: 1.4,
+              letterSpacing: compact ? 1.1 : 1.4,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: compact ? 4 : 6),
         ],
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -418,13 +422,17 @@ class PageHeader extends StatelessWidget {
           ],
         ),
         if (subtitle != null) ...[
-          const SizedBox(height: 6),
+          SizedBox(height: compact ? 4 : 6),
           Text(
             subtitle!,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.45,
-            ),
+            style:
+                (compact
+                        ? theme.textTheme.bodySmall
+                        : theme.textTheme.bodyMedium)
+                    ?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      height: 1.4,
+                    ),
           ),
         ],
       ],
@@ -500,24 +508,26 @@ class StatCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = ViraLayout.isCompact(context);
     final color = accent ?? theme.colorScheme.primary;
+    final iconSize = compact ? 36.0 : 42.0;
     return GlassCard(
       onTap: onTap,
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(compact ? 14 : 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: iconSize,
+            height: iconSize,
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(compact ? 12 : 14),
               border: Border.all(color: color.withValues(alpha: 0.18)),
             ),
-            child: Icon(icon, size: 21, color: color),
+            child: Icon(icon, size: compact ? 18 : 21, color: color),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: compact ? 10 : 16),
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
@@ -537,9 +547,11 @@ class StatCard extends StatelessWidget {
             ),
           ),
           if (caption != null) ...[
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
             Text(
               caption!,
+              maxLines: compact ? 2 : null,
+              overflow: compact ? TextOverflow.ellipsis : null,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -571,6 +583,7 @@ class HeroStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = ViraLayout.isCompact(context);
     final dark = theme.brightness == Brightness.dark;
     final accent = switch (tone) {
       StatusTone.success => ViraPalette.mint,
@@ -579,8 +592,9 @@ class HeroStatus extends StatelessWidget {
       StatusTone.info => ViraPalette.indigo,
       StatusTone.neutral => theme.colorScheme.primary,
     };
+    final iconBox = compact ? 46.0 : 58.0;
     return GlassCard(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(compact ? 16 : 24),
       tint: dark
           ? accent.withValues(alpha: 0.10)
           : Colors.white.withValues(alpha: 0.66),
@@ -591,15 +605,15 @@ class HeroStatus extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 58,
-                height: 58,
+                width: iconBox,
+                height: iconBox,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [accent, accent.withValues(alpha: 0.65)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(compact ? 14 : 18),
                   boxShadow: [
                     BoxShadow(
                       color: accent.withValues(alpha: 0.32),
@@ -608,9 +622,9 @@ class HeroStatus extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Icon(icon, color: Colors.white, size: 28),
+                child: Icon(icon, color: Colors.white, size: compact ? 23 : 28),
               ),
-              const SizedBox(width: 18),
+              SizedBox(width: compact ? 12 : 18),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -622,13 +636,17 @@ class HeroStatus extends StatelessWidget {
                         letterSpacing: -0.4,
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    SizedBox(height: compact ? 4 : 6),
                     Text(
                       message,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                        height: 1.5,
-                      ),
+                      style:
+                          (compact
+                                  ? theme.textTheme.bodySmall
+                                  : theme.textTheme.bodyMedium)
+                              ?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                                height: 1.45,
+                              ),
                     ),
                   ],
                 ),
@@ -641,7 +659,7 @@ class HeroStatus extends StatelessWidget {
               children: [
                 info,
                 if (actions.isNotEmpty) ...[
-                  const SizedBox(height: 18),
+                  SizedBox(height: compact ? 12 : 18),
                   Wrap(spacing: 10, runSpacing: 10, children: actions),
                 ],
               ],
@@ -680,15 +698,19 @@ class EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = ViraLayout.isCompact(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 20 : 28,
+          vertical: compact ? 28 : 40,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 64,
-              height: 64,
+              width: compact ? 56 : 64,
+              height: compact ? 56 : 64,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
@@ -701,9 +723,13 @@ class EmptyState extends StatelessWidget {
                   color: theme.colorScheme.primary.withValues(alpha: 0.16),
                 ),
               ),
-              child: Icon(icon, color: theme.colorScheme.primary, size: 28),
+              child: Icon(
+                icon,
+                color: theme.colorScheme.primary,
+                size: compact ? 24 : 28,
+              ),
             ),
-            const SizedBox(height: 18),
+            SizedBox(height: compact ? 14 : 18),
             Text(
               title,
               style: theme.textTheme.titleMedium?.copyWith(
@@ -720,7 +746,10 @@ class EmptyState extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-            if (action != null) ...[const SizedBox(height: 18), action!],
+            if (action != null) ...[
+              SizedBox(height: compact ? 14 : 18),
+              action!,
+            ],
           ],
         ),
       ),
@@ -738,12 +767,8 @@ class BrandMark extends StatelessWidget {
     return Container(
       width: size,
       height: size,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [ViraPalette.indigo, ViraPalette.violet, ViraPalette.pink],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
         borderRadius: BorderRadius.circular(size * 0.3),
         boxShadow: [
           BoxShadow(
@@ -753,14 +778,34 @@ class BrandMark extends StatelessWidget {
           ),
         ],
       ),
-      alignment: Alignment.center,
-      child: Text(
-        'V',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: size * 0.5,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -1,
+      child: Image.asset(
+        'assets/branding/vira-logo.png',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                ViraPalette.indigo,
+                ViraPalette.violet,
+                ViraPalette.pink,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              'V',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: size * 0.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -1,
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -789,35 +834,40 @@ class ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = ViraLayout.isCompact(context);
     final color = destructive
         ? theme.colorScheme.error
         : theme.colorScheme.primary;
+    final iconSize = compact ? 36.0 : 40.0;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 12,
+            vertical: compact ? 8 : 12,
+          ),
           child: Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: iconSize,
+                height: iconSize,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(13),
+                  borderRadius: BorderRadius.circular(compact ? 11 : 13),
                 ),
-                child: Icon(icon, size: 20, color: color),
+                child: Icon(icon, size: compact ? 18 : 20, color: color),
               ),
-              const SizedBox(width: 14),
+              SizedBox(width: compact ? 10 : 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: theme.textTheme.bodyLarge?.copyWith(
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: destructive ? theme.colorScheme.error : null,
                       ),
@@ -828,7 +878,7 @@ class ActionTile extends StatelessWidget {
                         subtitle!,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
-                          height: 1.4,
+                          height: 1.35,
                         ),
                       ),
                     ],

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VIRA">
+  <defs>
+    <linearGradient id="vira-bg" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5B6CFF"/>
+      <stop offset=".55" stop-color="#9B6BFF"/>
+      <stop offset="1" stop-color="#FF7AB6"/>
+    </linearGradient>
+    <linearGradient id="vira-shine" x1="80" y1="40" x2="220" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".34"/>
+      <stop offset=".68" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="480" height="480" rx="148" fill="url(#vira-bg)"/>
+  <path d="M56 178c26-72 104-128 214-128 54 0 98 12 134 32" fill="none" stroke="url(#vira-shine)" stroke-width="26" stroke-linecap="round"/>
+  <path d="M150 154 256 344 362 154" fill="none" stroke="#FFFFFF" stroke-width="66" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M386 84c4.5 22 13.5 31 35.5 35.5C399.5 124 390.5 133 386 155c-4.5-22-13.5-31-35.5-35.5C372.5 115 381.5 106 386 84Z" fill="#FFFFFF" opacity=".96"/>
+  <circle cx="386" cy="119.5" r="8.5" fill="#4ADE9B"/>
+</svg>
