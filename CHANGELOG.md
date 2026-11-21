@@ -130,6 +130,11 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Changed
 
+- Release tooling now uses standard product tags (`vX.Y.Z` for the server,
+  `vira-link-vX.Y.Z` for VIRA Link), versioned asset names, generated release
+  notes, verified checksums and a release manifest. Build numbers are no longer
+  part of public tags or titles.
+- Release workflows are linted with actionlint and yamllint.
 - Default local model is now `qwen3.5:9b`, with better tool-protocol support
   than the previous default. Installers, Compose defaults, the doctor and the
   model guidance all use the same value.

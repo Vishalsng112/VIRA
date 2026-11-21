@@ -8,11 +8,6 @@ on:
         required: true
         default: "1.0.0"
         type: string
-      build_number:
-        description: "Build number (leave empty to use the workflow run number)"
-        required: false
-        default: ""
-        type: string
       create_release:
         description: "Publish a GitHub Release with every client build"
         required: true
@@ -40,27 +35,23 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.ver.outputs.version }}
-      build: ${{ steps.ver.outputs.build }}
       base: ${{ steps.ver.outputs.base }}
       tag: ${{ steps.ver.outputs.tag }}
     steps:
-      - name: Work out version and build number
+      - name: Work out version
         id: ver
         env:
           INPUT_VERSION: ${{ inputs.version }}
-          INPUT_BUILD: ${{ inputs.build_number }}
-          RUN_NUMBER: ${{ github.run_number }}
         run: |
           VERSION="${INPUT_VERSION#v}"
-          BUILD="${INPUT_BUILD:-$RUN_NUMBER}"
-          BASE="vira-link-${VERSION}-build${BUILD}"
+          BASE="vira-link-${VERSION}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
-          echo "tag=${BASE}" >> "$GITHUB_OUTPUT"
+          echo "tag=vira-link-v${VERSION}" >> "$GITHUB_OUTPUT"
 
   verify:
     name: Analyze and test
+    needs: [meta]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -71,6 +62,11 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+
+      - name: Validate client release metadata
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: python3 scripts/release_tools.py check "$TAG" --product client
 
       - name: Install dependencies
         working-directory: client
@@ -358,6 +354,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -369,39 +368,31 @@ jobs:
           find . -mindepth 2 -type f -exec mv -t . {} +
           find . -mindepth 1 -type d -empty -delete
 
-      - name: Generate checksums
+      - name: Verify assets and generate checksums
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
         run: |
-          cd dist
-          find . -maxdepth 1 -type f -not -name 'checksums.txt' -print0 \
-            | sort -z \
-            | xargs -0 sha256sum > checksums.txt
+          python3 scripts/release_tools.py assets "$TAG" \
+            --product client \
+            --dist dist \
+            --write-checksums
 
-      - name: Create GitHub Release
+      - name: Generate release notes
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: |
+          python3 scripts/release_tools.py notes "$TAG" \
+            --product client \
+            --dist dist > release-notes.md
+
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.meta.outputs.tag }}
-          name: VIRA Link ${{ needs.meta.outputs.version }} (build ${{ needs.meta.outputs.build }})
+          name: VIRA Link ${{ needs.meta.outputs.version }}
           target_commitish: ${{ github.sha }}
+          body_path: release-notes.md
           prerelease: ${{ inputs.prerelease }}
-          generate_release_notes: true
-          body: |
-            VIRA Link ${{ needs.meta.outputs.version }} (build ${{ needs.meta.outputs.build }}).
-
-            | Platform | Artifact | Signing |
-            |---|---|---|
-            | Android | `*-android.apk` | Signed when Android secrets are configured, otherwise debug-signed |
-            | iOS | `*-ios-unsigned.zip` | Unsigned; sign in Xcode |
-            | Web / PWA | `*-web.zip` | Serve over HTTPS |
-            | Linux x86_64 | `*-linux-x86_64.AppImage` | `chmod +x` and run |
-            | Windows x64 | `*-windows-x64.zip` | Unzip and run `vira_link.exe` |
-            | macOS arm64 | `*-macos-arm64.zip` | Unsigned; right-click → Open or sign locally |
-
-            **Verify downloads:** `sha256sum -c checksums.txt` (macOS:
-            `shasum -a 256 -c checksums.txt`).
-
-            **Uninstall:** Android/iOS remove the app; Linux delete the AppImage;
-            Windows delete the unzipped folder and the app's local data under
-            `%APPDATA%\com.vira.link`; macOS move `vira_link.app` to the Trash.
-            Device credentials can be revoked first from **Settings → Device lifecycle**.
+          fail_on_unmatched_files: true
           files: |
-            dist/**/*
+            dist/*

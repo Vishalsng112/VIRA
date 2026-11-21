@@ -26,7 +26,11 @@ body:
           required: true
         - label: "`python3 scripts/release_tools.py check vX.Y.Z` passes."
           required: true
-        - label: Release-critical tests pass.
+        - label: Full backend test suite passes.
+          required: true
+        - label: Release notes are generated from the standard template.
+          required: true
+        - label: Every release asset and checksum is present and verified.
           required: true
         - label: Evaluation report is regenerated and linked.
           required: true

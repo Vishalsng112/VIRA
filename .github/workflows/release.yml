@@ -3,22 +3,32 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      - "v[0-9]*"
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
-    name: Validate and publish
+  validate:
+    name: Validate release
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
+    outputs:
+      title: ${{ steps.release.outputs.title }}
+      version: ${{ steps.release.outputs.version }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
@@ -28,38 +38,92 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Validate version and changelog
-        run: python3 scripts/release_tools.py check "${GITHUB_REF_NAME}"
-
-      - name: Run release-critical tests
+      - name: Validate tag, version, and changelog
+        id: release
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          python3 -m unittest \
-            vira.tests.test_openapi_contract \
-            vira.tests.test_security_phase3 \
-            vira.tests.test_phase5 \
-            vira.tests.test_examples \
-            vira.tests.test_database_query \
-            vira.tests.test_backup_drill
+          python3 scripts/release_tools.py check "$TAG" \
+            --github-output "$GITHUB_OUTPUT"
 
-      - name: Build source archive and checksums
+      - name: Run full test suite
+        run: python3 -m unittest discover -s vira/tests -q
+
+  package:
+    name: Package release assets
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build source archive
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          mkdir -p dist
-          VERSION="${GITHUB_REF_NAME#v}"
-          git archive --format=tar.gz --prefix="VIRA-${VERSION}/" \
-            -o "dist/vira-${VERSION}-source.tar.gz" HEAD
-          cd dist
-          sha256sum ./*.tar.gz > checksums.txt
+          mkdir -p dist release
+          git archive \
+            --format=tar.gz \
+            --prefix="vira-${VERSION}/" \
+            --output="dist/vira-${VERSION}-source.tar.gz" \
+            HEAD
 
-      - name: Extract release notes
+      - name: Generate checksums
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          python3 scripts/release_tools.py notes "${GITHUB_REF_NAME}" > release-notes.md
+          python3 scripts/release_tools.py assets "$TAG" \
+            --dist dist \
+            --write-checksums
 
-      - name: Publish GitHub release
+      - name: Generate release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 scripts/release_tools.py notes "$TAG" \
+            --dist dist > release/release-notes.md
+
+      - name: Stage release files
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cp dist/* release/
+          python3 scripts/release_tools.py manifest "$TAG" \
+            --dist dist > "release/vira-${VERSION}-release-manifest.json"
+
+      - name: Upload release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish GitHub release
+    needs: [validate, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bundle
+          path: release
+
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          name: VIRA ${{ github.ref_name }}
-          body_path: release-notes.md
-          generate_release_notes: false
+          tag_name: ${{ github.ref_name }}
+          name: ${{ needs.validate.outputs.title }}
+          body_path: release/release-notes.md
+          prerelease: ${{ needs.validate.outputs.prerelease }}
+          fail_on_unmatched_files: true
           files: |
-            dist/*.tar.gz
-            dist/checksums.txt
+            release/*.tar.gz
+            release/*-checksums.txt
+            release/*-release-manifest.json
