@@ -3,7 +3,7 @@
 Status: active product and engineering roadmap  
 Last updated: 2026-11-20  
 Owner: maintainers  
-Related subsystem roadmaps: [server](docs/dev/roadmap/server.md), [client](docs/dev/roadmap/client.md)
+Related subsystem roadmaps: [server](docs/dev/roadmap/server.md), [client](docs/dev/roadmap/client.md), [agents](docs/dev/roadmap/agents.md)
 
 This roadmap is about **maturing the framework into a product people can understand,
 install, trust and adopt**. It deliberately separates what exists today from what

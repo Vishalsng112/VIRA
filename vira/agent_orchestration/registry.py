@@ -26,6 +26,7 @@ class AgentMetadata(BaseModel):
     name: str
     version: str = "1.0.0"
     description: str = ""
+    architecture: str = "single"
     capabilities: List[AgentCapability] = []
     subscribed_events: List[str] = []  # event types this agent handles
     interval_seconds: Optional[float] = None  # for periodic agents
@@ -51,6 +52,7 @@ class AgentRegistry:
                 agent_id=agent.agent_id,
                 name=agent.name,
                 description=agent.description,
+                architecture=getattr(agent, "architecture", "single"),
                 capabilities=agent.capabilities,
                 subscribed_events=agent.subscribed_events,
                 interval_seconds=agent.interval_seconds,

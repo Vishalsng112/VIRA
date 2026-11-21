@@ -138,6 +138,8 @@ class BaseAgent:
     response_event: str = "agent.response"
     #: Stable role name used for knowledge scoping (overridable per instance).
     role: Optional[str] = None
+    #: Coordination architecture exposed to the catalog and API.
+    architecture: str = "single"
 
     def __init__(
         self,
@@ -200,6 +202,7 @@ class BaseAgent:
             "description": self.description,
             "version": self.version,
             "state": getattr(self.state, "value", str(self.state)),
+            "architecture": self.architecture,
             "reentrant": self.reentrant,
             "capabilities": [cap.model_dump() if hasattr(cap, "model_dump") else cap.name
                              for cap in self._capabilities],

@@ -21,6 +21,8 @@ file's inline comments.
 | `security` | Default tool permissions |
 | `rate_limits` | Enablement and per-route limits |
 | `jobs` | Worker interval, rollup and retention windows, backup count |
+| `agent_scheduler` | Proactive schedule tick, concurrency, locks, timeout and quiet-hours defaults |
+| `notifications` | In-app notification delivery and optional webhook provider |
 | `metrics` | Enablement and retention |
 | `sensors` | Per-sensor enablement and polling settings |
 | `llm` | Default model and provider/model catalogue |
@@ -43,6 +45,27 @@ Docker deployments use `.env` for the values that most often change:
 
 See [`.env.example`](https://github.com/Vishalsng112/VIRA/blob/main/.env.example)
 for the full set.
+
+## Proactive agents and notifications
+
+```yaml
+agent_scheduler:
+  enabled: true
+  tick_seconds: 20          # how often due schedules are claimed
+  max_concurrent: 2         # simultaneous scheduled agent runs
+  max_runs_per_tick: 10
+  lock_seconds: 300         # crash-safe claim expiry
+  run_timeout_seconds: 240
+  notify_on_error: true
+
+notifications:
+  webhook_url: ""           # optional external delivery
+  webhook_timeout_seconds: 10
+  max_attempts: 3
+```
+
+Schedules are created per user through `/api/v1/agent-schedules`. See
+[Proactive agents](../user/proactive-agents.md) for the workflow.
 
 ## Security-critical keys
 

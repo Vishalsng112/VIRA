@@ -26,6 +26,8 @@ from vira.devices import commands as command_store
 from vira.devices import pairing as pairing_store
 from vira.ops.backup import create_backup
 from vira.knowledge.consolidation import run_consolidation
+from vira import notifications
+from vira.agent import schedules as agent_schedules
 
 
 def _purge_retention(payload: Dict[str, Any]) -> str:
@@ -34,8 +36,22 @@ def _purge_retention(payload: Dict[str, Any]) -> str:
     sessions = database.purge_expired_sessions()
     commands = command_store.purge_expired()
     pairing = pairing_store.purge_expired()
+    schedule_runs = agent_schedules.purge_runs(int(payload.get("schedule_run_days", 30)))
     return (f"events={events} jobs={finished} sessions={sessions} "
-            f"commands={commands} pairing={pairing}")
+            f"commands={commands} pairing={pairing} schedule_runs={schedule_runs}")
+
+
+def _deliver_notifications(payload: Dict[str, Any]) -> str:
+    config = _section("notifications")
+    result = notifications.deliver_pending(
+        int(payload.get("limit", 50)),
+        webhook_url=config.get("webhook_url") or None,
+        timeout=float(config.get("webhook_timeout_seconds", 10)),
+        max_attempts=int(config.get("max_attempts", 3)),
+    )
+    return (f"checked={result['checked']} delivered={result['delivered']} "
+            f"failed={result['failed']}")
+
 
 
 def _rollup(payload: Dict[str, Any]) -> str:
@@ -60,6 +76,7 @@ HANDLERS: Dict[str, Callable[[Dict[str, Any]], str]] = {
     "insights.rollup": _rollup,
     "backup.database": _backup,
     "knowledge.consolidate": run_consolidation,
+    "notifications.deliver": _deliver_notifications,
 }
 
 def _job_config() -> dict:
@@ -70,13 +87,25 @@ def _job_config() -> dict:
         return {}
 
 
+def _section(name: str) -> Dict[str, Any]:
+    try:
+        with open("config.yaml", encoding="utf-8") as handle:
+            return (yaml.safe_load(handle) or {}).get(name, {}) or {}
+    except OSError:
+        return {}
+
+
 def _periodic_jobs() -> list:
     cfg = _job_config()
     return [
         ("insights.rollup", {"days": int(cfg.get("rollup_days", 3))}, 300),
-        ("retention.purge", {"job_days": int(cfg.get("retention_days", 14))}, 3600),
+        ("retention.purge", {
+            "job_days": int(cfg.get("retention_days", 14)),
+            "schedule_run_days": int(cfg.get("schedule_run_retention_days", 30)),
+        }, 3600),
         ("backup.database", {"keep": int(cfg.get("backup_keep", 7))}, 86400),
         ("knowledge.consolidate", {}, 21600),
+        ("notifications.deliver", {"limit": 50}, 60),
     ]
 
 

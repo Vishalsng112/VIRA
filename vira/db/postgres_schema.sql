@@ -742,3 +742,58 @@ ALTER TABLE devices ADD COLUMN IF NOT EXISTS installation_id TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS devices_installation_uq
     ON devices(created_by_user_id, installation_id)
     WHERE installation_id IS NOT NULL;
+
+-- Proactive agent schedules and notification delivery (migration 17)
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'inapp';
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS dedupe_key TEXT;
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE user_notifications ADD COLUMN IF NOT EXISTS last_error TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS user_notifications_dedupe
+    ON user_notifications(user_id, dedupe_key) WHERE dedupe_key IS NOT NULL;
+CREATE TABLE IF NOT EXISTS agent_schedules (
+    id TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    organization_id TEXT,
+    agent_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    message TEXT NOT NULL,
+    schedule_type TEXT NOT NULL
+        CHECK (schedule_type IN ('daily', 'weekly', 'interval')),
+    time_of_day TEXT,
+    weekday INTEGER,
+    interval_minutes INTEGER,
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    quiet_hours_start TEXT,
+    quiet_hours_end TEXT,
+    channels TEXT NOT NULL DEFAULT '["inapp"]',
+    task_profile TEXT NOT NULL DEFAULT '{}',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    next_run_at TEXT,
+    last_run_at TEXT,
+    last_error TEXT,
+    locked_until TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_schedules_due
+    ON agent_schedules(enabled, next_run_at);
+CREATE INDEX IF NOT EXISTS idx_agent_schedules_user
+    ON agent_schedules(user_id, enabled, created_at);
+CREATE TABLE IF NOT EXISTS agent_schedule_runs (
+    id TEXT PRIMARY KEY,
+    schedule_id TEXT NOT NULL REFERENCES agent_schedules(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    agent_id TEXT,
+    run_id TEXT,
+    scheduled_for TEXT,
+    status TEXT NOT NULL,
+    result TEXT,
+    error TEXT,
+    notification_id TEXT,
+    started_at TEXT,
+    completed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_agent_schedule_runs_schedule
+    ON agent_schedule_runs(schedule_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_agent_schedule_runs_user
+    ON agent_schedule_runs(user_id, started_at);

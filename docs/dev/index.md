@@ -15,6 +15,7 @@ This manual is for people who **build, extend or operate VIRA from source**.
 - [Plugin SDK](plugin-sdk.md) — manifest, lifecycle, permissions and extension points
 - [Server roadmap](roadmap/server.md) — priorities from P0 to P5
 - [Client roadmap](roadmap/client.md) — VIRA Link delivery plan
+- [Agent roadmap](roadmap/agents.md) — prerequisites and the five daily-use agents
 
 ## Design documents
 

@@ -142,7 +142,26 @@ jobs:
   worker_interval: 5
   rollup_days: 3
   retention_days: 14
+  schedule_run_retention_days: 30
   backup_keep: 7
+
+# Proactive agent schedules run inside the API/orchestrator process.
+agent_scheduler:
+  enabled: true
+  tick_seconds: 20
+  max_concurrent: 2
+  max_runs_per_tick: 10
+  lock_seconds: 300
+  run_timeout_seconds: 240
+  notify_on_error: true
+  default_timezone: "UTC"
+
+# In-app notifications are always available. Webhook is an optional external
+# delivery provider (useful for FCM/APNs gateways or a desktop notifier).
+notifications:
+  webhook_url: ""
+  webhook_timeout_seconds: 10
+  max_attempts: 3
 
 metrics:
   enabled: true
@@ -264,6 +283,28 @@ agents:
         allow: []               # e.g. ["sandbox", "web", "filesystem", "database_query.*"]
         pinned: ["sandbox"]
       # definitions_dir: "~/.vira/agents"   # your own sub-agent .md files
+
+  # Daily brief used by proactive schedules. It pre-collects the configured
+  # tools and labels missing sources instead of guessing.
+  - name: MorningBriefAgent
+    module: vira.agent.Agents.morning_brief
+    class: MorningBriefAgent
+    agent_id: morning-brief
+    enabled: true
+    config:
+      max_tokens: 700
+      lookback_days: 1
+      max_words: 220
+      include_memory: true
+      include_knowledge: false
+      context_tools:
+        - name: user_context
+        - name: insights
+          params:
+            days: 1
+        # Add calendar/task/email MCP tools here once connectors are installed:
+        # - name: mcp_server.calendar_today
+        # - name: mcp_server.tasks_due
 
 mcp_server:
   command: ["python", "vira/tools/mcp_server.py"]   # path to your MCP server script

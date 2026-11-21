@@ -9,6 +9,7 @@ success metrics. The subsystem roadmaps remain here for implementation detail:
 
 - [Server roadmap](dev/roadmap/server.md)
 - [Client roadmap](dev/roadmap/client.md)
+- [Agent roadmap](dev/roadmap/agents.md)
 
 ## Current priority: Phase 1 — Positioning and proof
 

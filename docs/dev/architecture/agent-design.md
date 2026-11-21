@@ -119,12 +119,17 @@ Set `delegation: true` to expose markdown specialists as a `delegate` tool.
 
 ## Rules
 
-* There is exactly one shipped agent: `ChatAgent`, connected to the chat
+* There is exactly one shipped chat agent: `ChatAgent`, connected to the chat
   webpage. Every other agent is written by extending `BaseAgent` (or `LLMAgent`)
   and registering it in `config.yaml`.
 * `execute` is the single required method. `initialize` rejects a class that does
   not implement it, so a half-written agent fails at startup instead of silently
   doing nothing.
+* Choose a coordination topology from `vira/agent/architectures.py`:
+  `SingleAgent` (default), `IndependentAgentSystem`, `CentralizedAgentSystem`,
+  `DecentralizedAgentSystem`, `HybridAgentSystem` or `AdaptiveAgentSystem`.
+  The selection rules and the evidence behind them are in
+  [Agent architectures](agent-architectures.md).
 * There is one `BaseAgent` implementation. The old orchestration copy and the
   example/sensor agents were removed; scheduler, router, workflows and plugins
   all use `vira.agent.base.BaseAgent`.

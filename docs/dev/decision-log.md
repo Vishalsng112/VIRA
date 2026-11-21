@@ -6,6 +6,54 @@ the **Decision proposal** issue template.
 
 Status values: **Proposed**, **Accepted**, **Superseded**, **Rejected**.
 
+## 2026-11-21 — Proactive schedules run inside the agent orchestrator
+
+**Status:** Accepted
+
+**Context:** The five daily-use agents need recurring triggers, delivery and
+safety. A separate cron-style worker would duplicate the agent runtime, lose
+tool/permission parity and create a second place to load agents.
+
+**Decision:** Add a `ProactiveScheduler` owned by
+`AgentOrchestratorModule`. It claims due rows from `agent_schedules`
+atomically, resolves agents from the existing `AgentRegistry`, and executes a
+typed `TaskRequest` through `RuntimeScheduler.run_task()`. Every run records a
+durable timeline and an `agent_schedule_runs` row. Notifications go through the
+existing notification queue; in-app is immediate and external delivery uses a
+webhook provider in the worker.
+
+**Consequences:** scheduled runs share chat's identity, tools, approvals,
+quotas and audit. Multi-process deployments need the database claim/lock to
+remain atomic (SQLite transaction or Postgres row locking). Delivery providers
+beyond webhook (FCM/APNs) can be added behind the same notification contract
+without changing schedules or agents.
+
+## 2026-11-21 — Paper-aligned agent architectures, single-agent default
+
+**Status:** Accepted
+
+**Context:** *Towards a Science of Scaling Agent Systems* (Kim et al., 2025)
+evaluated five coordination topologies (single, independent, centralized,
+decentralized, hybrid) across 180 matched configurations. Multi-agent systems
+were not uniformly better: results ranged from +81% to −70% versus a single
+agent, sequential tasks degraded under every MAS variant, and independent
+agents amplified errors 17.2× versus 4.4× for centralized coordination.
+
+**Decision:** Add reusable architecture bases in
+`vira/agent/architectures.py` and export them from `vira.agent`. Keep
+`SingleAgent` as the default. Encode the paper's selection rules in
+`recommend_architecture()`: sequential/non-decomposable and high-baseline tasks
+stay single-agent; tool-heavy and dynamic tasks may use decentralized
+coordination; decomposable analysis uses centralized coordination with a
+validation pass; hybrid is reserved for tasks that need both hierarchy and peer
+review. Worker counts, debate rounds and LLM calls are bounded, and every run
+records an architecture/coordination block.
+
+**Consequences:** developers can choose a topology by subclassing a base class
+or let `AdaptiveAgentSystem` select one from a task profile. Multi-agent
+coordination is opt-in, observable and budgeted. Local models keep the
+single-agent default unless a caller supplies evidence that coordination helps.
+
 ## 2026-11-21 — One BaseAgent, with an LLMAgent layer
 
 **Status:** Accepted

@@ -11,6 +11,7 @@ from vira.agent_orchestration.registry import AgentRegistry
 from vira.agent_orchestration.router import EventRouter
 from vira.agent_orchestration.scheduler import RuntimeScheduler
 from vira.agent_orchestration.workflow import WorkflowEngine
+from vira.agent.proactive import ProactiveScheduler
 from vira.agent_runtime.runtime import AgentRuntime
 from vira.memory.manager import MemoryManager
 from vira.llm.manager import LLMManager
@@ -56,6 +57,7 @@ class AgentOrchestratorModule(ViraModule):
         self.runtime_scheduler = None
         self.workflow_engine = None
         self.runtime = None
+        self.proactive_scheduler = None
 
         # Tool components
         self.tool_registry = None
@@ -416,7 +418,17 @@ class AgentOrchestratorModule(ViraModule):
                 resumed = await self.workflow_engine.resume_all()
                 if resumed:
                     logger.info("Resumed {} durable workflow(s)", resumed)
-            # print(1/0)
+
+            # Proactive agent schedules run in the same process/runtime as chat.
+            scheduler_config = self._config_manager.get("agent_scheduler", {}) or {}
+            if bool(scheduler_config.get("enabled", True)):
+                self.proactive_scheduler = ProactiveScheduler(
+                    self.registry,
+                    self.runtime_scheduler,
+                    config=scheduler_config,
+                    notification_config=self._config_manager.get("notifications", {}) or {},
+                )
+                await self.proactive_scheduler.start()
             self._running = True
             logger.info("Agent Orchestrator Module started")
 
@@ -481,6 +493,10 @@ class AgentOrchestratorModule(ViraModule):
     async def stop(self):
         self._running = False
 
+        if self.proactive_scheduler:
+            await self.proactive_scheduler.stop()
+            self.proactive_scheduler = None
+
         # Stop router and unregister agents
         if self.router:
             await self.router.stop()
@@ -531,6 +547,7 @@ class AgentOrchestratorModule(ViraModule):
                     "name": meta.name,
                     "version": meta.version,
                     "status": meta.state.value,
+                    "architecture": meta.architecture,
                     "enabled": meta.enabled,
                     "capabilities": getattr(meta, 'capabilities', []),
                 })
@@ -539,6 +556,11 @@ class AgentOrchestratorModule(ViraModule):
             status["scheduler"]["max_concurrent"] = self.runtime_scheduler._max_concurrent
             status["scheduler"]["running_tasks"] = len(getattr(self.runtime_scheduler, '_running', []))
             status["scheduler"]["pending_tasks"] = len(getattr(self.runtime_scheduler, '_pending', []))
+
+        status["proactive_scheduler"] = (
+            self.proactive_scheduler.status() if self.proactive_scheduler
+            else {"running": False}
+        )
 
         if self.tool_registry:
             status["tools"]["total"] = len(self.tool_registry.list())

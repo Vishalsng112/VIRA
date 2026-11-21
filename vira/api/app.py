@@ -1437,4 +1437,8 @@ def create_app(kernel: Kernel) -> FastAPI:
         app.include_router(plugin_router, prefix=f"/api/v1/ext/{plugin_id}")
     from .routes_insights import build_insights_router
     app.include_router(build_insights_router(kernel, get_current_user))
+    from .routes_architectures import build_architecture_router
+    app.include_router(build_architecture_router(get_current_user))
+    from .routes_schedules import build_schedule_router
+    app.include_router(build_schedule_router(get_current_user, kernel))
     return app

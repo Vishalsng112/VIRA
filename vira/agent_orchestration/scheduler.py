@@ -101,6 +101,25 @@ class RuntimeScheduler:
             await self._registry.update_state(agent.agent_id, AgentState.FAILED)
             raise
 
+    async def run_task(self, agent: BaseAgent, request, timeout: float = 60.0):
+        """Run a typed ``TaskRequest`` with the same lifecycle as events.
+
+        Used by chat and by proactive schedules so both paths get identical
+        identity, error handling and run records.
+        """
+        await self._registry.update_state(agent.agent_id, AgentState.RUNNING)
+        try:
+            result = await asyncio.wait_for(
+                agent.run_task(request), timeout=timeout)
+            await self._registry.update_state(agent.agent_id, AgentState.READY)
+            return result
+        except asyncio.TimeoutError:
+            await self._registry.update_state(agent.agent_id, AgentState.FAILED)
+            raise
+        except Exception:
+            await self._registry.update_state(agent.agent_id, AgentState.FAILED)
+            raise
+
     async def _run_agent_with_timeout(self, agent, event, input_data, timeout, track=True):
         try:
             if event:

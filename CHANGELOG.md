@@ -24,6 +24,24 @@ All notable changes to VIRA are documented here. The format follows
   tool; qualified MCP tools can be called even when not preselected. Read-only
   tools now execute with their declared permission action instead of being
   rejected as `execute`. See `docs/dev/architecture/agent-design.md`.
+- Paper-aligned agent architectures: `SingleAgent`,
+  `IndependentAgentSystem`, `CentralizedAgentSystem`,
+  `DecentralizedAgentSystem`, `HybridAgentSystem` and `AdaptiveAgentSystem`,
+  with a conservative `recommend_architecture()` selector, measured
+  coordination profiles, bounded workers/rounds and per-run coordination data.
+  See `docs/dev/architecture/agent-architectures.md`.
+- Proactive agent schedules: durable per-user daily/weekly/interval schedules,
+  IANA timezones, quiet hours, atomic claiming and crash-safe locks, executed
+  through the existing orchestrator and `RuntimeScheduler.run_task()`.
+  APIs at `/api/v1/agent-schedules`; roadmap at `docs/dev/roadmap/agents.md`.
+- Notification delivery: in-app notifications are delivered immediately and a
+  webhook provider handles external delivery with retries, dedupe keys and
+  worker-based delivery.
+- Agent recipe catalog at `/api/v1/agent-recipes` for the five daily-use agents.
+- Morning Brief agent (`morning-brief`): grounds each brief in configured tools,
+  labels missing sources as unavailable, records source provenance, falls back
+  deterministically when the model is down, and delivers through the proactive
+  schedule/notification pipeline.
 - Scoped knowledge base for agents: a single `knowledge_items` store with
   `conversation`/`personal`/`agent`/`org`/`global` scopes, append-only revisions,
   deduplication, promotion policy and a `knowledge.*` event trail. Adds

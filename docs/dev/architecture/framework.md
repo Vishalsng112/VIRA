@@ -233,6 +233,12 @@ Agents extend `BaseAgent` (`vira/agent/base.py`) and implement **`execute`**. Th
 old `think`/`plan`/`act`/`reflect` pipeline was removed; those names remain only
 as non-required compatibility hooks and must not be used for new agents.
 
+For multi-agent coordination, extend one of the architecture bases in
+`vira/agent/architectures.py` (`SingleAgent`, `IndependentAgentSystem`,
+`CentralizedAgentSystem`, `DecentralizedAgentSystem`, `HybridAgentSystem`, or the
+runtime selector `AdaptiveAgentSystem`). See
+[Agent architectures](agent-architectures.md).
+
 ### Required interface
 
 ```python

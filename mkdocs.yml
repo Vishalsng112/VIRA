@@ -59,6 +59,7 @@ nav:
       - Platform capability matrix: user/platforms.md
       - Showcase: user/showcase.md
       - Five-minute proof: user/demo.md
+      - Proactive agents: user/proactive-agents.md
       - Choose a local model: user/models.md
       - Security overview: user/security.md
       - Troubleshooting: user/troubleshooting.md
@@ -69,6 +70,7 @@ nav:
           - Framework overview: dev/architecture/framework.md
           - System design: dev/architecture/system-design.md
           - Agent design: dev/architecture/agent-design.md
+          - Agent architectures: dev/architecture/agent-architectures.md
           - Tool search: dev/architecture/tool-search.md
           - Database tools: dev/architecture/database-tools.md
       - Agent and tool platform: dev/agent-platform.md
@@ -97,6 +99,7 @@ nav:
           - Product roadmap: roadmap.md
           - Server roadmap: dev/roadmap/server.md
           - Client roadmap: dev/roadmap/client.md
+          - Agent roadmap: dev/roadmap/agents.md
   - Reference:
       - HTTP API: reference/api.md
       - Events: reference/events.md

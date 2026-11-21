@@ -842,6 +842,83 @@ def _m016_workspaces(conn: sqlite3.Connection) -> None:
     )
 
 
+# --------------------------------------------------------------------------- #
+# 017 - proactive agent schedules and notification delivery
+# --------------------------------------------------------------------------- #
+def _m017_agent_schedules(conn: sqlite3.Connection) -> None:
+    _add_column(conn, "user_notifications", "channel", "TEXT NOT NULL DEFAULT 'inapp'")
+    _add_column(conn, "user_notifications", "dedupe_key", "TEXT")
+    _add_column(conn, "user_notifications", "attempts", "INTEGER NOT NULL DEFAULT 0")
+    _add_column(conn, "user_notifications", "last_error", "TEXT")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS user_notifications_dedupe "
+        "ON user_notifications(user_id, dedupe_key) WHERE dedupe_key IS NOT NULL"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_schedules (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            organization_id TEXT,
+            agent_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            message TEXT NOT NULL,
+            schedule_type TEXT NOT NULL
+                CHECK (schedule_type IN ('daily', 'weekly', 'interval')),
+            time_of_day TEXT,
+            weekday INTEGER,
+            interval_minutes INTEGER,
+            timezone TEXT NOT NULL DEFAULT 'UTC',
+            quiet_hours_start TEXT,
+            quiet_hours_end TEXT,
+            channels TEXT NOT NULL DEFAULT '["inapp"]',
+            task_profile TEXT NOT NULL DEFAULT '{}',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            next_run_at TEXT,
+            last_run_at TEXT,
+            last_error TEXT,
+            locked_until TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_schedules_due "
+        "ON agent_schedules(enabled, next_run_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_schedules_user "
+        "ON agent_schedules(user_id, enabled, created_at)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_schedule_runs (
+            id TEXT PRIMARY KEY,
+            schedule_id TEXT NOT NULL REFERENCES agent_schedules(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            agent_id TEXT,
+            run_id TEXT,
+            scheduled_for TEXT,
+            status TEXT NOT NULL,
+            result TEXT,
+            error TEXT,
+            notification_id TEXT,
+            started_at TEXT,
+            completed_at TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_schedule_runs_schedule "
+        "ON agent_schedule_runs(schedule_id, started_at)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_agent_schedule_runs_user "
+        "ON agent_schedule_runs(user_id, started_at)"
+    )
+
+
 MIGRATIONS: List[Tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (1, "users_public_id_and_status", _m001_users),
     (2, "devices_credentials_access_events", _m002_devices),
@@ -859,6 +936,7 @@ MIGRATIONS: List[Tuple[int, str, Callable[[sqlite3.Connection], None]]] = [
     (14, "memory_feedback", _m014_memory_feedback),
     (15, "knowledge_base", _m015_knowledge_base),
     (16, "workspaces", _m016_workspaces),
+    (17, "agent_schedules_and_notification_delivery", _m017_agent_schedules),
 ]
 
 
