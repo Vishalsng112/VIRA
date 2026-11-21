@@ -204,7 +204,10 @@ def _payload(item: Dict[str, Any]) -> Dict[str, Any]:
 def _deliver_one(item: Dict[str, Any], *, webhook_url: Optional[str],
                  timeout: float, push_relay_url: Optional[str] = None,
                  push_relay_token: Optional[str] = None,
-                 push_timeout: float = 10) -> bool:
+                 push_timeout: float = 10,
+                 push_provider: str = "relay",
+                 fcm_service_account_file: Optional[str] = None,
+                 fcm_project_id: Optional[str] = None) -> bool:
     channel = item.get("channel") or "inapp"
     if channel == "webhook":
         if not webhook_url:
@@ -212,12 +215,24 @@ def _deliver_one(item: Dict[str, Any], *, webhook_url: Optional[str],
             return False
         return _post_webhook(webhook_url, _payload(item), timeout=timeout)
     if channel == "push":
-        if not push_relay_url:
-            logger.warning("Push notification {} has no relay URL", item["id"])
-            return False
         tokens = push_tokens_for_user(int(item["user_id"]))
         if not tokens:
             logger.info("No push tokens registered for user {}", item["user_id"])
+            return False
+        if push_provider == "fcm" and fcm_service_account_file:
+            try:
+                from vira.push.fcm import FCMSender
+                sender = FCMSender(fcm_service_account_file, fcm_project_id,
+                                   timeout=push_timeout)
+                result = sender.send_many(
+                    [token["token"] for token in tokens],
+                    item["title"], item["body"], item.get("data") or {})
+                return result["sent"] > 0
+            except Exception as exc:
+                logger.warning("FCM delivery failed: {}", exc)
+                return False
+        if not push_relay_url:
+            logger.warning("Push notification {} has no relay or FCM config", item["id"])
             return False
         headers = (
             {"Authorization": f"Bearer {push_relay_token}"}
@@ -237,7 +252,10 @@ def deliver_pending(limit: int = 50, *, webhook_url: Optional[str] = None,
                     timeout: float = 10, max_attempts: int = 3,
                     push_relay_url: Optional[str] = None,
                     push_relay_token: Optional[str] = None,
-                    push_timeout: float = 10) -> Dict[str, int]:
+                    push_timeout: float = 10,
+                    push_provider: str = "relay",
+                    fcm_service_account_file: Optional[str] = None,
+                    fcm_project_id: Optional[str] = None) -> Dict[str, int]:
     """Deliver queued external notifications. Safe to run periodically."""
     limit = max(1, min(int(limit), 200))
     max_attempts = max(1, int(max_attempts))
@@ -254,7 +272,9 @@ def deliver_pending(limit: int = 50, *, webhook_url: Optional[str] = None,
         success = _deliver_one(
             item, webhook_url=webhook_url, timeout=timeout,
             push_relay_url=push_relay_url, push_relay_token=push_relay_token,
-            push_timeout=push_timeout)
+            push_timeout=push_timeout, push_provider=push_provider,
+            fcm_service_account_file=fcm_service_account_file,
+            fcm_project_id=fcm_project_id)
         attempts = int(item.get("attempts") or 0) + 1
         now = _now()
         with database.transaction() as conn:

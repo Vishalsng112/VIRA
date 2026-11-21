@@ -51,6 +51,9 @@ def _deliver_notifications(payload: Dict[str, Any]) -> str:
         push_relay_url=config.get("push_relay_url") or None,
         push_relay_token=config.get("push_relay_token") or None,
         push_timeout=float(config.get("push_timeout_seconds", 10)),
+        push_provider=str(config.get("push_provider") or "relay"),
+        fcm_service_account_file=config.get("fcm_service_account_file") or None,
+        fcm_project_id=config.get("fcm_project_id") or None,
     )
     return (f"checked={result['checked']} delivered={result['delivered']} "
             f"failed={result['failed']}")

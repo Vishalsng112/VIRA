@@ -16,6 +16,22 @@ web PWA, Linux AppImage, Windows desktop executable and macOS (Apple Silicon) ap
 - Shows **Insights** with screen time, unlocks, top apps, focus/category breakdowns and rest suggestions.
 - Shows an **Agent Inbox** with proactive agent results, unread notifications, agent recipe cards, schedule creation/editing, pause/resume, delete, next-run times, run-now and run history.
 - Shows **native agent notifications** while connected, with a Settings permission flow and tap-to-open-inbox.
+- Registers an **FCM token** when built with Firebase dart-defines, enabling Android delivery while the app is fully closed. iOS/macOS need APNs configured in the Firebase project.
+
+### Remote push (optional)
+
+```bash
+flutter build apk --release \
+  --dart-define=VIRA_FIREBASE_API_KEY=... \
+  --dart-define=VIRA_FIREBASE_APP_ID=... \
+  --dart-define=VIRA_FIREBASE_MESSAGING_SENDER_ID=... \
+  --dart-define=VIRA_FIREBASE_PROJECT_ID=...
+```
+
+The server sends through FCM HTTP v1 when
+`notifications.push_provider: "fcm"` and
+`notifications.fcm_service_account_file` are configured. Without Firebase
+options the app still works with the live in-app notification stream.
 - Captures **battery**, **screen/session**, **device health** (storage/memory/thermal) and **desktop idle** signals.
 - Supports **focus sessions** with a local ledger and `device.focus.session` events.
 - Captures **device health** (storage, memory, thermal, battery temperature) and **desktop idle** state.

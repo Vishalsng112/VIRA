@@ -695,6 +695,23 @@ class ViraApi {
     return AgentScheduleRunDetail.fromJson(body);
   }
 
+  Future<void> registerPushToken({
+    required String platform,
+    required String token,
+  }) async {
+    if (deviceId == null) {
+      throw ViraApiException(0, 'not_enrolled', 'This device is not enrolled.');
+    }
+    await _decode(
+      await _send(
+        'POST',
+        '/api/v1/devices/$deviceId/push-registration',
+        device: true,
+        body: {'platform': platform, 'token': token},
+      ),
+    );
+  }
+
   Future<Map<String, dynamic>> health() async =>
       _decode(await _send('GET', '/health', user: true));
   Future<Map<String, dynamic>> metrics() async =>

@@ -64,8 +64,13 @@ All notable changes to VIRA are documented here. The format follows
   resume, delete, timezone, quiet hours, mode selection and webhook channel.
 - VIRA Link **native agent notifications**: live NDJSON notification stream,
   local OS notifications, Settings permission flow and tap-to-open Agent Inbox.
-- Server **push delivery channel**: per-user device tokens sent to a configurable
-  FCM/APNs/push relay with retries and dedupe.
+- VIRA Link **remote push**: optional Firebase Messaging token registration from
+  dart-defines, with Android delivery while the app is closed.
+- Server **push delivery channel**: device tokens sent via a configurable relay
+  or directly through FCM HTTP v1 with a service account.
+- Android build configuration for notifications (compileSdk 37, desugaring,
+  POST_NOTIFICATIONS).
+- FCM sender tests with JWT exchange and message payload validation.
 - Web dashboard **Inbox** view: agent notifications, recipe shortcuts, schedule
   create/edit/pause/delete, run-now and recent run history.
 - Backend recipe metadata (`schedule_modes`, `default_mode`) for client forms.

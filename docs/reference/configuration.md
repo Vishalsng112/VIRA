@@ -62,9 +62,12 @@ notifications:
   webhook_url: ""           # optional external delivery
   webhook_timeout_seconds: 10
   max_attempts: 3
-  push_relay_url: ""        # FCM/APNs or push gateway
+  push_provider: "relay"    # relay | fcm
+  push_relay_url: ""        # gateway mode
   push_relay_token: ""
   push_timeout_seconds: 10
+  fcm_service_account_file: ""   # FCM mode
+  fcm_project_id: ""
 ```
 
 Schedules are created per user through `/api/v1/agent-schedules`. Each schedule

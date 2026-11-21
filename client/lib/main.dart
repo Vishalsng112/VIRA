@@ -4,10 +4,12 @@ import 'package:material_ui/material_ui.dart';
 
 import 'app/app.dart';
 import 'app/app_controller.dart';
+import 'services/notifications/firebase_push.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final controller = await AppController.create();
+  await PushRegistrationService.instance.initialize();
 
   // Diagnostics are recorded locally only when the user opts in. They are
   // redacted before storage and never uploaded automatically.

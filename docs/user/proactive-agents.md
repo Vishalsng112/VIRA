@@ -329,31 +329,49 @@ or webhook for cross-process delivery.
 
 ### External delivery
 
-External delivery uses a JSON webhook or a push relay, which can be an
-FCM/APNs gateway, a desktop notifier or an automation service. Configure it in
-`config.yaml`:
+External delivery uses a JSON webhook or a push provider. Two push modes are
+supported:
+
+- `push_provider: "relay"` forwards `{tokens, notification}` to a gateway.
+- `push_provider: "fcm"` sends directly through Firebase Cloud Messaging HTTP v1
+  using a service account. FCM also delivers to iOS/macOS when APNs is configured
+  in the Firebase project.
 
 ```yaml
 notifications:
   webhook_url: "https://notify.example.com/vira"
   webhook_timeout_seconds: 10
   max_attempts: 3
-  push_relay_url: "https://push.example.com/vira"
-  push_relay_token: "shared-secret"
+  push_provider: "fcm"                 # relay | fcm
+  push_relay_url: ""
+  push_relay_token: ""
   push_timeout_seconds: 10
+  fcm_service_account_file: "secrets/firebase-service-account.json"
+  fcm_project_id: "your-firebase-project"
 ```
 
-Then add `"webhook"` or `"push"` to the schedule's `channels`. The worker
-retries pending deliveries and records the last error. The push relay receives:
+For FCM, build VIRA Link with the Firebase app values:
+
+```bash
+flutter run \
+  --dart-define=VIRA_FIREBASE_API_KEY=... \
+  --dart-define=VIRA_FIREBASE_APP_ID=... \
+  --dart-define=VIRA_FIREBASE_MESSAGING_SENDER_ID=... \
+  --dart-define=VIRA_FIREBASE_PROJECT_ID=...
+```
+
+The client registers its FCM token through
+`POST /api/v1/devices/{id}/push-registration`. Android receives notifications
+when the app is fully closed. iOS/macOS additionally need an APNs key uploaded to
+the Firebase project and the app built with the Push Notifications capability.
+
+The relay mode is still available for other push gateways and for deployments
+that do not want a Firebase project:
 
 ```json
 {"tokens": [{"device_id": "...", "platform": "android", "token": "..."}],
  "notification": {"id": "...", "title": "...", "body": "...", "data": {}}}
 ```
-
-The relay only has tokens that a client has registered through
-`POST /api/v1/devices/{id}/push-registration`. An FCM/APNs-enabled build must
-provide those tokens; the default VIRA Link build uses the live in-app stream.
 
 ## Safety and limits
 
