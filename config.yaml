@@ -1,3 +1,16 @@
+# VIRA configuration
+#
+# Every key the server reads is listed here. Values can be overridden with
+# environment variables using the VIRA_* pattern:
+#   VIRA_AUTH_HTTPS_ONLY=true  ->  auth.https_only
+#   VIRA_OLLAMA_URL=...        ->  llm.models[].base_url
+#
+# Keep secrets out of this file. Set auth.secret_key with an environment
+# variable or edit it once locally before exposing the server.
+
+# ---------------------------------------------------------------------------
+# Kernel
+# ---------------------------------------------------------------------------
 kernel:
   name: VIRA
   checkpoint_dir: ./data/checkpoints
@@ -6,115 +19,135 @@ kernel:
   modules_dir: ./vira/modules/core
   sensors_dir: ./vira/sensors
 
-# --- Extension ecosystem (P4) -----------------------------------------------
-plugins:
-  # Extra directories to scan for plugin directories/manifests.  The kernel
-  # plugins_dir is always scanned first.
-  directories:
-    - ./examples/plugins
-  # Set to false to reject write/execute tools without an explicit allow-list.
-  allow_write_tools: true
-  denied_permissions: []
-  data_dir: ./data/plugins
-
-
+# ---------------------------------------------------------------------------
+# Authentication and sessions
+# ---------------------------------------------------------------------------
 auth:
-  secret_key: "change-this-to-a-random-secret-key-in-production"   # <-- generate a random string
-  session_cookie_name: "vira_session"
-  session_max_age: 86400  # 24 hours
-  # Local development uses http://127.0.0.1. Set this to true when TLS is
-  # enabled directly or terminated by a trusted reverse proxy.
+  # Replace this before exposing the server beyond localhost.
+  secret_key: "change-this-to-a-random-secret-key-in-production"
+  session_cookie_name: vira_session
+  session_max_age: 86400        # seconds (24 hours)
+  # true when TLS is enabled directly or terminated by a trusted proxy.
   https_only: false
-  database_url: "sqlite:///data/vira.sqlite3"
+  database_url: sqlite:///data/vira.sqlite3
 
-# --- Multi-user / multi-device platform -------------------------------------
-# The VIRA server is itself registered as an endpoint device ("server-local");
-# its sensors below publish through the same ingestion path as remote devices.
-devices:
-  credential_ttl_days: 365        # device credentials expire; rotate before then
-  local:
-    display_name: null            # default: "VIRA Server (<hostname>)"
-    share_with_all_users: false   # true: every active user gets viewer access to the server device
-  event_policy:
-    max_batch_size: 100
-    max_event_payload_bytes: 65536
-    max_batch_bytes: 1048576
-    max_future_skew_seconds: 300
-    max_past_age_days: 30
-    events_per_minute: 1200       # per device
-    heartbeats_per_minute: 30     # per device
-    # Allow-list; first match wins. Types not matched here are rejected, and
-    # user./agent./command./kernel./system./autonomous./admin. are always denied.
-    types:
-      - {pattern: "sensor.clipboard.*",  class: telemetry, persist_payload: false, keep_latest: false, retention_hours: 24}
-      - {pattern: "sensor.*",            class: telemetry, persist_payload: false, keep_latest: true,  retention_hours: 24}
-      - {pattern: "device.telemetry.*",  class: telemetry, persist_payload: false, keep_latest: true,  retention_hours: 24}
-      - {pattern: "file.*",              class: activity,  persist_payload: true,  keep_latest: false, retention_hours: 168}
-      - {pattern: "device.*",            class: domain,    persist_payload: true,  keep_latest: false, retention_hours: 720}
-
+# ---------------------------------------------------------------------------
+# Event bus, scheduler, metrics
+# ---------------------------------------------------------------------------
 event_bus:
   max_queue_size: 10000
 
 scheduler:
   tick_interval: 1.0
 
-sandbox:
-  backend: bubblewrap
-  root: /AgentWorkspace
-  # bubblewrap = isolated; host = run directly in the shared workspace with the
-  # host toolchain (opt-in; equivalent to granting shell access as the VIRA user).
-  execution_mode: bubblewrap
-  # Prepend host tool directories, e.g. "/opt/toolchain/bin:/snap/bin".
-  extra_path: ""
-  # bwrap_binary: bwrap            # override when bubblewrap is not on PATH
-  network_enabled: true
-  timeout_seconds: 900
-  max_processes: 128
-  cpu_seconds: 600
-  memory_mb: 2048
-  allow_package_install: true
-  allow_shell: true                # strings run through /bin/bash -lc inside the sandbox
-  workspace_quota_mb: 2048         # soft disk quota enforced after file operations
-  max_output_bytes: 200000         # per stream, keeps huge build logs out of the prompt
-  # Host SDK/toolchain paths exposed read-only inside every sandbox. Example:
-  # readonly_mounts: ["/opt/toolchain", "/snap"]
-  readonly_mounts: []
+metrics:
+  enabled: true
+  retention_minutes: 60
 
-# Shared, user-visible project workspaces. Agents attach sandboxes to these
-# directories; every agent for a user shares the default workspace.
-# Set default_execution_mode: host to let agents use the host's installed tools.
-workspace:
-  root: "~/VIRA/workspaces"
-  allow_user_paths: true
-  default_execution_mode: bubblewrap   # bubblewrap | host
+# ---------------------------------------------------------------------------
+# Multi-user and multi-device platform
+# ---------------------------------------------------------------------------
+devices:
+  credential_ttl_days: 365
+  local:
+    display_name: null                # default: "VIRA Server (<hostname>)"
+    share_with_all_users: false
+  event_policy:
+    max_batch_size: 100
+    max_event_payload_bytes: 65536
+    max_batch_bytes: 1048576
+    max_future_skew_seconds: 300
+    max_past_age_days: 30
+    supported_schema_versions: [1]
+    events_per_minute: 1200           # per device
+    heartbeats_per_minute: 30         # per device
+    # First matching type rule wins. Unmatched types are rejected.
+    types:
+      - {pattern: "sensor.clipboard.*", class: telemetry, persist_payload: false, keep_latest: false, retention_hours: 24}
+      - {pattern: "sensor.*", class: telemetry, persist_payload: false, keep_latest: true, retention_hours: 24}
+      - {pattern: "device.telemetry.*", class: telemetry, persist_payload: false, keep_latest: true, retention_hours: 24}
+      - {pattern: "file.*", class: activity, persist_payload: true, keep_latest: false, retention_hours: 168}
+      - {pattern: "device.*", class: domain, persist_payload: true, keep_latest: false, retention_hours: 720}
 
-# Core provider-neutral tools. Keep this inside a project directory or another
-# explicitly approved root; sandbox remains the option for untrusted code.
-tools:
-  workspace_root: .
+# ---------------------------------------------------------------------------
+# Server-local sensors
+#
+# The server heartbeat is a kernel event, not a sensor. It stays active even
+# when every sensor below is disabled.
+#
+# Hardware, process and network collection are intentionally disabled. The
+# dashboard does not need them; remote VIRA Link devices provide device data.
+# ---------------------------------------------------------------------------
+sensors:
+  - name: hardware_sensor
+    enabled: false
+    interval: 30.0
 
-# Knowledge storage. "sql" runs on SQLite or PostgreSQL depending on
-# VIRA_DATABASE_URL; "memory" is ephemeral and intended for tests/evaluations.
-knowledge:
-  backend: sql        # sql | memory
-  cache: memory       # memory | none
-  cache_ttl_seconds: 30
+  - name: process_sensor
+    enabled: false
+    interval: 15.0
 
-# Destructive tool calls (shell, filesystem writes, sandbox writes/exec/install)
-# create a single-use approval request instead of executing immediately.
+  - name: network_sensor
+    enabled: false
+    interval: 10.0
+
+  - name: filesystem_sensor
+    enabled: false
+    watch_path: ./data/watch
+    recursive: true
+    event_types: [created, modified, deleted, moved]
+    include_patterns:
+      - "*.py"
+      - "*.yaml"
+      - "*.yml"
+      - "*.json"
+      - "*.md"
+      - "*.txt"
+    ignore_patterns:
+      - "*/data/*.db*"
+    debounce_seconds: 0.5
+
+  - name: wayland_idle_sensor
+    enabled: false
+    interval: 5.0
+    idle_threshold_seconds: 60
+
+  - name: user_activity_sensor
+    enabled: false
+    interval: 2.0
+    storage_dir: ./data/user_activity
+    include_content: false
+    max_content_chars: 0
+
+# ---------------------------------------------------------------------------
+# Plugins and extension ecosystem
+# ---------------------------------------------------------------------------
+plugins:
+  # Additional plugin directories. kernel.plugins_dir is always scanned.
+  directories:
+    - ./examples/plugins
+  allow_write_tools: true
+  # Omit to use the built-in permission allow-list.
+  # allowed_permissions: []
+  denied_permissions: []
+  data_dir: ./data/plugins
+
+# ---------------------------------------------------------------------------
+# Security and tool approvals
+# ---------------------------------------------------------------------------
 security:
-  # Approve or deny through /api/v1/approvals.
   approvals:
     enabled: true
     ttl_minutes: 30
-    # Force every operation of these tools through approval:
+    # Force every operation of these tools through approval.
     # destructive_tools: ["mcp_server.custom_shell"]
-    # Always allow these even if their category looks destructive.
-    # The sandbox is an isolated execution environment with its own filesystem,
-    # namespace, network policy and resource limits, so agents can build and run
-    # projects without a prompt per file/command. Remove "sandbox" here to
-    # restore per-call approval for sandbox writes, executes and installs.
+    # Tools allowed without a per-call approval.
     safe_tools: ["sandbox"]
+    # Gate unknown MCP/plugin tools unless explicitly listed as safe.
+    unknown_tools: false
+    # Per-tool operation policy, for example:
+    # tools:
+    #   filesystem: ["write", "mkdir"]
   default_permissions:
     - "event.publish.*"
     - "command.execute.command.agent.run"
@@ -125,144 +158,110 @@ security:
     - "memory.retrieve.*"
     - "knowledge.read.*"
     - "knowledge.write.*"
-    # Promotion into shared global knowledge is intentionally NOT granted by
-    # default; add "knowledge.promote.global" to allow an agent to promote.
+    # "knowledge.promote.global" is intentionally not granted by default.
     - "llm.call.*"
     - "tool.execute.*"
     - "tool.use.*"
-    # Explicit grant for sandbox execution environments (also covered by tool.use.*).
     - "tool.use.sandbox.*"
 
-# Request rate limits (in-process; use Redis for multi-worker deployments).
+# ---------------------------------------------------------------------------
+# Request rate limits
+# ---------------------------------------------------------------------------
 rate_limits:
   enabled: true
 
-# Background worker defaults (python -m vira.worker).
-jobs:
-  worker_interval: 5
-  rollup_days: 3
-  retention_days: 14
-  schedule_run_retention_days: 30
-  backup_keep: 7
+# ---------------------------------------------------------------------------
+# Sandbox execution
+# ---------------------------------------------------------------------------
+sandbox:
+  backend: bubblewrap
+  root: /AgentWorkspace
+  execution_mode: bubblewrap        # bubblewrap | host
+  bwrap_binary: bwrap               # override if bubblewrap is not on PATH
+  extra_path: ""                    # e.g. "/opt/toolchain/bin:/snap/bin"
+  network_enabled: true
+  timeout_seconds: 900
+  max_processes: 128
+  cpu_seconds: 600
+  memory_mb: 2048
+  allow_package_install: true
+  allow_shell: true
+  workspace_quota_mb: 2048
+  max_output_bytes: 200000
+  readonly_mounts: []               # e.g. ["/opt/toolchain", "/snap"]
 
-# Proactive agent schedules run inside the API/orchestrator process.
-agent_scheduler:
+# ---------------------------------------------------------------------------
+# Shared agent workspaces
+# ---------------------------------------------------------------------------
+workspace:
+  root: "~/VIRA/workspaces"
+  allow_user_paths: true
+  default_execution_mode: bubblewrap   # bubblewrap | host
+
+tools:
+  workspace_root: .
+
+# ---------------------------------------------------------------------------
+# Knowledge storage
+# ---------------------------------------------------------------------------
+knowledge:
+  backend: sql        # sql | memory
+  cache: memory       # memory | none
+  cache_ttl_seconds: 30
+
+# ---------------------------------------------------------------------------
+# Local and MCP tools
+# ---------------------------------------------------------------------------
+mcp_server:
+  command: ["python", "vira/tools/mcp_server.py"]
+  permissions: ["read", "write", "execute"]
+
+database_mcp:
   enabled: true
-  tick_seconds: 20
-  max_concurrent: 2
-  max_runs_per_tick: 10
-  lock_seconds: 300
-  run_timeout_seconds: 240
-  notify_on_error: true
-  default_timezone: "UTC"
+  # Omit command to use the running Python interpreter.
+  # command: ["python", "vira/tools/database_mcp_server.py"]
+  permissions: ["read", "execute"]
 
-# In-app notifications are always available. Webhook is an optional external
-# delivery provider (useful for FCM/APNs gateways or a desktop notifier).
-notifications:
-  webhook_url: ""
-  webhook_timeout_seconds: 10
-  max_attempts: 3
-  # Push relay for FCM/APNs or another gateway. The relay receives
-  # {"tokens":[...], "notification":{...}} and must deliver to each token.
-  push_relay_url: ""
-  push_relay_token: ""
-  push_timeout_seconds: 10
-  # "relay" or "fcm". FCM uses the service account below and delivers to
-  # Android plus iOS/macOS when APNs is configured in the Firebase project.
-  push_provider: "relay"
-  fcm_service_account_file: ""
-  fcm_project_id: ""
-
-metrics:
-  enabled: true
-  retention_minutes: 60
-
-sensors:
-  - name: hardware_sensor
-    enabled: true
-    interval: 30.0
-
-  - name: network_sensor
-    enabled: true
-    interval: 10.0
-
-  - name: process_sensor
-    enabled: true
-    interval: 15.0
-
-  # - name: wayland_idle_sensor
-  #   enabled: true
-  #   interval: 5.0
-  #   idle_threshold_seconds: 60
-
-  # - name: user_activity_sensor
-  #   enabled: true
-  #   interval: 2.0
-  #   include_content: false
-  #   max_content_chars: 0
-
-  # FileSystemSensor is event-driven; enable one instance per approved
-  # workspace instead of recursively watching the home directory.
-
-# sensors:
-#   - name: filesystem_sensor
-#     enabled: true
-#     watch_path: "/home/master/Documents/GitHub/vira_framework"
-#     recursive: true
-#     event_types:
-#       - created
-#       - modified
-#       - deleted
-#       - moved
-#     include_patterns:           # <-- only these will trigger events
-#       - "*.py"
-#       - "*.yaml"
-#       - "*.yml"
-#       - "*.json"
-#       - "*.md"
-#       - "*.txt"
-#     ignore_patterns:
-#       - "*/data/*.db*"
-#     debounce_seconds: 0.5          # to control false events when files are rapidly changed (like during git operations)
-
-
+# ---------------------------------------------------------------------------
+# LLM providers
+# ---------------------------------------------------------------------------
 llm:
-  # VIRA's final/default local model choice.
-  default_model: "qwen3.5:9b"
+  default_model: qwen3.5:9b
   models:
-    # - name: "gpt-4"
-    #   provider: "openai"
-    #   api_key: "${OPENAI_API_KEY}"   # will be resolved from env
-    #   model: "gpt-4"
-    #   max_tokens: 4096
-    #   temperature: 0.7
-    # - name: "claude-3"
-    #   provider: "anthropic"
-    #   api_key: "${ANTHROPIC_API_KEY}"
-    #   model: "claude-3-opus-20240229"
-    #   max_tokens: 4096
-    - name: "local-llama"
-      provider: "ollama"
-      model: "qwen3.5:9b"
-      # Docker: use http://ollama:11434 (bundled) or
+    - name: local-llama
+      provider: ollama
+      model: qwen3.5:9b
+      # Docker: http://ollama:11434 (bundled) or
       # http://host.docker.internal:11434 (native Ollama on the host).
-      # VIRA_OLLAMA_URL overrides this value without editing the file.
-      base_url: "http://localhost:11434"
+      base_url: http://localhost:11434
       temperature: 0.1
-      num_ctx: 65536             # enough room for larger context and code output
-      #  set thinking mode to nothink
-      thinking_mode: "nothink"
+      num_ctx: 65536
+      think: false
+      # keep_alive: 5m
+      # top_p: 0.9
+      # top_k: 40
+      # repeat_penalty: 1.1
+      # seed: 0
+      # stop: []
 
-# To add another agent, create a class that extends vira.agent.base.BaseAgent
-# (or vira.agent.llm_agent.LLMAgent) and register it here:
-#   - name: MyAgent
-#     module: my_agents.my_agent
-#     class: MyAgent
-#     enabled: true
-#     config: {}
-# BaseAgent supplies lifecycle, identity, tools/MCP, memory, knowledge,
-# progress events and a typed TaskRequest/TaskResult contract.
+    # Cloud examples. Uncomment and set the matching environment variable.
+    # - name: gpt-4o-mini
+    #   provider: openai
+    #   model: gpt-4o-mini
+    #   api_key: "${OPENAI_API_KEY}"
+    #   temperature: 0.7
+    #   max_tokens: 4096
+    #
+    # - name: claude-3-5-sonnet-latest
+    #   provider: anthropic
+    #   model: claude-3-5-sonnet-latest
+    #   api_key: "${ANTHROPIC_API_KEY}"
+    #   temperature: 0.7
+    #   max_tokens: 4096
 
+# ---------------------------------------------------------------------------
+# Agents
+# ---------------------------------------------------------------------------
 agents:
   - name: Chatbot
     module: vira.agent.Agents.chat_agent
@@ -273,29 +272,26 @@ agents:
       system_prompt: "You are VIRA, a friendly, helpful assistant. For news, recent events, people, prices or anything you are not sure about, do not answer from memory: call web_search first, then web_browse on the best result, then answer from what you read and name your sources. If a tool fails, say exactly what failed."
       temperature: 0.7
       max_tokens: 65536
-      # --- agent loop (tuned for small local models) ---
-      max_steps: 6              # tool-call rounds before a forced final answer
-      max_prompt_chars: 12000   # ~3k tokens; raise if your model has a bigger context
-      max_tool_chars: 3000      # tool output shown to the model per call
-      max_total_tool_chars: 30000  # whole-run observation budget
-      max_seconds: 600          # wall-clock budget for the tool loop (builds take time)
-      tool_timeout: 90          # seconds per tool call (search tries several engines)
-      tool_timeouts:            # per-tool overrides; sandbox builds can run long
+      max_steps: 6
+      max_prompt_chars: 12000
+      max_tool_chars: 3000
+      max_total_tool_chars: 30000
+      max_seconds: 600
+      tool_timeout: 90
+      tool_timeouts:
         sandbox: 600
-      history_limit: 20         # messages kept per conversation
-      learn_lessons: true       # store/recall lessons from failed tool calls
-      delegation: true          # allow sub-agents from vira/agent/definitions/*.md
-      # Explicit per-agent tool permission. An empty allow list means every
-      # registered tool is available; add names/globs to restrict this agent.
-      # 'pinned' keeps the sandbox in the prompt so code/build tasks can always
-      # create an execution environment instead of only chatting about it.
+      llm_timeout: 300
+      history_limit: 20
+      history_fallback: true
+      history_max_conversations: 200
+      learn_lessons: true
+      lesson_recall_limit: 3
+      delegation: true
       tools:
-        allow: []               # e.g. ["sandbox", "web", "filesystem", "database_query.*"]
+        allow: []
         pinned: ["sandbox"]
-      # definitions_dir: "~/.vira/agents"   # your own sub-agent .md files
+      # definitions_dir: "~/.vira/agents"
 
-  # Daily brief used by proactive schedules. It pre-collects the configured
-  # tools and labels missing sources instead of guessing.
   - name: MorningBriefAgent
     module: vira.agent.Agents.morning_brief
     class: MorningBriefAgent
@@ -303,8 +299,10 @@ agents:
     enabled: true
     config:
       max_tokens: 700
+      temperature: 0.2
       lookback_days: 1
       max_words: 220
+      max_actions: 3
       include_memory: true
       include_knowledge: false
       context_tools:
@@ -312,12 +310,7 @@ agents:
         - name: insights
           params:
             days: 1
-        # Add calendar/task/email MCP tools here once connectors are installed:
-        # - name: mcp_server.calendar_today
-        # - name: mcp_server.tasks_due
 
-  # Measured daily coaching. Use schedule input {"mode": "morning" | "checkin"
-  # | "evening" | "weekly"} to select the run type.
   - name: FocusCoachAgent
     module: vira.agent.Agents.focus_coach
     class: FocusCoachAgent
@@ -326,13 +319,12 @@ agents:
     config:
       mode: evening
       max_tokens: 700
+      temperature: 0.2
       max_words: 220
       include_apps: false
       weekly_include_apps: false
       include_memory: true
 
-  # Capture, grounded recall and weekly consolidation. Use schedule input
-  # {"mode": "capture" | "ask" | "consolidate"} when the message is ambiguous.
   - name: SecondBrainAgent
     module: vira.agent.Agents.second_brain
     class: SecondBrainAgent
@@ -341,12 +333,11 @@ agents:
     config:
       mode: ask
       max_tokens: 700
+      temperature: 0.2
       max_words: 220
       stale_days: 90
       low_confidence: 0.35
 
-  # Inbox/calendar/task triage. Add MCP connector tools to context_tools; the
-  # agent never sends drafts, it only returns them for approval.
   - name: ChiefOfStaffAgent
     module: vira.agent.Agents.chief_of_staff
     class: ChiefOfStaffAgent
@@ -355,16 +346,11 @@ agents:
     config:
       mode: morning
       max_tokens: 900
+      temperature: 0.2
       max_sources: 6
-      # Add installed MCP connector tools here:
-      # context_tools:
-      #   - {name: office.email_inbox, role: email}
-      #   - {name: office.calendar_today, role: calendar}
-      #   - {name: office.tasks_due, role: tasks}
+      max_source_chars: 7000
       context_tools: []
 
-  # Shared household planning. Use input {"mode": "morning" | "evening" |
-  # "weekly"} and optionally {"household_id": "..."}.
   - name: HouseholdAgent
     module: vira.agent.Agents.household
     class: HouseholdAgent
@@ -373,23 +359,49 @@ agents:
     config:
       mode: morning
       max_tokens: 800
+      temperature: 0.2
       max_words: 240
-
-mcp_server:
-  command: ["python", "vira/tools/mcp_server.py"]   # path to your MCP server script
-  permissions: ["read", "write", "execute"]
-
-# Read-only database access for the Chatbot and agents.
-# Tools: database_tables, database_schema, database_examples,
-#        database_account_summary, database_query.
-database_mcp:
-  enabled: true
-  # Omit command to use the running Python interpreter (recommended).
-  # command: ["python", "vira/tools/database_mcp_server.py"]
-  permissions: ["read", "execute"]
+      # household_id: "..."       # default: the user's first household
 
 agent_policy:
-  load_persisted_agents: false # only agents explicitly enabled below start at boot
+  load_persisted_agents: false
   allowed_modules:
     - "vira.agent"
     - "vira.modules"
+
+# ---------------------------------------------------------------------------
+# Proactive agent schedules
+# ---------------------------------------------------------------------------
+agent_scheduler:
+  enabled: true
+  tick_seconds: 20
+  max_concurrent: 2
+  max_runs_per_tick: 10
+  lock_seconds: 300
+  run_timeout_seconds: 240
+  notify_on_error: true
+  default_timezone: UTC
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+notifications:
+  webhook_url: ""
+  webhook_timeout_seconds: 10
+  max_attempts: 3
+  push_provider: relay              # relay | fcm
+  push_relay_url: ""
+  push_relay_token: ""
+  push_timeout_seconds: 10
+  fcm_service_account_file: ""
+  fcm_project_id: ""
+
+# ---------------------------------------------------------------------------
+# Background worker
+# ---------------------------------------------------------------------------
+jobs:
+  worker_interval: 5
+  rollup_days: 3
+  retention_days: 14
+  schedule_run_retention_days: 30
+  backup_keep: 7

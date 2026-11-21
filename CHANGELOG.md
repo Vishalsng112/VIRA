@@ -130,6 +130,11 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Changed
 
+- Reorganized `config.yaml` into documented sections covering every supported
+  key, including sensors, plugins, security, sandbox, workspaces, knowledge,
+  MCP, LLM, agents, scheduling, notifications and worker jobs.
+- Server-local hardware, process, network, filesystem, idle and user-activity
+  sensors are explicitly disabled. The server heartbeat remains active.
 - Release tooling now uses standard product tags (`vX.Y.Z` for the server,
   `vira-link-vX.Y.Z` for VIRA Link), versioned asset names, generated release
   notes, verified checksums and a release manifest. Build numbers are no longer
