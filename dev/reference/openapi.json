@@ -819,6 +819,7 @@
     "/health": {
       "get": {
         "summary": "Health",
+        "description": "Liveness plus detailed health for administrators.\n\nUnauthenticated or stale clients receive only the public status so a\ncached dashboard tab cannot spam 401s. The detailed payload is returned\nonly for a valid admin session or bearer token.",
         "operationId": "health_health_get",
         "responses": {
           "200": {
