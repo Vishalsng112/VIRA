@@ -2,13 +2,13 @@ loguru==0.7.3
 uvicorn==0.49.0
 pyyaml==6.0.3
 fastapi==0.138.1
-mcp==1.28.0
+mcp==1.30.0
 itsdangerous==2.2.0
 bcrypt==5.0.0
 psutil==7.2.2
 pyperclip==1.11.0
 watchdog==6.0.0
-aiohttp==3.14.1
+aiohttp==3.14.4
 cryptography>=45.0.0
 psycopg[binary]>=3.2
 openai==2.44.0
@@ -18,7 +18,7 @@ GPUtil==1.4.0
 cups==0.0.6
 screeninfo==0.8.1
 beautifulsoup4==4.15.0
-python-multipart==0.0.20
+python-multipart==0.0.31
 
 
 #--OUTDATED, now running with more updated packages, but keeping this for reference in case of issues with the new versions.
@@ -26,7 +26,7 @@ python-multipart==0.0.20
 # uvicorn[standard]==0.34.0
 # pyyaml==6.0.2
 # pydantic==2.10.4
-# python-multipart==0.0.20
+# python-multipart==0.0.31
 # bcrypt==4.2.0
 # itsdangerous==2.2.0
 # watchdog==4.0.1 
@@ -36,3 +36,5 @@ python-multipart==0.0.20
 # pillow==12.2.0
 # pynput
 # # pynput==1.17.0
+# Python 3.12 removed distutils; GPUtil still imports it.
+setuptools>=68.0.0

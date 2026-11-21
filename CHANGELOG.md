@@ -118,6 +118,10 @@ All notable changes to VIRA are documented here. The format follows
   loop, clears the stale device credential and returns to sign-in with an
   actionable message instead of repeating 401s every 30 seconds.
 - Cancelling services now also cancels the device command timer.
+- The docs build now works on Python 3.12 by installing `setuptools` for
+  `distutils`, and the agent roadmap no longer links outside the docs tree.
+- Updated `mcp` to 1.30.0, `aiohttp` to 3.14.4 and `python-multipart` to
+  0.0.31 to clear the `pip-audit` findings.
 - `AgentMessageBus.unsubscribe()` now removes the registered callback instead of
   silently keeping the wrapper; bound methods can be unsubscribed too.
 - OpenAI and Anthropic `generate_structured()` now return a parsed `dict` (and
