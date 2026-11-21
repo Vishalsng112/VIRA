@@ -1,12 +1,5 @@
 [
   {
-    "version": "ira-link-v1.2.0",
-    "title": "ira-link-v1.2.0",
-    "aliases": [
-      "latest"
-    ]
-  },
-  {
     "version": "dev",
     "title": "dev",
     "aliases": []
