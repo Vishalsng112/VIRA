@@ -20,7 +20,8 @@ class StoredCredentials {
   final String? deviceToken;
   final bool isAdmin;
 
-  bool get hasDevice => serverUrl != null && deviceId != null && deviceToken != null;
+  bool get hasDevice =>
+      serverUrl != null && deviceId != null && deviceToken != null;
   bool get hasSession => sessionId != null;
 }
 
@@ -61,6 +62,13 @@ class CredentialStore {
       _storage.write(key: _deviceIdKey, value: deviceId),
       _storage.write(key: _deviceTokenKey, value: deviceToken),
       _storage.write(key: _isAdminKey, value: isAdmin ? 'true' : 'false'),
+    ]);
+  }
+
+  Future<void> clearDevice() async {
+    await Future.wait([
+      _storage.delete(key: _deviceIdKey),
+      _storage.delete(key: _deviceTokenKey),
     ]);
   }
 

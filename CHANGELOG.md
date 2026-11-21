@@ -112,6 +112,12 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Fixed
 
+- Stale dashboard sessions no longer poll protected endpoints forever: the
+  dashboard stops its refresh timer and redirects to login on the first 401.
+- A revoked or expired device credential now stops the command poller and sync
+  loop, clears the stale device credential and returns to sign-in with an
+  actionable message instead of repeating 401s every 30 seconds.
+- Cancelling services now also cancels the device command timer.
 - `AgentMessageBus.unsubscribe()` now removes the registered callback instead of
   silently keeping the wrapper; bound methods can be unsubscribed too.
 - OpenAI and Anthropic `generate_structured()` now return a parsed `dict` (and
