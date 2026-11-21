@@ -8,11 +8,11 @@ from vira.llm import catalog, guidance
 
 CONFIG = {
     "llm": {
-        "default_model": "nemotron-3.5-bolt:e4b",
+        "default_model": "qwen3.5:9b",
         "models": [{
             "name": "local-llama",
             "provider": "ollama",
-            "model": "nemotron-3.5-bolt:e4b",
+            "model": "qwen3.5:9b",
             "base_url": "http://ollama:11434",
             "num_ctx": 8192,
         }],
@@ -23,7 +23,7 @@ CONFIG = {
 class CatalogTests(unittest.TestCase):
     def test_configured_values(self):
         self.assertEqual(catalog.configured_ollama_url(CONFIG), "http://ollama:11434")
-        self.assertEqual(catalog.configured_model(CONFIG), "nemotron-3.5-bolt:e4b")
+        self.assertEqual(catalog.configured_model(CONFIG), "qwen3.5:9b")
         self.assertEqual(catalog.configured_context(CONFIG), 8192)
 
     def test_env_overrides(self):

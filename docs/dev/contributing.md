@@ -20,7 +20,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # optional: local model
-ollama pull nemotron-3.5-bolt:e4b
+ollama pull qwen3.5:9b
 
 python run.py
 ```

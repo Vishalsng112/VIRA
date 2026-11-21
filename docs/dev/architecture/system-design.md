@@ -780,7 +780,7 @@ Consumers use `event.id` for idempotency. Commands such as
 3. Apply expiry, deletion, permission, and retention filters.
 4. If semantic search is enabled, pre-filter metadata, then retrieve top-k.
 5. Apply token budget and summarize older context if necessary.
-6. Produce an immutable AgentContext for think/plan/act/reflect.
+6. Produce an immutable `TaskRequest.context` for the agent's `execute` call.
 ```
 
 ### 6.8 Error handling and retries

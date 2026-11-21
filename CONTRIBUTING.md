@@ -23,7 +23,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-ollama pull nemotron-3.5-bolt:e4b
+ollama pull qwen3.5:9b
 python3 run.py
 ```
 

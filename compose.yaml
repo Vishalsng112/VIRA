@@ -27,7 +27,7 @@ services:
       VIRA_PORT: 8000
       VIRA_CONFIG: /app/config.yaml
       VIRA_OLLAMA_URL: ${VIRA_OLLAMA_URL:-http://ollama:11434}
-      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-nemotron-3.5-bolt:e4b}
+      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-qwen3.5:9b}
     volumes:
       - vira-data:/app/data
       - ./config.yaml:/app/config.yaml
@@ -59,7 +59,7 @@ services:
     environment:
       VIRA_CONFIG: /app/config.yaml
       VIRA_OLLAMA_URL: ${VIRA_OLLAMA_URL:-http://ollama:11434}
-      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-nemotron-3.5-bolt:e4b}
+      VIRA_OLLAMA_MODEL: ${VIRA_OLLAMA_MODEL:-qwen3.5:9b}
     volumes:
       - vira-data:/app/data
       - ./config.yaml:/app/config.yaml
@@ -105,7 +105,7 @@ services:
     environment:
       OLLAMA_HOST: http://ollama:11434
     entrypoint: ["/bin/ollama"]
-    command: ["pull", "${VIRA_OLLAMA_MODEL:-nemotron-3.5-bolt:e4b}"]
+    command: ["pull", "${VIRA_OLLAMA_MODEL:-qwen3.5:9b}"]
     restart: "no"
 
 volumes:

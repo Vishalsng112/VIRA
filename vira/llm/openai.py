@@ -1,8 +1,9 @@
 # vira/llm/providers/openai.py
 import os
+import json
 from typing import Dict, List, AsyncIterator
 from openai import AsyncOpenAI
-from vira.llm.base import BaseLLMProvider, LLMResponse
+from vira.llm.base import BaseLLMProvider, LLMResponse, parse_json_object
 
 class OpenAIProvider(BaseLLMProvider):
     def __init__(self, api_key: str, model: str, base_url: str = None, **kwargs):
@@ -46,7 +47,7 @@ class OpenAIProvider(BaseLLMProvider):
             response_format={"type": "json_object"},
             **params
         )
-        return response.choices[0].message.content  # parse as dict
+        return parse_json_object(response.choices[0].message.content)
 
     async def tool_call(self, prompt: str, tools: List[Dict], **kwargs) -> Dict:
         params = {**self.default_params, **kwargs}
@@ -58,9 +59,18 @@ class OpenAIProvider(BaseLLMProvider):
             **params
         )
         choice = response.choices[0]
-        if choice.message.tool_calls:
-            return choice.message.tool_calls[0].function
-        return {}
+        if not choice.message.tool_calls:
+            return {}
+        function = choice.message.tool_calls[0].function
+        arguments = function.arguments
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments) if arguments.strip() else {}
+            except ValueError:
+                arguments = {}
+        if not isinstance(arguments, dict):
+            arguments = {}
+        return {"name": function.name, "arguments": arguments}
 
     async def health_check(self) -> bool:
         try:

@@ -55,7 +55,7 @@ docker compose up -d --build
 Then pull the default model:
 
 ```bash
-docker compose exec ollama ollama pull nemotron-3.5-bolt:e4b
+docker compose exec ollama ollama pull qwen3.5:9b
 ```
 
 Open <http://localhost:8000>.

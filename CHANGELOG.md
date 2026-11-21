@@ -52,11 +52,24 @@ All notable changes to VIRA are documented here. The format follows
   `vira/agent_orchestration/base.py`, the unused `vira/agent/messaging.py`, the
   `think/plan/act/reflect` execution pipeline and their tests. `BaseAgent` now
   requires `execute`; `ChatAgent` is the only shipped agent.
+- Unused scaffolding that had no callers and (in several cases) crashed on
+  import: `vira/actions`, `vira/cognition`, `vira/content`, `vira/artifacts`,
+  `vira/memory/schemas.py`, `vira/agent_runtime/context.py`, and the dead
+  `AgentManager`/`Planner` pair.
+
+### Fixed
+
+- `AgentMessageBus.unsubscribe()` now removes the registered callback instead of
+  silently keeping the wrapper; bound methods can be unsubscribed too.
+- OpenAI and Anthropic `generate_structured()` now return a parsed `dict` (and
+  OpenAI `tool_call()` returns a plain `{"name", "arguments"}` dict) instead of
+  raw strings or provider objects.
 
 ### Changed
 
-- Default local model is now `nemotron-3.5-bolt:e4b`: faster than the previous
-  default with better tool-protocol support.
+- Default local model is now `qwen3.5:9b`, with better tool-protocol support
+  than the previous default. Installers, Compose defaults, the doctor and the
+  model guidance all use the same value.
 - Documentation navigation now includes the platform matrix, evaluations,
   agent platform, release process and showcase.
 - The shipped configuration auto-approves the isolated `sandbox` tool via

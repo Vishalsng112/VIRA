@@ -27,10 +27,10 @@ TIERS = [
     {
         "id": "recommended",
         "min_ram_gb": 8,
-        "model": "nemotron-3.5-bolt:e4b",
-        "label": "e4b · recommended default",
+        "model": "qwen3.5:9b",
+        "label": "9B · recommended default",
         "tool_reliability": "good",
-        "note": "The default VIRA model. Fast on CPU and reliable at VIRA's JSON tool protocol.",
+        "note": "The default VIRA model. Reliable at VIRA's JSON tool protocol on an 8–16 GB machine.",
     },
     {
         "id": "comfortable",

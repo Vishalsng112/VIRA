@@ -1,8 +1,8 @@
 # Choose a local model
 
-VIRA ships with **`nemotron-3.5-bolt:e4b`** through Ollama. That is the recommended
-first-run model: it is fast, follows the tool protocol reliably and fits an
-8–16 GB CPU-only machine.
+VIRA ships with **`qwen3.5:9b`** through Ollama. That is the recommended
+first-run model: it follows the tool protocol reliably and fits an 8–16 GB
+machine.
 
 The Chatbot drives tools by emitting small JSON calls. Very small models can
 chat well and still fail that job by repeating calls, inventing tool names or
@@ -19,7 +19,7 @@ hardware before you conclude that VIRA is broken.
 | Tier | RAM | Suggested model | Tool reliability | Notes |
 |---|---|---|---|---|
 | Minimal | 4–8 GB | `llama3.2:3b` | Experimental | Chat works; multi-step tool use is unreliable. Use for quick tests. |
-| Recommended | 8–16 GB | `nemotron-3.5-bolt:e4b` | Good | VIRA's default. Fast on CPU; much better tool support than its size suggests. |
+| Recommended | 8–16 GB | `qwen3.5:9b` | Good | VIRA's default. Strong tool support for its size. |
 | Comfortable | 16–32 GB | `qwen2.5:14b` | Better | Better instruction following and tool selection. |
 | Large | 32 GB+ | `qwen2.5:32b` | Best local | Best local quality; needs a GPU or a large-memory host to be usable. |
 
@@ -43,11 +43,11 @@ If you use a smaller model, keep `num_ctx` at **8192 or more**:
 
 ```yaml
 llm:
-  default_model: "nemotron-3.5-bolt:e4b"
+  default_model: "qwen3.5:9b"
   models:
     - name: "local-llama"
       provider: "ollama"
-      model: "nemotron-3.5-bolt:e4b"
+      model: "qwen3.5:9b"
       base_url: "http://localhost:11434"
       num_ctx: 8192
 ```

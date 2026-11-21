@@ -210,7 +210,7 @@ def check_model(config: Dict[str, Any], base_url: str, ollama_ok: bool) -> Check
         return Check(
             "model", "warn", f"'{model}' is very small ({parameter_size})",
             detail="Tool use may be unreliable below about 4B parameters. Chat works, but multi-step tools can loop or return malformed JSON.",
-            fix="Use nemotron-3.5-bolt:e4b or larger for reliable tool use, or configure a cloud provider.",
+            fix="Use qwen3.5:9b or larger for reliable tool use, or configure a cloud provider.",
         )
     wanted = configured_context(config)
     if context:

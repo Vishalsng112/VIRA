@@ -1,8 +1,9 @@
 # vira/llm/providers/anthropic.py
+import json
 import os
 from typing import Dict, List, AsyncIterator
 from anthropic import AsyncAnthropic
-from vira.llm.base import BaseLLMProvider, LLMResponse
+from vira.llm.base import BaseLLMProvider, LLMResponse, parse_json_object
 
 class AnthropicProvider(BaseLLMProvider):
     def __init__(self, api_key: str, model: str, **kwargs):
@@ -39,10 +40,14 @@ class AnthropicProvider(BaseLLMProvider):
                     yield chunk.delta.text
 
     async def generate_structured(self, prompt: str, schema: Dict, **kwargs) -> Dict:
-        # Anthropic does not have native JSON mode; we can prompt for JSON.
-        # For simplicity, call generate and parse.
-        resp = await self.generate(prompt + "\n\nRespond only with valid JSON.", **kwargs)
-        return resp.text
+        # Anthropic does not have native JSON mode, so ask for JSON and parse it
+        # the same way the other providers do.
+        instruction = (
+            "\n\nRespond only with a single JSON object matching this schema:\n"
+            + json.dumps(schema)
+        )
+        resp = await self.generate(prompt + instruction, **kwargs)
+        return parse_json_object(resp.text)
 
     async def tool_call(self, prompt: str, tools: List[Dict], **kwargs) -> Dict:
         # Anthropic's tool use is similar; we pass tools in the request.

@@ -27,7 +27,6 @@ from vira.devices import (
     LocalDeviceManager,
 )
 from vira.devices import store as device_store
-# from .agent_manager import AgentManager
 
 # logger = logging.getLogger(__name__)
 

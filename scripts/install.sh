@@ -149,7 +149,7 @@ if [ -z "$MODEL" ]; then
   if [ "$RAM_GB" -lt 8 ]; then
     MODEL="llama3.2:3b"
   elif [ "$RAM_GB" -lt 20 ]; then
-    MODEL="nemotron-3.5-bolt:e4b"
+    MODEL="qwen3.5:9b"
   elif [ "$RAM_GB" -lt 36 ]; then
     MODEL="qwen2.5:14b"
   else

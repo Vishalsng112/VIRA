@@ -173,7 +173,7 @@ class MemoryAndQuotaTests(unittest.TestCase):
         self.assertNotIn("fish", " ".join(contents))
 
     def test_agent_scope_quota(self):
-        usage.record(self.user_id, "chat", "ollama", "nemotron", 100, 50, 10)
+        usage.record(self.user_id, "chat", "ollama", "qwen3.5:9b", 100, 50, 10)
         usage.set_quota("agent", "chat", "month", token_limit=1)
         with self.assertRaises(usage.QuotaExceeded):
             usage.check_quota(self.user_id, None, "chat")

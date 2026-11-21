@@ -202,37 +202,55 @@ class MemoryEvent(BaseModel):
     content: Optional[str] = None     # stored/retrieved text
 ```
 
-### AgentMessage (inter-agent messaging via AgentMailbox)
+### AgentMessage (inter-agent messaging via AgentMessageBus)
 
-Defined in `vira/agent/messaging.py`:
+Defined in `vira/agent_orchestration/messages.py` and delivered by
+`vira/agent_orchestration/message_bus.py`:
 
 ```python
 class AgentMessage(BaseModel):
-    id: str                           # UUID
-    from_agent: str                   # sender agent_id
-    to_agent: str                     # recipient agent_id
-    content: Dict[str, Any]           # arbitrary payload
-    timestamp: datetime
-    correlation_id: Optional[str]     # links to the triggering Event.correlation_id
+    type: str                                  # event type (matches kernel Event)
+    data: Any                                  # arbitrary payload
+    sender_agent_id: Optional[str] = None      # None = external/kernel event
+    target_agent_ids: Optional[List[str]] = None
+    exclude_sender: bool = True
+    event_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+    device_id: Optional[str] = None
+    actor_user_id: Optional[int] = None
+    source_component: Optional[str] = None
 ```
+
+Subscribe with `await bus.subscribe(event_type, callback)` and remove the same
+callback with `await bus.unsubscribe(event_type, callback)`; `"*"` subscribes to
+every message type.
 
 ---
 
 ## Agent Specification
 
-Agents are classes that extend `BaseAgent` (`vira/agent/base.py`).
+Agents extend `BaseAgent` (`vira/agent/base.py`) and implement **`execute`**. The
+old `think`/`plan`/`act`/`reflect` pipeline was removed; those names remain only
+as non-required compatibility hooks and must not be used for new agents.
 
 ### Required interface
 
 ```python
+from vira.agent import BaseAgent
+from vira.agent_orchestration.registry import AgentCapability
+
+
 class MyAgent(BaseAgent):
-    def __init__(self, runtime: AgentRuntime):
+    name = "MyAgent"
+    role = "my-agent"                 # stable knowledge scope, not the runtime id
+
+    def __init__(self, runtime, **config):
         super().__init__(
-            name="MyAgent",
+            name=self.name,
             description="What this agent does in one sentence.",
-            runtime=runtime
+            runtime=runtime,
+            **config,
         )
-        # Declare capabilities
         self._capabilities = [
             AgentCapability(
                 name="do_something",
@@ -246,24 +264,55 @@ class MyAgent(BaseAgent):
         # Optional: run on an interval (seconds), set to None for event-only
         self._interval_seconds = None
 
-    # ---- Mandatory abstract methods ----
+    # ---- Mandatory method ----
 
-    async def think(self, context: AgentContext, **kwargs) -> Dict:
-        """Analyse context and current event; return intent/thought dict."""
-        ...
-
-    async def plan(self, thought: Dict, **kwargs) -> List[Dict]:
-        """Convert thought into an ordered list of action dicts."""
-        ...
-
-    async def act(self, plan: List[Dict], **kwargs) -> Any:
-        """Execute the plan. Call LLM, tools, or external APIs here."""
-        ...
-
-    async def reflect(self, result: Any, **kwargs) -> Dict:
-        """Evaluate the result. Optionally persist to memory."""
-        ...
+    async def execute(self, request):
+        """Handle one TaskRequest. Return a string, dict or TaskResult."""
+        result = await self.call_tool("some_tool", text=request.message)
+        return {"response": result}
 ```
+
+`initialize()` rejects classes that do not override `execute`. `run_task` adds
+lifecycle and error handling, per-task identity and return-value normalisation;
+raise an exception to record a failed task, or return a `TaskResult` for control
+over the error and duration fields.
+
+### Task contract
+
+```python
+@dataclass
+class TaskRequest:
+    input: Any = None
+    event: Any = None
+    user_id: Optional[int] = None
+    organization_id: Optional[str] = None
+    conversation_id: Optional[str] = None
+    device_id: Optional[str] = None
+    run_id: Optional[str] = None
+    history: List[Dict[str, Any]] = ...
+    metadata: Dict[str, Any] = ...
+    timeout: Optional[float] = None
+    context: Any = None
+
+@dataclass
+class TaskResult:
+    text: str = ""
+    data: Dict[str, Any] = ...
+    steps: List[Any] = ...
+    tool_calls: int = 0
+    stopped: str = "final"
+    error: Optional[str] = None
+    duration_ms: float = 0.0
+    raw: Any = None
+```
+
+`request.message` returns the text from a dict `input` (`message`/`text`), or the
+plain string input.
+
+### Lifecycle hooks (optional)
+
+`setup()`, `on_start()`, `on_stop()`, `on_error(request, error)`,
+`before_run(request)` and `after_run(request, result)`.
 
 ### Agent lifecycle states
 
@@ -283,7 +332,7 @@ agents:
     class: MyAgent                    # Class name inside the module
     enabled: true
     config:
-      some_param: value               # passed as agent.config dict
+      some_param: value               # passed to the agent constructor
     subscribed_events:
       - "user.message"
 ```
@@ -363,19 +412,18 @@ sensors:
 
 ## Memory Schema
 
-Defined in `vira/memory/schemas.py`:
+The in-process item contract is `MemoryItem` in `vira/memory/base.py`; persistent
+memories are stored and scoped by `vira/auth/database.py` (user, agent,
+conversation, type, importance, expiry).
 
 ```python
-class MemoryEntry(BaseModel):
+class MemoryItem(BaseModel):
     id: str                            # UUID
-    agent_id: str                      # owning agent
-    type: str                          # "short_term" | "long_term" | "episodic" | "semantic"
     content: str                       # text content of the memory
     embedding: Optional[List[float]]   # vector embedding for similarity search
-    metadata: Dict[str, Any]           # e.g. {"tags": ["task", "result"], "source": "user.message"}
-    created_at: datetime
-    expires_at: Optional[datetime]     # None = permanent
-    importance: float                  # 0.0 – 1.0; used for retrieval ranking
+    metadata: Dict[str, Any]           # tags, source, scope identifiers
+    timestamp: datetime
+    ttl: Optional[int]                 # seconds; None = no expiry
 ```
 
 ### Memory types
@@ -482,11 +530,11 @@ sensors:                               # list of sensor configs
     interval: 5.0                      # polling interval in seconds
 
 llm:
-  default_model: "nemotron-3.5-bolt:e4b"       # VIRA's final default local model choice
+  default_model: "qwen3.5:9b"       # VIRA's final default local model choice
   models:
     - name: "local-llama"
       provider: "ollama"               # "ollama" | "openai" | "anthropic"
-      model: "nemotron-3.5-bolt:e4b"
+      model: "qwen3.5:9b"
       base_url: "http://localhost:11434"
       temperature: 0.8
       num_ctx: 16384
@@ -522,8 +570,8 @@ VIRA supports three LLM backends via `vira/llm/`:
 | OpenAI | `OpenAILLM` | `provider: "openai"` | `api_key` in config or `$OPENAI_API_KEY` |
 | Anthropic | `AnthropicLLM` | `provider: "anthropic"` | `api_key` in config or `$ANTHROPIC_API_KEY` |
 
-VIRA ships configured for **`nemotron-3.5-bolt:e4b`** through Ollama. This is the final default
-model choice for the framework; install it with `ollama pull nemotron-3.5-bolt:e4b`. Other
+VIRA ships configured for **`qwen3.5:9b`** through Ollama. This is the final default
+model choice for the framework; install it with `ollama pull qwen3.5:9b`. Other
 providers and models remain fully supported and can be selected explicitly.
 
 The `LLMManager` selects the backend at runtime via `LLMFactory`. Agents call:
