@@ -77,7 +77,14 @@ include(flutter/generated_plugins.cmake)
 # flutter_secure_storage_linux 1.2.3 vendors nlohmann/json 3.11.2, whose
 # `operator "" _json` triggers -Wdeprecated-literal-operator on Clang 22.
 # The project builds plugins with -Werror, so demote this third-party warning.
-if(TARGET flutter_secure_storage_linux_plugin)
+# The flag does not exist on older Clang versions, so probe before using it.
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(
+  "-Wno-deprecated-literal-operator"
+  VIRA_HAS_WNO_DEPRECATED_LITERAL_OPERATOR
+)
+if(TARGET flutter_secure_storage_linux_plugin
+   AND VIRA_HAS_WNO_DEPRECATED_LITERAL_OPERATOR)
   target_compile_options(
     flutter_secure_storage_linux_plugin PRIVATE
     -Wno-deprecated-literal-operator
