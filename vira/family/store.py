@@ -330,3 +330,55 @@ def changes(user_id: int, household_id: str, cursor: int, limit: int) -> Dict[st
                 "changes": result, "next_cursor": result[-1]["seq"] if result else cursor,
                 "has_more": len(result) == min(max(limit, 1), 500),
                 "server_time": _now()}
+
+
+def default_household(user_id: int) -> Dict[str, Any]:
+    """Return the user's first household, creating one on first use."""
+    households = list_households(user_id)
+    return households[0] if households else ensure_household(user_id)
+
+
+def household_snapshot(user_id: int, household_id: str) -> Dict[str, Any]:
+    """Read-only, membership-checked household context for agents."""
+    ensure_schema()
+    with database.get_connection() as conn:
+        if not _member(conn, household_id, user_id):
+            raise PermissionError("Household membership required")
+        household = conn.execute(
+            "SELECT id, name, created_at FROM households WHERE id = ?",
+            (household_id,)).fetchone()
+        if household is None:
+            raise ValueError("Household not found")
+        member_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM household_members WHERE household_id = ?",
+            (household_id,)).fetchone()["count"]
+        notes = conn.execute(
+            """SELECT n.id, n.title, n.body_md, n.kind, n.pinned, n.updated_at,
+                      nb.title AS notebook_title
+               FROM family_notes n
+               LEFT JOIN notebooks nb ON nb.id = n.notebook_id
+               WHERE n.household_id = ? AND n.deleted_at IS NULL
+               ORDER BY n.pinned DESC, n.updated_at DESC LIMIT 100""",
+            (household_id,)).fetchall()
+        reminders = conn.execute(
+            """SELECT id, title, body, due_at, timezone, urgent, status,
+                      assignee_user_id, note_id, item_id
+               FROM reminders WHERE household_id = ? AND deleted_at IS NULL
+               AND status = 'active' ORDER BY due_at LIMIT 100""",
+            (household_id,)).fetchall()
+        checklist = conn.execute(
+            """SELECT c.id, c.note_id, c.text, c.done, c.position,
+                      c.assignee_user_id, n.title AS note_title
+               FROM checklist_items c
+               JOIN family_notes n ON n.id = c.note_id
+               WHERE c.household_id = ? AND c.deleted_at IS NULL
+               AND n.deleted_at IS NULL
+               ORDER BY c.position LIMIT 200""",
+            (household_id,)).fetchall()
+    return {
+        "household": dict(household),
+        "member_count": int(member_count or 0),
+        "notes": [dict(row) for row in notes],
+        "reminders": [dict(row) for row in reminders],
+        "checklist": [dict(row) for row in checklist],
+    }

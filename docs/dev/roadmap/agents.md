@@ -4,9 +4,8 @@ Status: active implementation plan
 Last updated: 2026-11-21
 Scope: proactive, recurring agents that make VIRA useful every day.
 
-**Current status:** P0 prerequisites, P1 Morning Brief, P2 Focus & Wellbeing
-Coach and P3 Second Brain are implemented and tested. P4 Chief of Staff is
-next.
+**Current status:** P0–P5 are implemented and tested. The five daily-use
+agents are available.
 
 This roadmap turns the paper-aligned agent architectures and VIRA's device,
 memory, knowledge and tool platform into five daily-use agents. It deliberately
@@ -239,7 +238,7 @@ memory items per user.
 
 ---
 
-## P4 — Chief of Staff (inbox, calendar, tasks)
+## P4 — Chief of Staff (inbox, calendar, tasks) — implemented
 
 **Pitch:** "Your agent triages the day and drafts the boring replies — you
 approve what sends."
@@ -252,32 +251,59 @@ with an orchestrator validation pass; `SingleAgent` for quick replies.
 **Uses:** MCP email/calendar/task connectors, memory of people and preferences,
 approval gates, audit.
 
-**Acceptance:**
-- Drafts never send without explicit approval.
-- Action items are extracted with source links.
-- Connector failures degrade gracefully and are reported in the brief.
+**Implementation:**
+- Agent: `vira/agent/Agents/chief_of_staff.py`, registered as `chief-of-staff`.
+- Collects configured connectors, runs one extraction worker per source in
+  parallel, validates source attribution, then renders a triage brief.
+- Extracts action items with source labels/links and draft replies.
+- Never calls a send tool: `sent=0` is recorded and drafts are output only.
+- Recalls preference memories for tone.
+- Missing connectors are reported as unavailable instead of failing the run.
+- Reference connector: `examples/mcp/office_server.py` reads local JSON
+  `emails.json`, `calendar.json` and `tasks.json` without network access.
+
+- [x] Drafts never send without explicit approval.
+- [x] Action items are extracted with source attribution/links.
+- [x] Connector failures degrade gracefully and are reported in the brief.
+- [x] Parallel extraction with a centralized validation bottleneck.
+
+**Acceptance evidence:** `python3 -m unittest vira.tests.test_chief_household vira.tests.test_examples -v`.
 
 **Metrics:** drafts accepted, time saved, connector adoption, daily active
 users.
 
 ---
 
-## P5 — Household and Life Admin
+## P5 — Household and Life Admin — implemented
 
 **Pitch:** "The family operations agent that lives on your own server."
 
 **Daily triggers:** morning plan and evening check; weekly household review.
 
 **Architecture:** `SingleAgent` for everyday questions;
-`CentralizedAgentSystem` for the weekly plan (meals, budget, chores in
+`CentralizedAgentSystem` for the weekly plan (meals, budget and chores in
 parallel).
 
 **Uses:** family/household data, memory, local files, MCP tools, reminders.
 
-**Acceptance:**
-- Multiple household members can share schedules and lists.
-- Family data is scoped to the household; non-members cannot read it.
-- Weekly review is delivered to each member according to their own quiet hours.
+**Implementation:**
+- Agent: `vira/agent/Agents/household.py`, registered as `household`.
+- Reads a membership-checked household snapshot: notes, reminders and open
+  checklist items.
+- `input.mode` selects `morning`, `evening` or `weekly`; `input.household_id`
+  selects a household.
+- Weekly mode fans out to meals, budget and chores workers, then merges them
+  and records a centralized coordination profile.
+- Deterministic fallback when the model is unavailable.
+- Delivered per member through their own schedule and quiet hours.
+
+- [x] Multiple household members share notes, lists and reminders.
+- [x] Non-members cannot read household data.
+- [x] Weekly review is delivered to each member according to their own quiet
+  hours (each member owns a schedule).
+- [x] Shared data is read through the family store membership checks.
+
+**Acceptance evidence:** `python3 -m unittest vira.tests.test_chief_household -v`.
 
 **Metrics:** households with 2+ active members, weekly review open rate,
 retention.

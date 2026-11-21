@@ -335,6 +335,36 @@ agents:
       stale_days: 90
       low_confidence: 0.35
 
+  # Inbox/calendar/task triage. Add MCP connector tools to context_tools; the
+  # agent never sends drafts, it only returns them for approval.
+  - name: ChiefOfStaffAgent
+    module: vira.agent.Agents.chief_of_staff
+    class: ChiefOfStaffAgent
+    agent_id: chief-of-staff
+    enabled: true
+    config:
+      mode: morning
+      max_tokens: 900
+      max_sources: 6
+      # Add installed MCP connector tools here:
+      # context_tools:
+      #   - {name: office.email_inbox, role: email}
+      #   - {name: office.calendar_today, role: calendar}
+      #   - {name: office.tasks_due, role: tasks}
+      context_tools: []
+
+  # Shared household planning. Use input {"mode": "morning" | "evening" |
+  # "weekly"} and optionally {"household_id": "..."}.
+  - name: HouseholdAgent
+    module: vira.agent.Agents.household
+    class: HouseholdAgent
+    agent_id: household
+    enabled: true
+    config:
+      mode: morning
+      max_tokens: 800
+      max_words: 240
+
 mcp_server:
   command: ["python", "vira/tools/mcp_server.py"]   # path to your MCP server script
   permissions: ["read", "write", "execute"]

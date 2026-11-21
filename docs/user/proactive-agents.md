@@ -17,8 +17,8 @@ installed agent; the five recommended agents are delivered next.
 | Morning Brief | morning | single | **available** |
 | Focus & Wellbeing Coach | morning, mid-day, evening | single | **available** |
 | Second Brain | capture + weekly consolidation | single | **available** |
-| Chief of Staff | morning and evening | centralized | planned |
-| Household & Life Admin | morning, evening, weekly review | single | planned |
+| Chief of Staff | morning and evening | centralized | **available** |
+| Household & Life Admin | morning, evening, weekly review | single → centralized weekly | **available** |
 
 Each recipe includes its pitch, required tools, default schedule and current
 status.
@@ -135,6 +135,80 @@ Capture writes to the existing scoped knowledge base, so the knowledge API,
 export and delete flows continue to apply. Corrections create a new revision via
 `PATCH /api/v1/knowledge/items/{item_id}`; the previous revision is retained and
 marked deprecated.
+
+## Chief of Staff
+
+Installed as `chief-of-staff`. It collects configured email, calendar and task
+connectors in parallel, extracts source-linked action items, and drafts replies.
+It does **not** send anything; `sent` is always `0` and drafts are returned for a
+human to approve.
+
+VIRA includes a local, read-only reference connector at
+`examples/mcp/office_server.py`. It reads:
+
+```
+data/office/emails.json
+data/office/calendar.json
+data/office/tasks.json
+```
+
+Register it as the MCP server `office`, then configure the tools:
+
+```yaml
+agents:
+  - name: ChiefOfStaffAgent
+    module: vira.agent.Agents.chief_of_staff
+    class: ChiefOfStaffAgent
+    agent_id: chief-of-staff
+    enabled: true
+    config:
+      mode: morning
+      context_tools:
+        - {name: office.email_inbox, role: email}
+        - {name: office.calendar_today, role: calendar}
+        - {name: office.tasks_due, role: tasks}
+```
+
+Schedule a morning triage:
+
+```bash
+curl -s -X POST http://localhost:8000/api/v1/agent-schedules \
+  -H "Authorization: Bearer <session>" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "chief-of-staff", "name": "Morning triage",
+       "message": "Triage my day.", "schedule_type": "daily",
+       "time_of_day": "08:00", "timezone": "Asia/Kolkata",
+       "input": {"mode": "morning"}}'
+```
+
+If a connector is unavailable, the brief lists it under **Unavailable** and
+continues with the sources that worked.
+
+## Household & Life Admin
+
+Installed as `household`. It reads the shared household notes, reminders and
+open chores, then produces a morning plan, evening check or weekly review.
+Weekly mode fans out meals, budget and chores to parallel workers.
+
+```bash
+# Get the household id
+curl -s http://localhost:8000/api/v1/households \
+  -H "Authorization: Bearer <session>"
+
+# Morning plan for every member, each with their own quiet hours
+curl -s -X POST http://localhost:8000/api/v1/agent-schedules \
+  -H "Authorization: Bearer <session>" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id": "household", "name": "Household morning",
+       "message": "Plan the household day.", "schedule_type": "daily",
+       "time_of_day": "07:00", "timezone": "Asia/Kolkata",
+       "quiet_hours_start": "22:00", "quiet_hours_end": "06:30",
+       "input": {"mode": "morning", "household_id": "<household-id>"}}'
+```
+
+Each member creates their own schedule, so the weekly review respects each
+person’s quiet hours. Household reads are membership-checked; non-members get a
+permission error rather than partial data.
 
 ## See what can be scheduled
 

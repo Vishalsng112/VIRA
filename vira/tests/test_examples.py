@@ -1,5 +1,6 @@
 """Complete plugin and MCP examples must load, register and actually work."""
 import asyncio
+import json
 import sys
 import tempfile
 import unittest
@@ -127,6 +128,47 @@ class ExampleMcpServerTests(unittest.TestCase):
                 found = await connection.session.call_tool(
                     "notes_search", {"query": "hello"})
                 self.assertIn("Example note", found.content[0].text)
+            finally:
+                await connection.close()
+
+        asyncio.run(exercise())
+
+    def test_office_server_handshake_and_reads(self):
+        from datetime import datetime, timezone
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        office = Path(tmp.name)
+        today = datetime.now(timezone.utc).date().isoformat()
+        (office / "emails.json").write_text(json.dumps([
+            {"from": "sam@example.com", "subject": "Review plan",
+             "body": "Can you review?", "link": "https://mail.example/1"}
+        ]), encoding="utf-8")
+        (office / "calendar.json").write_text(json.dumps({"events": [
+            {"title": "Standup", "start": f"{today}T09:00:00+00:00",
+             "end": f"{today}T09:15:00+00:00"}
+        ]}), encoding="utf-8")
+        (office / "tasks.json").write_text(json.dumps({"tasks": [
+            {"title": "Pay invoice", "due": f"{today}T17:00:00+00:00"}
+        ]}), encoding="utf-8")
+        connection = MCPServerConnection.stdio(
+            name="office-example",
+            command=sys.executable,
+            args=[str(ROOT / "examples" / "mcp" / "office_server.py")],
+            env={"PYTHONPATH": str(ROOT), "VIRA_OFFICE_DIR": str(office)},
+        )
+
+        async def exercise():
+            await connection.connect()
+            try:
+                tools = await connection.session.list_tools()
+                names = {tool.name for tool in tools.tools}
+                self.assertTrue({"email_inbox", "calendar_today", "tasks_due"} <= names)
+                email = await connection.session.call_tool("email_inbox", {"limit": 5})
+                self.assertIn("Review plan", email.content[0].text)
+                calendar = await connection.session.call_tool("calendar_today", {})
+                self.assertIn("Standup", calendar.content[0].text)
+                tasks = await connection.session.call_tool("tasks_due", {"days": 7})
+                self.assertIn("Pay invoice", tasks.content[0].text)
             finally:
                 await connection.close()
 

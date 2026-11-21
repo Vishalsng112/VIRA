@@ -39,3 +39,25 @@ The example test performs a real stdio handshake, lists tools and calls one:
 ```bash
 python3 -m unittest vira.tests.test_examples -v
 ```
+
+## Office connector
+
+`office_server.py` is a read-only local connector for the Chief of Staff agent.
+It reads JSON files from `VIRA_OFFICE_DIR` (default `data/office`):
+
+```text
+emails.json    [{"from","subject","body","received_at","link"}]
+calendar.json  {"events": [{"title","start","end","link"}]}
+tasks.json     {"tasks": [{"title","due","done","link"}]}
+```
+
+Tools: `email_inbox`, `calendar_today`, `tasks_due`. It performs no network or
+write operations. Run it with:
+
+```bash
+VIRA_OFFICE_DIR=data/office python examples/mcp/office_server.py
+```
+
+Register the MCP server as `office`, then configure the agent tools as
+`office.email_inbox`, `office.calendar_today` and `office.tasks_due`. See
+[Proactive agents](../../docs/user/proactive-agents.md#chief-of-staff).

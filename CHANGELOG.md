@@ -51,6 +51,13 @@ All notable changes to VIRA are documented here. The format follows
 - Structured schedule `input` payloads (migration 18) for agent modes.
 - Knowledge corrections via `PATCH /api/v1/knowledge/items/{item_id}` and the
   `second-brain` `correct` mode; superseded revisions are retained.
+- Chief of Staff agent (`chief-of-staff`): parallel email/calendar/task
+  extraction, source-linked action items, approval-safe drafts (`sent=0`),
+  preference memory and graceful connector failures.
+- Household & Life Admin agent (`household`): membership-checked household
+  snapshots, morning/evening plans, and a weekly meals/budget/chores fan-out.
+- Read-only local office MCP connector (`examples/mcp/office_server.py`) for
+  demonstrating the Chief of Staff without external credentials.
 - Authorized `knowledge_list` service/runtime helper for scoped knowledge review.
 - Scoped knowledge base for agents: a single `knowledge_items` store with
   `conversation`/`personal`/`agent`/`org`/`global` scopes, append-only revisions,
