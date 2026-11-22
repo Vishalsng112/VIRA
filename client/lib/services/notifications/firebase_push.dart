@@ -104,7 +104,9 @@ class PushRegistrationService {
         _sendToken(controller, token);
       });
       FirebaseMessaging.onMessage.listen((message) {
-        LocalNotifications.instance.show(_fromRemote(message));
+        if (controller.notificationsEnabled) {
+          LocalNotifications.instance.show(_fromRemote(message));
+        }
       });
       FirebaseMessaging.onMessageOpenedApp.listen((_) {
         controller.requestModule('inbox');

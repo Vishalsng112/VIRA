@@ -9,6 +9,7 @@ import '../../core/config/app_config.dart';
 import '../../data/storage/outbox_store.dart';
 import '../shell/app_shell.dart';
 import '../../services/capture/capture_service.dart';
+import '../../services/notifications/notification_hub.dart';
 import '../../services/sync/sync_service.dart';
 
 /// Plain-language overview for everyone, with technical details tucked away.
@@ -85,6 +86,8 @@ class DashboardPage extends StatelessWidget {
                       );
                     },
                   ),
+                  SizedBox(height: gap),
+                  _AppFeaturesCard(controller: controller),
                   SizedBox(height: gap),
                   const _HowItWorks(),
                   SizedBox(height: gap),
@@ -671,8 +674,8 @@ class _SharingRow extends StatelessWidget {
     ),
     'idle_state' => const _CollectorMeta(
       Icons.timer_outlined,
-      'Away time',
-      'When you step away from the device.',
+      'Focus & idle',
+      'Active, away and idle time. Android requires Usage Access.',
       Color(0xFF52D6E8),
     ),
     _ => _CollectorMeta(
@@ -814,6 +817,56 @@ class _ConnectionLine extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _AppFeaturesCard extends StatelessWidget {
+  const _AppFeaturesCard({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SectionCard(
+      title: 'App features',
+      subtitle: 'Capabilities that are not device sensors. You can change them at any time.',
+      child: Column(
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.notifications_active_outlined),
+            title: const Text('Agent notifications'),
+            subtitle: const Text(
+              'Show native alerts for scheduled agent results while VIRA Link is running.',
+            ),
+            value: controller.notificationsEnabled,
+            onChanged: (value) async {
+              await controller.setNotificationsEnabled(value);
+              if (value) {
+                await NotificationHub.instance.requestPermission(
+                  controller: controller,
+                );
+              }
+            },
+          ),
+          const Divider(height: 20),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.bug_report_outlined),
+            title: const Text('Crash diagnostics'),
+            subtitle: Text(
+              'Record redacted local errors for troubleshooting. Off by default.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            value: controller.diagnosticsEnabled,
+            onChanged: controller.setDiagnosticsEnabled,
+          ),
+        ],
+      ),
     );
   }
 }

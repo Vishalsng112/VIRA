@@ -79,7 +79,9 @@ class NotificationHub {
     _subscription = api.streamNotifications().listen(
       (notification) {
         _attempt = 0;
-        LocalNotifications.instance.show(notification);
+        if (_controller?.notificationsEnabled ?? true) {
+          LocalNotifications.instance.show(notification);
+        }
       },
       onError: (Object error) {
         debugPrint('Notification stream error: $error');

@@ -103,6 +103,7 @@ class AppController extends ChangeNotifier {
   AppThemeMode get themeMode => settings.themeMode;
   bool get diagnosticsEnabled => settings.diagnosticsEnabled;
   bool get breakRemindersEnabled => settings.breakRemindersEnabled;
+  bool get notificationsEnabled => settings.notificationsEnabled;
   bool get permissionSetupCompleted => settings.permissionSetupCompleted;
   bool get usageAccessDismissed => settings.usageAccessDismissed;
   bool get isSideloaded => _sideloaded;
@@ -645,6 +646,11 @@ class AppController extends ChangeNotifier {
 
   Future<void> setBreakRemindersEnabled(bool value) async {
     await settings.setBreakRemindersEnabled(value);
+    notifyListeners();
+  }
+
+  Future<void> setNotificationsEnabled(bool value) async {
+    await settings.setNotificationsEnabled(value);
     notifyListeners();
   }
 

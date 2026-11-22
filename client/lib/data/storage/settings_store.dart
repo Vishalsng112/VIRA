@@ -19,6 +19,7 @@ class SettingsStore {
   static const _themeKey = 'settings.theme_mode';
   static const _diagnosticsKey = 'settings.diagnostics_enabled';
   static const _remindersKey = 'settings.break_reminders';
+  static const _notificationsKey = 'settings.agent_notifications';
   static const _permissionSetupKey = 'settings.permission_setup_completed';
   static const _notificationPromptKey =
       'settings.notification_permission_prompted';
@@ -90,6 +91,11 @@ class SettingsStore {
   bool get breakRemindersEnabled => _prefs.getBool(_remindersKey) ?? true;
   Future<void> setBreakRemindersEnabled(bool value) =>
       _prefs.setBool(_remindersKey, value);
+
+  /// Native agent notifications while VIRA Link is running.
+  bool get notificationsEnabled => _prefs.getBool(_notificationsKey) ?? true;
+  Future<void> setNotificationsEnabled(bool value) =>
+      _prefs.setBool(_notificationsKey, value);
 
   /// The one-time permission setup screen is shown after the first successful
   /// device connection. Existing installs see it once after upgrading.

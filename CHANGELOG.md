@@ -15,8 +15,11 @@ All notable changes to VIRA are documented here. The format follows
 - The web chat agent picker only lists agents that subscribe to `user.message`;
   task-only agents remain available through schedules.
 - Platform-specific collectors now default to off when unavailable: Android
-  active-window/hardware/idle and Linux active-window/battery. Linux Wayland
+  active-window/hardware and Linux active-window/battery. Linux Wayland
   active-window limitations are documented.
+- Android now has a **Focus & idle** collector backed by UsageStats screen and
+  interaction events. The Overview dashboard now includes toggles for agent
+  notifications and crash diagnostics alongside every available device signal.
 
 ## [1.2.1] - 2026-11-22
 

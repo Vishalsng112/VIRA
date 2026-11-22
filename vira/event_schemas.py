@@ -49,7 +49,7 @@ SCHEMAS: Dict[str, Dict[str, Any]] = {
         "properties": {"storage_percent": {"type": "integer"}, "warnings": {"type": "array"}},
     },
     "device.idle.state": {
-        "description": "Desktop idle state.",
+        "description": "Desktop or Android focus/idle state.",
         "required": ["idle_seconds"],
         "properties": {"idle_seconds": {"type": "integer"}, "state": {"type": "string"}},
     },

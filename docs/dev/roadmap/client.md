@@ -350,6 +350,12 @@ signal is available.
 Platform limitations are product constraints, not bugs. The client must report
 them honestly through `permission_denied` and `unavailable` states.
 
+Every available row above is represented by a toggle on **Overview**. Android
+Focus/idle is implemented through UsageStats; Linux screen on/off remains
+partial and is represented by the desktop Focus & idle signal. Notifications
+and crash diagnostics have app-feature toggles. Calendar and location remain
+future opt-ins.
+
 ---
 
 ## 9. Success metrics

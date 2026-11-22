@@ -42,6 +42,14 @@ void main() {
     expect(store.breakRemindersEnabled, isFalse);
   });
 
+  test('agent notifications default on and persist', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = await SettingsStore.open();
+    expect(store.notificationsEnabled, isTrue);
+    await store.setNotificationsEnabled(false);
+    expect(store.notificationsEnabled, isFalse);
+  });
+
   test('permission setup is one-time and remembers skips', () async {
     SharedPreferences.setMockInitialValues({});
     final store = await SettingsStore.open();
