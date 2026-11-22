@@ -177,7 +177,7 @@ Full design notes: [P4_ECOSYSTEM.md](../designs/p4-ecosystem.md).
 
 ### P5 — Operations and security
 
-- [ ] TLS termination, CSRF protection, secure cookie settings, CORS policy.
+- [x] TLS termination, CSRF protection, secure cookie settings, CORS policy, security headers and real client-IP rate limiting.
 - [ ] Dependency/security scanning and signed release artifacts.
 - [ ] Alerting for failed outbox, credential expiry, queue backlog, agent
   failures and disk/database pressure.

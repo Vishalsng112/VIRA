@@ -13,6 +13,7 @@ from vira.kernel import Kernel
 from vira.api.app import create_app
 from vira.auth import auth, database
 from vira.observability import configure_logging
+from vira.security.auth_secret import resolve_auth_secret
 
 # logger.remove()  # Remove default handler
 # logger.add(
@@ -38,6 +39,20 @@ class SignalAwareServer(uvicorn.Server):
 async def main():
     kernel = Kernel(config_path=os.getenv("VIRA_CONFIG", "config.yaml"))
     await kernel.boot()
+
+    secret, source = resolve_auth_secret(kernel.config_manager)
+    if source == "generated":
+        logger.warning(
+            "Generated a new session secret in data/auth_secret. "
+            "Existing browser sessions will be signed out."
+        )
+    elif source == "ephemeral":
+        logger.warning(
+            "Could not write data/auth_secret. Using an ephemeral session secret; "
+            "sessions will not survive a restart."
+        )
+    else:
+        logger.info("Session secret loaded from {}", source)
 
     app = create_app(kernel)
 

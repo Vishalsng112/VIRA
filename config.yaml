@@ -5,8 +5,8 @@
 #   VIRA_AUTH_HTTPS_ONLY=true  ->  auth.https_only
 #   VIRA_OLLAMA_URL=...        ->  llm.models[].base_url
 #
-# Keep secrets out of this file. Set auth.secret_key with an environment
-# variable or edit it once locally before exposing the server.
+# Keep secrets out of this file. Leave auth.secret_key empty to generate
+# data/auth_secret (0600, git-ignored), or set VIRA_AUTH_SECRET.
 
 # ---------------------------------------------------------------------------
 # Kernel
@@ -23,12 +23,15 @@ kernel:
 # Authentication and sessions
 # ---------------------------------------------------------------------------
 auth:
-  # Replace this before exposing the server beyond localhost.
-  secret_key: "change-this-to-a-random-secret-key-in-production"
+  # Leave empty to generate data/auth_secret on first start. That file is
+  # git-ignored and chmod 0600. VIRA_AUTH_SECRET overrides it.
+  secret_key: ""
   session_cookie_name: vira_session
   session_max_age: 86400        # seconds (24 hours)
   # true when TLS is enabled directly or terminated by a trusted proxy.
-  https_only: false
+  # Public Cloudflare access is HTTPS. VIRA Link uses bearer credentials and
+  # is unaffected; the LAN web dashboard then requires the public HTTPS URL.
+  https_only: true
   database_url: sqlite:///data/vira.sqlite3
 
 # ---------------------------------------------------------------------------
@@ -81,6 +84,14 @@ access:
     port: 8000
     prefer_dns_name: true
     timeout_seconds: 2
+
+# ---------------------------------------------------------------------------
+# API docs
+# Interactive /docs and /redoc are disabled on a public server. Enable only
+# for local development.
+# ---------------------------------------------------------------------------
+api:
+  docs_enabled: false
 
 # ---------------------------------------------------------------------------
 # Event bus, scheduler, metrics
@@ -187,6 +198,8 @@ plugins:
 # Security and tool approvals
 # ---------------------------------------------------------------------------
 security:
+  # Extra browser origins allowed to make cookie-authenticated writes.
+  allowed_origins: []
   approvals:
     enabled: true
     ttl_minutes: 30

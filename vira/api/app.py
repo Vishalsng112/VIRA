@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
 import asyncio
 import json
+import secrets
 import time
 import uuid
 from asyncio import Future, TimeoutError as AsyncTimeoutError
@@ -42,6 +43,8 @@ from vira.agent.progress import hub as progress_hub
 from vira.llm import catalog as model_catalog
 from vira.llm import guidance as model_guidance
 from vira.security.redaction import redact as redact_secrets
+from vira.security.auth_secret import is_weak_secret
+from vira.security.http import OriginProtectionMiddleware, SecurityHeadersMiddleware
 from vira.api.routes_account import build_account_router
 from vira.api.routes_admin import build_admin_router
 from vira.api.routes_notifications import build_notification_router
@@ -220,7 +223,13 @@ def _redact(value):
 def create_app(kernel: Kernel) -> FastAPI:
     set_kernel(kernel)
 
-    app = FastAPI(title="VIRA Server API", version="0.4.0")
+    docs_enabled = bool(kernel.config_manager.get("api.docs_enabled", False))
+    app = FastAPI(
+        title="VIRA Server API",
+        version="0.4.0",
+        docs_url="/docs" if docs_enabled else None,
+        redoc_url=None,
+    )
     install_error_handling(app)
 
     @app.middleware("http")
@@ -247,7 +256,13 @@ def create_app(kernel: Kernel) -> FastAPI:
         return response
 
     # --- Session Middleware ---
-    secret_key = kernel.config_manager.get("auth.secret_key", "default-secret-change-me")
+    secret_key = kernel.config_manager.get("auth.secret_key", "")
+    if is_weak_secret(secret_key):
+        secret_key = secrets.token_urlsafe(48)
+        logger.warning(
+            "Using an ephemeral session secret. Start through run.py or set "
+            "VIRA_AUTH_SECRET to keep sessions across restarts."
+        )
     app.add_middleware(
         SessionMiddleware,
         secret_key=secret_key,
@@ -269,6 +284,21 @@ def create_app(kernel: Kernel) -> FastAPI:
         RateLimitMiddleware,
         enabled=bool(rate_config.get("enabled", True)),
     )
+    security_config = kernel.config_manager.get("security", {}) or {}
+    access_config = kernel.config_manager.get("access", {}) or {}
+    allowed_origins = [
+        access_config.get("public_url"),
+        (access_config.get("cloudflare") or {}).get("public_url"),
+        (access_config.get("cloudflare") or {}).get("hostname"),
+        (access_config.get("lan") or {}).get("address"),
+        *(security_config.get("allowed_origins") or []),
+    ]
+    app.add_middleware(
+        OriginProtectionMiddleware,
+        session_cookie="vira_session",
+        allowed_origins=tuple(item for item in allowed_origins if item),
+    )
+    app.add_middleware(SecurityHeadersMiddleware)
 
     # --- Static files ---
     static_dir = Path(__file__).parent.parent / "web" / "static"

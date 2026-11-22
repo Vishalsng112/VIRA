@@ -1,4 +1,5 @@
 """Request rate limiting for public and authenticated VIRA endpoints."""
+import hashlib
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
@@ -16,6 +17,9 @@ class RateLimitRule:
 
 DEFAULT_RULES = {
     "/api/v1/auth/login": RateLimitRule(10, 60),
+    "/api/v1/devices/pairing-code": RateLimitRule(10, 60),
+    "/api/v1/access/cloudflare/connect": RateLimitRule(10, 300),
+    "/api/v1/access/tailscale/connect": RateLimitRule(10, 300),
     "/api/v1/auth/setup": RateLimitRule(5, 300),
     "/api/v1/auth/password/reset": RateLimitRule(5, 300),
     "/chat": RateLimitRule(30, 60),
@@ -67,6 +71,24 @@ class RateLimiter:
             self._windows.pop(key, None)
 
 
+def client_ip(request: Request) -> str:
+    """Return the real client IP when cloudflared is the local proxy.
+
+    Cloudflare sets CF-Connecting-IP. It is trusted only when the TCP peer is
+    loopback, which is how a local cloudflared service connects. Direct clients
+    cannot spoof it to escape rate limits.
+    """
+    peer = request.client.host if request.client else ""
+    if peer in ("127.0.0.1", "::1"):
+        candidate = (request.headers.get("cf-connecting-ip") or "").strip()
+        if candidate:
+            return candidate
+        forwarded = (request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
+        if forwarded:
+            return forwarded
+    return peer or "unknown"
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, limiter: Optional[RateLimiter] = None, enabled: bool = True):
         super().__init__(app)
@@ -79,10 +101,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         rule = self.limiter.rule_for(request.url.path)
         if rule is None:
             return await call_next(request)
-        identity = (
+        credential = (
             request.headers.get("authorization")
             or request.cookies.get("vira_session")
-            or (request.client.host if request.client else "unknown")
+        )
+        identity = (
+            hashlib.sha256(credential.encode("utf-8")).hexdigest()[:32]
+            if credential
+            else client_ip(request)
         )
         key = f"{request.url.path}:{identity[:80]}"
         allowed, retry_after = self.limiter.check(key, rule)

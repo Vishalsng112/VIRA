@@ -27,9 +27,20 @@ The engineering threat model is in
   password reset and admin disable/delete revoke sessions.
 - Device credentials are separate from user sessions, scoped, expiring and
   revocable. Raw device tokens are shown once and stored as hashes.
-- The session cookie is signed with `auth.secret_key`. Set a random value before
-  exposing the server.
-- `auth.https_only` must be enabled when the server is behind HTTPS/TLS.
+- The session cookie is signed with a strong secret generated on first start in
+  `data/auth_secret` (`0600`, git-ignored). `VIRA_AUTH_SECRET` can override it.
+  The secret is never written to `config.yaml`.
+- `auth.https_only: true` marks the session cookie `Secure` when the server is
+  behind HTTPS. Cloudflare terminates TLS and forwards the original scheme.
+- The session cookie is `HttpOnly` and `SameSite=Lax`.
+- Cookie-authenticated writes reject cross-site `Origin`/`Referer` values
+  (`csrf_blocked`), while bearer/device clients are unaffected.
+- Responses include CSP, HSTS (on HTTPS), `X-Frame-Options`, `X-Content-Type-Options`,
+  `Referrer-Policy` and `Cross-Origin-Resource-Policy`.
+- Login, pairing, setup and admin routes are rate-limited. Behind a local
+  cloudflared service the limiter uses `CF-Connecting-IP`; direct clients cannot
+  spoof that header.
+- Interactive `/docs` and `/redoc` are disabled by default.
 - Public exposure is an explicit choice. If you use a Cloudflare named tunnel,
   set a strong admin password, keep rate limits enabled and consider Cloudflare
   Access. For private-only access, use the LAN or Tailscale provider. See

@@ -8,6 +8,15 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Added
 
+- No unreleased changes yet.
+
+## [0.6.0] - 2026-11-22
+
+### Added
+
+- Security hardening for public deployments: persistent generated session secret,
+  Secure cookies behind HTTPS, CSRF origin checks, CSP/HSTS/security headers,
+  Cloudflare-aware rate-limit identities and disabled interactive API docs.
 - One-tap QR/code pairing between the server dashboard and VIRA Link. The
   dashboard issues a single-use code with an inline QR and copyable
   `vira://pair` link; Android scans it and Linux pastes it. Redeeming the code

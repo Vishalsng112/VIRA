@@ -10,3 +10,4 @@ from .approvals import (  # noqa: F401
     request_approval,
 )
 from .redaction import redact  # noqa: F401
+from .auth_secret import is_weak_secret, resolve_auth_secret  # noqa: F401
