@@ -10082,6 +10082,17 @@
             "type": "array",
             "title": "Capabilities",
             "default": []
+          },
+          "installation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installation Id"
           }
         },
         "type": "object",
