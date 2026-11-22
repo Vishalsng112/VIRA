@@ -3606,6 +3606,74 @@
         }
       }
     },
+    "/api/v1/access/cloudflare": {
+      "get": {
+        "summary": "Get Cloudflare",
+        "operationId": "get_cloudflare_api_v1_access_cloudflare_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/access/cloudflare/login": {
+      "post": {
+        "summary": "Login Cloudflare",
+        "operationId": "login_cloudflare_api_v1_access_cloudflare_login_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/access/cloudflare/connect": {
+      "post": {
+        "summary": "Connect Cloudflare",
+        "operationId": "connect_cloudflare_api_v1_access_cloudflare_connect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloudflareConnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/client-config": {
       "get": {
         "summary": "Client Config",
@@ -8820,6 +8888,31 @@
           "message"
         ],
         "title": "ChatRequest"
+      },
+      "CloudflareConnectRequest": {
+        "properties": {
+          "hostname": {
+            "type": "string",
+            "title": "Hostname"
+          },
+          "tunnel_name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 63
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tunnel Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "hostname"
+        ],
+        "title": "CloudflareConnectRequest"
       },
       "CommandRequest": {
         "properties": {
