@@ -80,7 +80,7 @@
 html { -webkit-text-size-adjust: 100%; }
 [hidden] { display: none !important; }
 body {
-  margin: 0; min-height: 100vh;
+  margin: 0; height: 100dvh; min-height: 100dvh; overflow: hidden;
   background: var(--bg-gradient);
   background-attachment: fixed;
   color: var(--text);
@@ -94,7 +94,7 @@ button { cursor: pointer; }
 :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 2px; border-radius: 8px; }
 
 /* ---------- Layout ---------- */
-.chat-app { display: flex; min-height: 100vh; }
+.chat-app { display: flex; height: 100dvh; min-height: 0; overflow: hidden; }
 
 /* ---------- Sidebar ---------- */
 .chat-sidebar {
@@ -289,10 +289,11 @@ button { cursor: pointer; }
 /* ---------- Composer ---------- */
 .composer {
   position: relative; flex: none;
-  padding: 0.7rem max(1.5rem, calc((100vw - 54rem) / 2)) 1.25rem;
+  padding: 0.7rem max(1.5rem, calc((100vw - 54rem) / 2)) max(1.25rem, env(safe-area-inset-bottom));
   background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 92%, transparent) 24%, var(--bg) 58%);
   pointer-events: none;
 }
+.composer-box { position: relative; pointer-events: none; }
 .context-rail {
   display: flex; flex-direction: column; gap: 1.1rem;
   padding: 1.4rem 1.35rem 1.5rem;
@@ -323,7 +324,7 @@ button { cursor: pointer; }
 .composer textarea {
   pointer-events: auto;
   display: block; width: 100%; max-height: 11rem; resize: none;
-  padding: 0.95rem 3.4rem 0.95rem 1.1rem;
+  padding: 0.95rem 3.6rem 0.95rem 1.1rem;
   border: 1px solid var(--border-strong); border-radius: 22px;
   outline: none; background: var(--panel-solid); color: var(--text);
   box-shadow: var(--shadow-lg);
@@ -334,8 +335,9 @@ button { cursor: pointer; }
   border-color: var(--accent);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent), var(--shadow-lg);
 }
-.composer-footer { display: flex; justify-content: space-between; align-items: center; margin-top: -2.6rem; padding: 0 0.75rem 0.6rem 1.1rem; pointer-events: none; }
-.composer-footer span { margin-top: 2.7rem; color: var(--faint); font-size: 0.6875rem; }
+.composer-actions { position: absolute; right: 0.7rem; bottom: 0.7rem; display: flex; align-items: center; gap: 0.4rem; pointer-events: none; }
+.composer-actions button { pointer-events: auto; }
+.composer-hint { margin: 0.45rem 0 0; padding-left: 1.1rem; color: var(--faint); font-size: 0.6875rem; pointer-events: none; }
 .send-button {
   pointer-events: auto; z-index: 1;
   display: grid; place-items: center;
@@ -348,7 +350,6 @@ button { cursor: pointer; }
 .send-button svg { width: 1.05rem; height: 1.05rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .send-button:hover { background: var(--accent-hover); transform: translateY(-1px); }
 .send-button:disabled { opacity: .35; cursor: not-allowed; transform: none; }
-.composer-actions { display: flex; align-items: center; gap: 0.4rem; }
 .stop-button {
   pointer-events: auto; z-index: 1;
   display: grid; place-items: center;
@@ -486,8 +487,7 @@ button { cursor: pointer; }
   .welcome-state { padding-top: 9vh; }
   .suggestion-grid { grid-template-columns: 1fr; }
   .message-list { padding-right: 1rem; padding-left: 1rem; }
-  .composer-footer { justify-content: flex-end; }
-  .composer-footer span { display: none; }
+  .composer-hint { display: none; }
 }
 @media (max-width: 30rem) {
   .chat-sidebar { width: 3.6rem; flex-basis: 3.6rem; padding: 0.8rem 0.35rem; }

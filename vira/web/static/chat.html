@@ -6,7 +6,7 @@
   <meta name="description" content="VIRA personal AI chat workspace">
   <title>Chat · VIRA</title>
   <link rel="icon" type="image/png" href="/static/branding/favicon-32.png">
-  <link rel="stylesheet" href="/static/chat.css?v=vira-2">
+  <link rel="stylesheet" href="/static/chat.css?v=vira-3">
   <script>
     (() => {
       let saved = null;
@@ -149,10 +149,9 @@
       </div>
 
       <form id="composer" class="composer">
-        <label class="sr-only" for="message-input">Message VIRA</label>
-        <textarea id="message-input" rows="1" placeholder="Message VIRA…" autocomplete="off"></textarea>
-        <div class="composer-footer">
-          <span>VIRA can make mistakes. Verify important information.</span>
+        <div class="composer-box">
+          <label class="sr-only" for="message-input">Message VIRA</label>
+          <textarea id="message-input" rows="1" placeholder="Message VIRA…" autocomplete="off"></textarea>
           <div class="composer-actions">
             <button id="stop-button" class="stop-button" type="button" hidden aria-label="Stop generating">
               <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
@@ -162,6 +161,7 @@
             </button>
           </div>
         </div>
+        <p class="composer-hint">VIRA can make mistakes. Verify important information.</p>
       </form>
     </main>
   </div>
