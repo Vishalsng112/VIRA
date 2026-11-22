@@ -1,8 +1,11 @@
 """Short-lived pairing codes for enrolling a new device without a session."""
+import base64
 import hashlib
+import io
 import secrets as py_secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
+from urllib.parse import urlencode
 
 from vira.auth import auth, database
 from vira.auth.principals import UserPrincipal
@@ -16,6 +19,24 @@ def _now() -> str:
 
 def _hash(code: str) -> str:
     return hashlib.sha256(code.strip().upper().encode("utf-8")).hexdigest()
+
+
+def pairing_uri(server: str, code: str) -> str:
+    """Return the deep-link payload a client scans or receives as a QR code."""
+    query = urlencode({"server": server.rstrip("/"), "code": code.strip().upper()})
+    return f"vira://pair?{query}"
+
+
+def qr_svg_data_uri(payload: str) -> str:
+    """Render a payload as an inline SVG data URI so the dashboard stays offline."""
+    import qrcode
+    import qrcode.image.svg
+
+    image = qrcode.make(payload, image_factory=qrcode.image.svg.SvgPathImage)
+    buffer = io.BytesIO()
+    image.save(buffer)
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/svg+xml;base64,{encoded}"
 
 
 def create_code(user_id: int, ttl_minutes: int = 10) -> Dict[str, Any]:
@@ -33,7 +54,8 @@ def create_code(user_id: int, ttl_minutes: int = 10) -> Dict[str, Any]:
 
 def redeem(code: str, display_name: str, platform: str, device_type: str,
            os_version: Optional[str] = None, client_version: Optional[str] = None,
-           capabilities: Optional[list] = None) -> Dict[str, Any]:
+           capabilities: Optional[list] = None,
+           installation_id: Optional[str] = None) -> Dict[str, Any]:
     from vira.devices.service import DeviceService  # avoid import cycle
     now = _now()
     with database.transaction() as conn:
@@ -61,13 +83,18 @@ def redeem(code: str, display_name: str, platform: str, device_type: str,
     service = DeviceService()
     created = service.register_device(
         principal, display_name, platform, device_type, os_version,
-        client_version, capabilities or [],
+        client_version, capabilities or [], installation_id=installation_id,
     )
     with database.transaction() as conn:
         conn.execute(
             "UPDATE device_pairing_codes SET device_id = ? WHERE code_hash = ?",
             (created["device_id"], row["code_hash"]),
         )
+    created["account"] = {
+        "user_id": int(user["id"]),
+        "username": user["username"],
+        "roles": [user["role"]],
+    }
     return created
 
 

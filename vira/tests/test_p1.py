@@ -105,8 +105,20 @@ class PairingTests(P1Base):
         )
         self.assertTrue(created["device_id"])
         self.assertTrue(created["credential"]["token"].startswith("vdc_"))
+        self.assertEqual(created["account"]["username"], "root")
         with self.assertRaises(ValueError):
             pairing_store.redeem(code["code"], "Again", "android", "phone")
+
+    def test_pairing_uri_is_a_deep_link_with_server_and_code(self):
+        uri = pairing_store.pairing_uri("http://192.168.1.20:8000/", "abcd2345")
+        self.assertEqual(
+            uri, "vira://pair?server=http%3A%2F%2F192.168.1.20%3A8000&code=ABCD2345")
+
+    def test_pairing_qr_is_an_inline_svg(self):
+        payload = pairing_store.pairing_uri("http://vira.local:8000", "ABCD2345")
+        data_uri = pairing_store.qr_svg_data_uri(payload)
+        self.assertTrue(data_uri.startswith("data:image/svg+xml;base64,"))
+        self.assertGreater(len(data_uri), 500)
 
 
 class NotificationTests(P1Base):

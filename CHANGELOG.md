@@ -6,6 +6,13 @@ All notable changes to VIRA are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- One-tap QR/code pairing between the server dashboard and VIRA Link. The
+  dashboard issues a single-use code with an inline QR and copyable
+  `vira://pair` link; Android scans it and Linux pastes it. Redeeming the code
+  enrolls the device and issues the user session in one step.
+
 ### Fixed
 
 - VIRA Link chat requests now send the enrolled `device_id`, so agent answers

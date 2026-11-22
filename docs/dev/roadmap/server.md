@@ -85,8 +85,9 @@ load test with concurrent device ingestion + chat + admin.
 - [x] **Server-to-device command channel**: create/list commands, device claim,
   result reporting, expiry and cleanup (capture pause/resume, config, queue,
   update, export, consent).
-- [x] **Pairing backend**: short-lived single-use pairing codes, redeem to create
-  a device credential, device rename/revoke/re-enrollment APIs.
+- [x] **Pairing backend**: short-lived single-use pairing codes, dashboard QR
+  and deep-link issuance, redeem to create a device credential and user session,
+  device rename/revoke/re-enrollment APIs.
 - [x] **Per-user data export and deletion** across devices, events, insights,
   conversations, memories, notifications, consents and commands.
 - [x] **Retention jobs** for events, sessions, jobs, commands and pairing codes;

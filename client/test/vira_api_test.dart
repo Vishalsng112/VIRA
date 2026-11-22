@@ -558,4 +558,56 @@ void main() {
     expect(paused.enabled, isFalse);
     await api.deleteAgentSchedule('s2');
   });
+
+  test('pairing redeems a code and stores the returned session', () async {
+    late Map<String, dynamic> sent;
+    final client = MockClient((request) async {
+      expect(request.method, 'POST');
+      expect(request.url.path, '/api/v1/devices/pair');
+      expect(request.headers.containsKey('Authorization'), isFalse);
+      sent = jsonDecode(request.body) as Map<String, dynamic>;
+      return http.Response(
+        jsonEncode({
+          'device_id': 'device-paired',
+          'display_name': 'Paired phone',
+          'platform': 'android',
+          'device_type': 'phone',
+          'status': 'pending',
+          'capabilities': ['device_status'],
+          'credential': {'token': 'vdc_paired'},
+          'session_id': 'session-paired',
+          'account': {
+            'user_id': 5,
+            'username': 'qatester',
+            'roles': ['admin'],
+          },
+        }),
+        201,
+      );
+    });
+
+    final api = ViraApi('http://localhost:8000', client: client);
+    final result = await api.pairDevice(
+      code: ' abcd-2345 ',
+      displayName: 'Paired phone',
+      profile: const DeviceProfile(
+        platform: 'android',
+        deviceType: 'phone',
+        osVersion: '15',
+        hostname: 'test',
+      ),
+      capabilities: const ['device_status'],
+      installationId: 'install-1',
+    );
+
+    expect(sent['code'], 'ABCD2345');
+    expect(sent['installation_id'], 'install-1');
+    expect(result.device.deviceId, 'device-paired');
+    expect(result.token, 'vdc_paired');
+    expect(result.sessionId, 'session-paired');
+    expect(result.username, 'qatester');
+    expect(result.isAdmin, isTrue);
+    expect(api.sessionId, 'session-paired');
+    expect(api.deviceToken, 'vdc_paired');
+  });
 }

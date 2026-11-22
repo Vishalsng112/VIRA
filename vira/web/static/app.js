@@ -1020,6 +1020,25 @@
       ${apps ? `<dl class="kv">${apps}</dl>` : '<p class="empty">No app usage captured.</p>'}`);
   }
 
+  function renderPairingCode(data) {
+    const box = $("pairing-result");
+    if (!box) return;
+    const expires = data.expires_at ? new Date(data.expires_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "soon";
+    box.hidden = false;
+    box.innerHTML = `
+      <div class="pairing-body">
+        <img class="pairing-qr" src="${esc(data.qr_svg)}" alt="Pairing QR code" width="168" height="168">
+        <div>
+          <span class="kpi-label">Pairing code</span>
+          <strong class="pairing-code">${esc(data.code)}</strong>
+          <p class="pairing-meta">Server ${esc(data.server)} · expires ${esc(expires)}</p>
+          <div class="row-actions" style="justify-content:flex-start;margin-top:.6rem">
+            <button class="btn btn-ghost" type="button" data-copy-pairing="${esc(data.pairing_uri)}">Copy pairing link</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
   function renderDevices() {
     const devices = state.devices;
     if (!devices) {
@@ -1559,11 +1578,28 @@
 
 
   document.addEventListener("click", async (event) => {
-    const target = event.target.closest("[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id],[data-generated-id],[data-run-resume],[data-run-timeline],[data-notification-read],[data-schedule-run],[data-schedule-runs],[data-schedule-edit],[data-schedule-toggle],[data-schedule-delete],[data-recipe]");
+    const target = event.target.closest("[data-pair-device],[data-copy-pairing],[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id],[data-generated-id],[data-run-resume],[data-run-timeline],[data-notification-read],[data-schedule-run],[data-schedule-runs],[data-schedule-edit],[data-schedule-toggle],[data-schedule-delete],[data-recipe]");
     if (!target) return;
 
     try {
-      if (target.dataset.notificationRead) {
+      if (target.dataset.pairDevice !== undefined) {
+        target.disabled = true;
+        try {
+          const r = await fetchJson("/api/v1/devices/pairing-code", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ttl_minutes: 10 }),
+          });
+          if (!r.ok) throw new Error(r.data?.detail || "Could not create a pairing code");
+          renderPairingCode(r.data);
+        } finally {
+          target.disabled = false;
+        }
+      } else if (target.dataset.copyPairing) {
+        await navigator.clipboard.writeText(target.dataset.copyPairing);
+        target.textContent = "Copied";
+        setTimeout(() => { target.textContent = "Copy pairing link"; }, 1800);
+      } else if (target.dataset.notificationRead) {
         const r = await fetchJson(`/api/v1/notifications/${encodeURIComponent(target.dataset.notificationRead)}/read`, { method: "POST" });
         if (!r.ok) throw new Error("Could not mark the notification as read");
         await loadInbox(); renderInbox();

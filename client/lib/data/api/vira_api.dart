@@ -7,6 +7,7 @@ import '../../core/config/app_config.dart';
 import '../../core/models/captured_event.dart';
 import '../../core/models/chat_models.dart';
 import '../../core/models/device_info.dart';
+import '../../core/models/pairing_code.dart';
 import '../../core/models/agent_inbox.dart';
 import '../../core/utils/ids.dart';
 
@@ -417,6 +418,55 @@ class ViraApi {
     }
     deviceToken = credential['token'] as String;
     return (DeviceInfo.fromJson(body), deviceToken!);
+  }
+
+  /// Redeems a short-lived pairing code. This is unauthenticated on the wire;
+  /// the code itself authorizes the enrollment and issues a user session.
+  Future<PairingResult> pairDevice({
+    required String code,
+    required String displayName,
+    required DeviceProfile profile,
+    required List<String> capabilities,
+    required String installationId,
+  }) async {
+    final response = await _send(
+      'POST',
+      '/api/v1/devices/pair',
+      body: {
+        'code': PairingPayload.normalizeCode(code) ?? code.trim().toUpperCase(),
+        'display_name': displayName.trim(),
+        'platform': profile.platform,
+        'device_type': profile.deviceType,
+        'os_version': profile.osVersion,
+        'client_version': clientVersion,
+        'capabilities': capabilities,
+        'installation_id': installationId,
+      },
+    );
+    final body = await _decode(response);
+    deviceId = body['device_id']?.toString();
+    final credential = body['credential'];
+    if (credential is! Map || credential['token'] is! String) {
+      throw ViraApiException(
+        response.statusCode,
+        'invalid_pairing',
+        'The server did not return a device credential.',
+      );
+    }
+    deviceToken = credential['token'] as String;
+    final sessionId = body['session_id']?.toString();
+    this.sessionId = sessionId;
+    final account = body['account'];
+    final roles = account is Map && account['roles'] is List
+        ? (account['roles'] as List).map((role) => role.toString()).toList()
+        : const <String>[];
+    return PairingResult(
+      device: DeviceInfo.fromJson(body),
+      token: deviceToken!,
+      sessionId: sessionId,
+      username: account is Map ? account['username']?.toString() : null,
+      roles: roles,
+    );
   }
 
   Future<Map<String, dynamic>> heartbeat({

@@ -8,6 +8,7 @@ import '../core/models/app_usage.dart';
 import '../core/models/captured_event.dart';
 import '../core/models/device_info.dart';
 import '../core/models/device_signals.dart';
+import '../core/models/pairing_code.dart';
 import '../core/models/focus_session.dart';
 import '../data/api/vira_api.dart';
 import '../core/utils/ids.dart';
@@ -330,6 +331,100 @@ class AppController extends ChangeNotifier {
       _api = api;
       _isAdmin = isAdmin;
       _currentDevice = device;
+      _deviceAuthFailed = false;
+      await _startServices();
+      _state = AppConnectionState.connected;
+      unawaited(refreshDevices());
+      unawaited(syncNow());
+    } on ViraApiException catch (error) {
+      _state = AppConnectionState.disconnected;
+      _error = error.message;
+    } on Object catch (error) {
+      _state = AppConnectionState.disconnected;
+      _error = error.toString();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Enrolls this device with a short-lived pairing code instead of a password.
+  ///
+  /// The server returns both a device credential and a user session, so the
+  /// app is fully connected after a successful redeem.
+  Future<void> pairDevice({
+    required String server,
+    required String code,
+    required String deviceName,
+  }) async {
+    if (_busy) return;
+    _busy = true;
+    _state = AppConnectionState.connecting;
+    _error = null;
+    notifyListeners();
+    try {
+      final normalized = ViraApi.normalizeBaseUrl(server);
+      if (normalized.isEmpty) {
+        throw ViraApiException(
+          400,
+          'missing_server',
+          'Enter the VIRA server address shown with the pairing code.',
+        );
+      }
+      final normalizedCode = PairingPayload.normalizeCode(code);
+      if (normalizedCode == null) {
+        throw ViraApiException(
+          400,
+          'invalid_code',
+          'Enter the 8-character pairing code.',
+        );
+      }
+      final api = ViraApi(normalized, clientVersion: appVersion);
+      final profile = _profile ?? await probe.profile();
+      _sideloaded = await _detectSideloaded();
+      final name = deviceName.trim().isEmpty
+          ? suggestedDeviceName
+          : deviceName.trim();
+      final capabilities =
+          _capture?.capabilities ??
+          const [collectorDeviceStatus, collectorHardware, collectorNetwork];
+      final result = await api.pairDevice(
+        code: normalizedCode,
+        displayName: name,
+        profile: profile,
+        capabilities: capabilities,
+        installationId: await settings.ensureInstallationId(),
+      );
+      final session = result.sessionId;
+      if (session == null) {
+        throw ViraApiException(
+          401,
+          'no_session',
+          'The server did not return a session for this pairing code.',
+        );
+      }
+      final username = result.username ?? 'paired-device';
+      await credentials.save(
+        serverUrl: normalized,
+        username: username,
+        sessionId: session,
+        deviceId: result.device.deviceId,
+        deviceToken: result.token,
+        isAdmin: result.isAdmin,
+      );
+      await settings.setServerUrl(normalized);
+      await settings.setDeviceName(name);
+      _stored = StoredCredentials(
+        serverUrl: normalized,
+        username: username,
+        sessionId: session,
+        deviceId: result.device.deviceId,
+        deviceToken: result.token,
+        isAdmin: result.isAdmin,
+      );
+      _api = api;
+      _isAdmin = result.isAdmin;
+      _currentDevice = result.device;
       _deviceAuthFailed = false;
       await _startServices();
       _state = AppConnectionState.connected;

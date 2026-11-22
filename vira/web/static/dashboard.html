@@ -223,6 +223,18 @@
           </article>
         </div>
 
+        <section class="card" id="pairing-card">
+          <header class="card-head">
+            <h2>Pair a device</h2>
+            <span class="card-note">Single use · expires in 10 minutes</span>
+          </header>
+          <p class="insight-copy">Generate a code, then scan the QR with VIRA Link on Android. On Linux, paste the code and this server address into VIRA Link.</p>
+          <div class="row-actions">
+            <button class="btn" type="button" data-pair-device>Generate pairing code</button>
+          </div>
+          <div id="pairing-result" class="pairing-result" hidden></div>
+        </section>
+
         <div class="grid grid-2">
           <section class="card card-flush">
             <header class="card-head" style="padding:1.4rem 1.5rem 0"><h2>Fleet</h2><span class="card-note" id="device-count"></span></header>

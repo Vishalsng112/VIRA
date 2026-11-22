@@ -66,7 +66,9 @@ For GPU, native-Ollama and development variants, see
 ## Connect a device
 
 1. Install **VIRA Link** on the phone or desktop. See [VIRA Link](client.md).
-2. Sign in with the same VIRA account.
+2. Either sign in with the same VIRA account, or open **Devices** in the
+   dashboard, choose **Generate pairing code**, and scan the QR on Android or
+   paste the code and server address on Linux.
 3. Approve the signals you want to share. VIRA Link captures nothing that you
    have not enabled.
 

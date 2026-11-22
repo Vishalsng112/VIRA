@@ -5,6 +5,7 @@ import '../../app/app_scope.dart';
 import '../../app/layout.dart';
 import '../../app/widgets.dart';
 import '../../data/api/vira_api.dart';
+import 'pair_device_dialog.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
@@ -51,6 +52,20 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
     if (mounted && !controller.isConnected) {
       setState(() => _localError = controller.error);
+    }
+  }
+
+  Future<void> _showPair() async {
+    final controller = AppScope.of(context, listen: false);
+    final paired = await showPairDeviceDialog(
+      context,
+      controller: controller,
+      initialServer: _server.text,
+    );
+    if (paired && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Device paired. Loading your dashboard…')),
+      );
     }
   }
 
@@ -364,6 +379,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
             label: Text(busy ? 'Connecting…' : 'Connect this device'),
           ),
           const SizedBox(height: 10),
+          FilledButton.tonalIcon(
+            key: const Key('pair-device'),
+            onPressed: busy ? null : _showPair,
+            icon: const Icon(Icons.qr_code_scanner),
+            label: const Text('Pair with a code'),
+          ),
+          const SizedBox(height: 4),
           TextButton(
             onPressed: busy ? null : _showSetupServer,
             child: const Text('Set up a new VIRA server'),

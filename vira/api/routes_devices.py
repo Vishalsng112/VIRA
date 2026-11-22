@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 
 from vira import errors
+from vira.auth import auth, database
 from vira.auth.principals import DevicePrincipal, UserPrincipal
 from vira.devices import commands as command_store
 from vira.devices import pairing as pairing_store
@@ -44,6 +45,7 @@ class PairRequest(BaseModel):
     os_version: Optional[str] = None
     client_version: Optional[str] = None
     capabilities: List[str] = []
+    installation_id: Optional[str] = None
 
 
 class PairingCodeRequest(BaseModel):
@@ -86,19 +88,42 @@ def build_device_router(kernel, deps: dict, stream_manager) -> APIRouter:
 
     # ---------------- pairing ---------------- #
     @router.post("/devices/pairing-code", status_code=201)
-    async def pairing_code(body: PairingCodeRequest,
+    async def pairing_code(body: PairingCodeRequest, request: Request,
                            user: UserPrincipal = Depends(user_dep)):
-        return pairing_store.create_code(user.user_id, body.ttl_minutes)
+        created = pairing_store.create_code(user.user_id, body.ttl_minutes)
+        server = str(request.base_url).rstrip("/")
+        payload = pairing_store.pairing_uri(server, created["code"])
+        created.update({
+            "server": server,
+            "pairing_uri": payload,
+            "qr_svg": pairing_store.qr_svg_data_uri(payload),
+        })
+        return created
 
     @router.post("/devices/pair", status_code=201)
     async def pair_device(body: PairRequest):
         try:
-            return pairing_store.redeem(
+            created = pairing_store.redeem(
                 body.code, body.display_name, body.platform, body.device_type,
                 body.os_version, body.client_version, body.capabilities,
+                installation_id=body.installation_id,
             )
         except ValueError as exc:
             raise errors.ValidationFailed(str(exc), code="pairing_failed") from exc
+        account = created["account"]
+        # A single-use code created by an authenticated user is equivalent to a
+        # one-time sign-in for the device being enrolled. The client needs a
+        # session for chat, schedules and device management after pairing.
+        session_id = auth.create_authenticated_session(
+            {"id": account["user_id"]},
+            kernel.config_manager.get("auth.session_max_age", 86400),
+        )
+        database.record_auth_audit(
+            "pairing", "session.create", True,
+            user_id=account["user_id"], session_id=session_id,
+        )
+        created["session_id"] = session_id
+        return created
 
     # ---------------- user-facing device management ---------------- #
     @router.post("/devices", status_code=201)

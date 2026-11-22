@@ -559,6 +559,11 @@ textarea { resize: vertical; min-height: 4rem; }
 .search-result:first-child { border-top: 0; padding-top: 0; }
 .search-result p { margin-top: 0.4rem; color: var(--muted); font-size: var(--text-sm); white-space: pre-wrap; }
 .insight-copy { color: var(--muted); font-size: var(--text-sm); margin-bottom: 0.9rem; }
+.pairing-result { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.pairing-body { display: flex; gap: 1.2rem; align-items: center; flex-wrap: wrap; }
+.pairing-qr { width: 168px; height: 168px; border-radius: 0.75rem; background: #fff; padding: 0.5rem; }
+.pairing-code { display: block; font-family: var(--mono); font-size: 1.6rem; letter-spacing: 0.18em; margin: 0.25rem 0 0.35rem; }
+.pairing-meta { color: var(--muted); font-size: var(--text-xs); word-break: break-all; }
 .mono { font-family: var(--mono); font-size: 0.9em; }
 
 @media (max-width: 70rem) {

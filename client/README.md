@@ -7,7 +7,8 @@ web PWA, Linux AppImage, Windows desktop executable and macOS (Apple Silicon) ap
 
 ## What it does
 
-- Signs in with a normal VIRA user account.
+- Signs in with a normal VIRA user account, or pairs in one step by scanning a
+  single-use QR code from the server dashboard (Linux can paste the code).
 - **Chats with the server's Chatbot agent** from the **Chat** tab: streaming answers, a live step/tool trace inside the chat, conversation history, search, delete a chat and delete all chats.
 - Enrolls this device through `POST /api/v1/devices` and stores the one-time
   device credential in the platform keystore/keychain.
@@ -166,6 +167,8 @@ in `lib/services/capture/capture_service.dart`.
 | --- | --- |
 | Sign in | `POST /api/v1/auth/login` |
 | Create first admin | `POST /api/v1/auth/setup` |
+| Create pairing code | `POST /api/v1/devices/pairing-code` |
+| Redeem pairing code | `POST /api/v1/devices/pair` |
 | Enroll device | `POST /api/v1/devices` |
 | List devices | `GET /api/v1/devices` |
 | Rename device | `PATCH /api/v1/devices/{id}` |
