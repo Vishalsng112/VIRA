@@ -24,8 +24,8 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 
 DEFAULT_CONTEXT_TOOLS = [
-    {"name": "user_context"},
-    {"name": "insights", "params": {"days": 1}},
+    {"name": "vira.context"},
+    {"name": "vira.insights", "params": {"days": 1}},
 ]
 
 
@@ -82,7 +82,7 @@ class MorningBriefAgent(SingleAgent):
                 continue
             seen.add(name)
             params = dict(item.get("params") or {})
-            if name == "insights":
+            if name == "vira.insights":
                 params.setdefault("days", self.lookback_days)
             if not self.tool_policy.allows(name):
                 unavailable.append({"source": name, "reason": "not allowed for this agent"})

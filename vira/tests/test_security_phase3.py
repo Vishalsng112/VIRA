@@ -13,10 +13,10 @@ from vira.devices import DeviceService
 from vira.rag import service as rag_service
 from vira.security import approvals
 from vira.security.redaction import REDACTED, redact
-from vira.tools import database_query
-from vira.tools.builtin import FilesystemTool
-from vira.tools.executor import ToolExecutor
-from vira.tools.registry import ToolRegistry
+from vira.tooling.services import database_query
+from vira.tooling.servers.workspace.tools import WriteFileTool, ReadFileTool
+from vira.tooling.executor import ToolExecutor
+from vira.tooling.registry import ToolRegistry
 
 
 def principal_for(user_id: int) -> UserPrincipal:
@@ -46,13 +46,13 @@ class ApprovalTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_classification(self):
-        self.assertIsNotNone(approvals.approval_reason("filesystem", "execute", {"operation": "write"}))
-        self.assertIsNone(approvals.approval_reason("filesystem", "execute", {"operation": "read"}))
-        self.assertIsNotNone(approvals.approval_reason("sandbox", "execute", {"operation": "execute"}))
-        self.assertIsNotNone(approvals.approval_reason("shell", "execute", {}))
-        self.assertIsNone(approvals.approval_reason("database_query.database_query", "execute", {}))
+        self.assertIsNotNone(approvals.approval_reason("workspace.write_file", "write", {"path": "x"}))
+        self.assertIsNone(approvals.approval_reason("workspace.read_file", "read", {"path": "x"}))
+        self.assertIsNotNone(approvals.approval_reason("workspace.sandbox", "execute", {"operation": "execute"}))
+        self.assertIsNotNone(approvals.approval_reason("runtime.run", "execute", {}))
+        self.assertIsNone(approvals.approval_reason("database.query", "execute", {}))
         self.assertIsNone(approvals.approval_reason(
-            "filesystem", "execute", {"operation": "write"}, {"enabled": False}))
+            "workspace.write_file", "write", {"path": "x"}, {"enabled": False}))
         self.assertIsNotNone(approvals.approval_reason(
             "custom.tool", "execute", {}, {"destructive_tools": ["custom"]}))
 
@@ -91,11 +91,14 @@ class ApprovalTests(unittest.TestCase):
 
     def test_executor_blocks_then_runs_after_approval(self):
         registry = ToolRegistry()
-        registry.register(FilesystemTool(self.workspace))
+        registry.register(WriteFileTool())
         executor = ToolExecutor(registry, _AllowAll(), approval_config={"enabled": True})
         kwargs = {"agent_id": "agent", "caller_user_id": self.user_id,
-                  "operation": "write", "path": "note.txt", "content": "hello"}
-        blocked = asyncio.run(executor.execute("filesystem", **kwargs))
+                  "path": "note.txt", "content": "hello"}
+        import vira.tooling.context as tool_context
+        token = tool_context.workspace.set(str(self.workspace))
+        self.addCleanup(tool_context.workspace.reset, token)
+        blocked = asyncio.run(executor.execute("workspace.write_file", **kwargs))
         self.assertTrue(blocked.isError)
         self.assertIn("APPROVAL_REQUIRED", blocked.content[0].text)
 
@@ -103,22 +106,25 @@ class ApprovalTests(unittest.TestCase):
         self.assertEqual(len(pending), 1)
         approvals.decide(pending[0]["id"], True, self.user_id)
 
-        allowed = asyncio.run(executor.execute("filesystem", **kwargs))
+        allowed = asyncio.run(executor.execute("workspace.write_file", **kwargs))
         self.assertFalse(allowed.isError, allowed.content[0].text)
         self.assertEqual((self.workspace / "note.txt").read_text(), "hello")
 
         # The approval was consumed; the next write asks again.
-        again = asyncio.run(executor.execute("filesystem", **kwargs))
+        again = asyncio.run(executor.execute("workspace.write_file", **kwargs))
         self.assertIn("APPROVAL_REQUIRED", again.content[0].text)
 
     def test_reads_do_not_need_approval(self):
         (self.workspace / "note.txt").write_text("hello")
         registry = ToolRegistry()
-        registry.register(FilesystemTool(self.workspace))
+        registry.register(ReadFileTool())
         executor = ToolExecutor(registry, _AllowAll(), approval_config={"enabled": True})
+        import vira.tooling.context as tool_context
+        token = tool_context.workspace.set(str(self.workspace))
+        self.addCleanup(tool_context.workspace.reset, token)
         result = asyncio.run(executor.execute(
-            "filesystem", agent_id="agent", caller_user_id=self.user_id,
-            operation="read", path="note.txt"))
+            "workspace.read_file", agent_id="agent", caller_user_id=self.user_id,
+            path="note.txt"))
         self.assertFalse(result.isError, result.content[0].text)
         self.assertIn("hello", result.content[0].text)
 

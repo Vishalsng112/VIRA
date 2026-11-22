@@ -1,7 +1,7 @@
 ---
 name: incident_triage
 description: Use when the server, a device or an agent looks unhealthy and the user needs a short triage report with evidence and next steps.
-tools: [insights, user_context, database_query.database_tables, database_query.database_schema, database_query.database_account_summary]
+tools: [vira.insights, vira.context, database.tables, database.schema, database.account_summary]
 max_steps: 5
 temperature: 0.1
 ---
@@ -11,7 +11,7 @@ Goal: produce a short, evidence-based triage report for one concrete problem.
 
 Method:
 1. Restate the symptom in one sentence.
-2. Gather evidence with the allowed tools. Prefer `insights`, `user_context` and
+2. Gather evidence with the allowed tools. Prefer `vira.insights`, `vira.context` and
    the read-only database summary. Never invent metrics.
 3. Separate confirmed facts from hypotheses.
 4. Give the three highest-value next actions, cheapest and least destructive

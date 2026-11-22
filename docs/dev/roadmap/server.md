@@ -21,7 +21,7 @@ Already implemented:
 - ChatAgent tool loop, agents, registry, router, scheduler, lessons and sub-agents
 - Local/MCP tools with permissions and audit
 - Memory store, conversations, runs and incognito conversations
-- Device insight aggregation API and ChatAgent `insights` tool
+- Device insight aggregation API and ChatAgent `vira.insights` tool
 - Admin APIs for users, devices, audit, health, agents, tools and metrics
 - SQLite persistence with versioned migrations
 
@@ -88,6 +88,8 @@ load test with concurrent device ingestion + chat + admin.
 - [x] **Pairing backend**: short-lived single-use pairing codes, dashboard QR
   and deep-link issuance, redeem to create a device credential and user session,
   device rename/revoke/re-enrollment APIs.
+- [x] **Unified tooling contract**: Pydantic inputs/outputs, domain MCP servers,
+  catalog/toolbox discovery, per-agent policy and removal of legacy `vira.tools`.
 - [x] **Pluggable private access**: access-provider resolver, automatic Tailscale
   MagicDNS discovery for pairing addresses, request and custom-URL fallbacks.
 - [x] **Guided Tailscale setup**: status diagnostics, browser/QR login polling and
@@ -118,8 +120,8 @@ that data; daily summaries load from rollups; export/delete covers all stores.
 - [x] **Agent catalog and versioning**: versioned markdown definitions exposed
   at `/api/v1/agent-definitions`; registry metadata is versioned.
 - [x] **Specialist agents**: insight coach, study coach and device doctor
-  definitions over the `insights` tool; security/anomaly remains next.
-- [x] **Context assembly tool**: `user_context` returns devices, consent,
+  definitions over the `vira.insights` tool; security/anomaly remains next.
+- [x] **Context assembly tool**: `vira.context` returns devices, consent,
   battery/health and a compact usage summary.
 - [x] **Persistent vector store and RAG backend**: `rag_documents`, `rag_chunks`,
   `memory_embeddings`, cosine search, optional Ollama embeddings and a `rag_search` tool.

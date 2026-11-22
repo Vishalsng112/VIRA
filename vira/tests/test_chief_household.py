@@ -9,7 +9,7 @@ from vira.agent.Agents.household import HouseholdAgent
 from vira.agent.base import TaskRequest
 from vira.auth import auth, database
 from vira.family import store as family_store
-from vira.tools.base import ToolPermission, text_result
+from vira.tooling import ToolPermission, text_result
 
 
 class _Tool:

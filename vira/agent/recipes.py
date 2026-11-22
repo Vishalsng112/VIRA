@@ -17,7 +17,7 @@ RECOMMENDED_AGENTS: List[Dict[str, Any]] = [
         "architecture": "single",
         "schedule_modes": [],
         "default_mode": None,
-        "required_tools": ["insights", "user_context", "knowledge_search", "rag_search"],
+        "required_tools": ["vira.insights", "vira.context", "vira.knowledge_search", "vira.rag_search"],
         "default_schedule": {
             "schedule_type": "daily",
             "time_of_day": "07:30",
@@ -36,7 +36,7 @@ RECOMMENDED_AGENTS: List[Dict[str, Any]] = [
         "architecture": "single",
         "schedule_modes": ["morning", "checkin", "evening", "weekly"],
         "default_mode": "evening",
-        "required_tools": ["insights", "user_context"],
+        "required_tools": ["vira.insights", "vira.context"],
         "default_schedule": {
             "schedule_type": "daily",
             "time_of_day": "18:30",
@@ -56,7 +56,7 @@ RECOMMENDED_AGENTS: List[Dict[str, Any]] = [
         "architecture": "single",
         "schedule_modes": ["ask", "consolidate"],
         "default_mode": "consolidate",
-        "required_tools": ["knowledge_search", "knowledge_write", "rag_search"],
+        "required_tools": ["vira.knowledge_search", "vira.knowledge_write", "vira.rag_search"],
         "default_schedule": {
             "schedule_type": "weekly",
             "weekday": 6,

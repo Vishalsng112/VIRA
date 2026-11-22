@@ -4,7 +4,7 @@ from vira.agent_orchestration.messages import AgentMessage
 from vira.kernel.context_manager import ContextManager
 from vira.memory.manager import MemoryManager
 from vira.llm.manager import LLMManager
-from vira.tools.executor import ToolExecutor
+from vira.tooling.executor import ToolExecutor
 from vira.kernel.security_manager import SecurityManager
 
 class AgentContext:

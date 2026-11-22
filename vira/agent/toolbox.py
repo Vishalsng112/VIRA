@@ -12,58 +12,8 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from vira.tools.catalog import ToolCatalog
-
-
-@dataclass(frozen=True)
-class ToolPolicy:
-    """Allow/deny/pinned globs, compatible with the shipped config format."""
-
-    allow: Optional[Tuple[str, ...]] = None   # None = every registered tool
-    deny: Tuple[str, ...] = ()
-    pinned: Tuple[str, ...] = ()
-
-    @classmethod
-    def from_config(cls, config: Optional[Dict[str, Any]]) -> "ToolPolicy":
-        config = config or {}
-        raw = config.get("tools")
-        if isinstance(raw, dict):
-            allow = raw.get("allow")
-            deny = raw.get("deny")
-            pinned = raw.get("pinned")
-        elif isinstance(raw, (list, tuple)):
-            allow, deny, pinned = raw, None, None
-        else:
-            allow = config.get("allowed_tools")
-            deny = config.get("denied_tools")
-            pinned = config.get("pinned_tools")
-
-        allow_tuple = tuple(str(item) for item in allow) if isinstance(
-            allow, (list, tuple)) and allow else None
-        deny_tuple = tuple(str(item) for item in deny) if isinstance(
-            deny, (list, tuple)) else ()
-        pinned_tuple = tuple(str(item) for item in pinned) if isinstance(
-            pinned, (list, tuple)) else ()
-        return cls(allow=allow_tuple, deny=deny_tuple, pinned=pinned_tuple)
-
-    @staticmethod
-    def _matches(name: str, patterns: Sequence[str]) -> bool:
-        short = name.split(".")[-1]
-        return any(fnmatch(name, pattern) or fnmatch(short, pattern)
-                   for pattern in patterns)
-
-    def allows(self, name: str) -> bool:
-        if self._matches(name, self.deny):
-            return False
-        if self.allow is None:
-            return True
-        return self._matches(name, self.allow)
-
-    def is_pinned(self, name: str) -> bool:
-        return self._matches(name, self.pinned)
-
-    def visible(self, names: Iterable[str]) -> List[str]:
-        return [name for name in names if self.allows(name)]
+from vira.tooling.catalog import ToolCatalog
+from vira.tooling.policy import ToolPolicy
 
 
 class Toolbox:
@@ -153,7 +103,9 @@ class Toolbox:
         available = set(self.names)
         needed = [name for name in (required or []) if name in available]
         needed += [name for name in self.pinned if name not in needed]
-        return self.catalog.select(query, limit=limit, required=needed)
+        return self.catalog.select(
+            query, limit=limit, required=needed, allowed=self.names
+        )
 
     def search(self, query: str, limit: int = 8):
         return self.catalog.search(query, limit=limit)

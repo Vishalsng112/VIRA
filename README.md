@@ -353,7 +353,8 @@ vira/agent/                 BaseAgent, runtime loop, tool calls
 vira/agent_orchestration/   registry, router, workflows
 vira/llm/                   Ollama, OpenAI and Anthropic adapters
 vira/memory/                conversations, scoped memory, context assembly
-vira/tools/                 registry, built-ins, MCP server, web tools
+vira/tooling/               tool contract, catalog, policies, domain tool packs
+vira/mcp/servers/           deployable domain MCP servers
 vira/api/                   FastAPI app and route modules
 vira/auth/  vira/devices/   users, sessions, credentials, access grants
 vira/web/static/            dashboard and chat pages

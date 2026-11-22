@@ -23,14 +23,17 @@ from vira.security.redaction import redact
 APPROVAL_REQUIRED_PREFIX = "APPROVAL_REQUIRED"
 DEFAULT_TTL_MINUTES = 30
 
-_FILESYSTEM_DESTRUCTIVE = {"write", "mkdir"}
+_WORKSPACE_WRITE_TOOLS = {"workspace.write_file", "workspace.make_directory"}
+_WORKSPACE_SAFE = {
+    "workspace.read_file", "workspace.list_directory", "workspace.search_files",
+}
 _SANDBOX_SAFE = {
     "read", "list", "stat", "search", "jobs", "job", "job_logs", "usage",
     "sandboxes", "info", "read_file", "list_files", "cat", "ls",
 }
-_ALWAYS_DESTRUCTIVE = {"shell"}
-_MCP_SAFE_TOOLS = {"database_query", "insights", "web", "utility", "git",
-                   "rag_search", "user_context", "chat_statistics", "filesystem"}
+_ALWAYS_DESTRUCTIVE = {"runtime.run"}
+_MCP_SAFE_PREFIXES = ("database.", "vira.", "web.")
+_MCP_SAFE_TOOLS = set()
 
 
 def _now() -> datetime:
@@ -78,17 +81,17 @@ def approval_reason(tool_name: str, action: str, arguments: Dict[str, Any],
                 return f"'{short}' operation '{operation}' requires approval (policy)"
             return None
 
-    if short == "filesystem":
-        if operation in _FILESYSTEM_DESTRUCTIVE:
-            return f"Filesystem '{operation}' can modify the workspace"
+    if qualified in _WORKSPACE_WRITE_TOOLS:
+        return f"'{short}' can modify the workspace"
+    if qualified in _WORKSPACE_SAFE:
         return None
-    if short == "sandbox":
+    if qualified == "workspace.sandbox":
         if operation not in _SANDBOX_SAFE:
             return f"Sandbox '{operation or 'create'}' can write files or run code"
         return None
-    if short in _ALWAYS_DESTRUCTIVE:
-        return "Shell commands can affect the host"
-    if short in _MCP_SAFE_TOOLS:
+    if qualified in _ALWAYS_DESTRUCTIVE:
+        return "Runtime commands can affect the host"
+    if qualified.startswith(_MCP_SAFE_PREFIXES) or short in _MCP_SAFE_TOOLS:
         return None
     # Unknown MCP/plugin tools are only gated when explicitly configured.
     if config.get("unknown_tools", False):

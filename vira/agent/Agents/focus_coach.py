@@ -2,7 +2,7 @@
 
 Modes are selected by the schedule payload (``input.mode``):
 ``morning``, ``checkin``, ``evening`` or ``weekly``. Recommendations are
-grounded in the ``insights``/``user_context`` tools and memory of the user's
+grounded in the ``vira.insights``/``vira.context`` tools and memory of the user's
 goals. Weekly reports hide app names by default.
 """
 from __future__ import annotations
@@ -102,8 +102,8 @@ class FocusCoachAgent(SingleAgent):
 
         tools = []
         if mode != "weekly":
-            tools.append(("user_context", {}))
-        tools.append(("insights", {"days": self._days(mode),
+            tools.append(("vira.context", {}))
+        tools.append(("vira.insights", {"days": self._days(mode),
                                    "include_apps": self._include_apps(mode)}))
         for name, params in tools:
             if not self.tool_policy.allows(name):

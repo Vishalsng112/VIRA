@@ -3,7 +3,7 @@
     ---
     name: researcher
     description: when the main agent should delegate to this one
-    tools: [web_browse]        # omit = all tools, [] = no tools
+    tools: [web.browse]        # omit = all tools, [] = no tools
     max_steps: 5
     ---
     System prompt body...

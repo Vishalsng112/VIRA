@@ -22,8 +22,8 @@ from vira.agent.toolcalls import (
     render_tool,
     split_reasoning,
 )
-from vira.tools.catalog import ToolCatalog
-from vira.tools import context as tool_context
+from vira.tooling.catalog import ToolCatalog
+from vira.tooling import context as tool_context
 
 try:
     from loguru import logger
@@ -287,7 +287,7 @@ class AgentLoop:
         ident = {"user_id": user_id}  # local tools read it; MCP tools must not receive it
         if device_id:
             ident["device_id"] = device_id
-        if name.startswith("database_query."):
+        if name.startswith("database."):
             # The database MCP server needs the authenticated caller for
             # {{caller_user_id}} substitution and admin checks. Inject it only
             # into tools whose schema declares it, and always override any
@@ -433,7 +433,7 @@ class AgentLoop:
                     self._emit("check", level="warn",
                                text="No tool has succeeded yet, so I'm trying again instead of giving up.")
                     steps.append(Step("nudge", "system", {}, "No tool call has succeeded yet. Do not give up: "
-                                      "try different params or another tool (for web questions call web_search, "
+                                      "try different params or another tool (for web questions call web.search, "
                                       "then open a URL from its results).", ok=False))
                     continue
                 return LoopResult(text=text, steps=steps, stopped="final")
@@ -453,7 +453,7 @@ class AgentLoop:
                     self._emit("check", level="warn", text=f"Skipped a repeated call to {name}; changing approach.")
                     steps.append(Step("repeat", name, params,
                                       "ERROR: identical call already made. If its result was an error, change the "
-                                      "params/URL or use a different tool (for web questions: web_search first); "
+                                      "params/URL or use a different tool (for web questions: web.search first); "
                                       "otherwise use that result.", ok=False))
                     continue
                 seen.add(sig)

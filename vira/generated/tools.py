@@ -15,7 +15,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import aiohttp
 
-from vira.tools.base import BaseTool, ToolPermission, text_result
+from vira.tooling import ToolPermission, text_result
 
 _PLACEHOLDER = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 _NAME = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
@@ -88,7 +88,7 @@ def validate_name(name: str) -> str:
     return value
 
 
-class GeneratedHttpTool(BaseTool):
+class GeneratedHttpTool:
     def __init__(self, *, artifact_id: str, name: str, description: str,
                  spec: Dict[str, Any],
                  status_provider: Callable[[], Optional[Dict[str, Any]]]):
@@ -97,20 +97,21 @@ class GeneratedHttpTool(BaseTool):
         self.status_provider = status_provider
         self.server_name = "generated"
         self.generated_id = artifact_id
-        super().__init__(
-            name=name,
-            description=description or f"Generated HTTP tool: {name}",
-            permissions=ToolPermission(actions=["read", "execute"]),
-            input_schema={
-                "type": "object",
-                "properties": self.spec["parameters"],
-                "required": [
-                    key for key, value in self.spec["parameters"].items()
-                    if value.get("required") is True
-                ],
-                "additionalProperties": False,
-            },
-        )
+        self.name = name
+        self.description = description or f"Generated HTTP tool: {name}"
+        self.permissions = ToolPermission(actions=["read", "execute"])
+        self.input_schema = {
+            "type": "object",
+            "properties": self.spec["parameters"],
+            "required": [
+                key for key, value in self.spec["parameters"].items()
+                if value.get("required") is True
+            ],
+            "additionalProperties": False,
+        }
+
+    def get_schema(self):
+        return self.input_schema
 
     def _check_enabled(self) -> None:
         current = self.status_provider()
@@ -150,7 +151,7 @@ class GeneratedHttpTool(BaseTool):
             return text_result(f"Missing required parameter(s): {', '.join(missing)}", is_error=True)
         try:
             url = self._build_url(params)
-            from vira.tools import webtools
+            from vira.tooling.services import webtools
 
             await webtools._check_public(url)
             timeout = aiohttp.ClientTimeout(total=20)

@@ -142,7 +142,7 @@ yesterday's focus context and the first three actions.
 `CentralizedAgentSystem` only when the user connects many sources and the
 profile justifies the coordination cost.
 
-**Uses:** `insights`, `user_context`, device events, memory, knowledge,
+**Uses:** `vira.insights`, `vira.context`, device events, memory, knowledge,
 optional MCP calendar/task/email connectors.
 
 **Implementation:**
@@ -176,13 +176,13 @@ review. Weekly report on demand or scheduled.
 `CentralizedAgentSystem` when there are multiple devices or categories.
 
 **Uses:** VIRA Link app usage, screen sessions, focus sessions, battery/idle
-signals, `insights`, memory of goals.
+signals, `vira.insights`, memory of goals.
 
 **Implementation:**
 - Agent: `vira/agent/Agents/focus_coach.py`, registered as `focus-coach`.
 - Schedule `input.mode` selects `morning`, `checkin`, `evening` or `weekly`.
-- Context comes from `user_context` + `insights`; goals come from memory.
-- Weekly mode requests `insights` with `include_apps=false`, so app names are
+- Context comes from `vira.context` + `vira.insights`; goals come from memory.
+- Weekly mode requests `vira.insights` with `include_apps=false`, so app names are
   hidden; categories and measured numbers remain.
 - Quiet hours are enforced by the proactive scheduler before the run starts.
 - Deterministic fallback when the model is unavailable.

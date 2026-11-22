@@ -78,10 +78,13 @@ def _resolve(obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def resolve_name(name: str, known: List[str]) -> str:
-    """Map 'web_browse' to 'mcp_server.web_browse' when that match is unique."""
+    """Map 'web_browse' to 'web.browse' when that match is unique."""
     if name in known:
         return name
-    matches = [k for k in known if k.split(".")[-1] == name]
+    matches = [
+        k for k in known
+        if k.split(".")[-1] == name or k.replace(".", "_") == name
+    ]
     return matches[0] if len(matches) == 1 else name
 
 

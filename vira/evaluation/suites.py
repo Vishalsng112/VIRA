@@ -13,10 +13,10 @@ from vira.agent.loop import AgentLoop, LoopConfig
 from vira.auth import auth, database
 from vira.memory.manager import MemoryManager
 from vira.security import approvals
-from vira.tools.builtin import FilesystemTool
-from vira.tools.catalog import ToolCatalog
-from vira.tools.executor import ToolExecutor
-from vira.tools.registry import ToolRegistry
+from vira.tooling.servers.workspace.tools import WriteFileTool
+from vira.tooling.catalog import ToolCatalog
+from vira.tooling.executor import ToolExecutor
+from vira.tooling.registry import ToolRegistry
 
 from .harness import CaseResult, SuiteResult
 
@@ -39,33 +39,31 @@ def _temp_database() -> Iterator[int]:
 
 def _tool_selection() -> SuiteResult:
     specs = [
-        {"name": "mcp_server.web_search", "description": "Search the web for news, prices and current facts"},
-        {"name": "mcp_server.web_browse", "description": "Open a URL and read the page"},
-        {"name": "insights", "description": "Summarise app usage, screen time, focus and device health"},
-        {"name": "database_query.database_query", "description": "Run one read-only SQL query against the VIRA database"},
-        {"name": "database_query.database_schema", "description": "Describe database tables and columns"},
-        {"name": "rag_search", "description": "Search the user's knowledge base and documents"},
-        {"name": "filesystem", "description": "Read, write, list and search files in the workspace"},
-        {"name": "shell", "description": "Run an approved read-only shell command"},
-        {"name": "git", "description": "Inspect git status, log and diffs"},
-        {"name": "sandbox", "description": "Write files and execute Python code in an isolated workspace"},
-        {"name": "utility", "description": "Get UTC time or calculate an arithmetic expression"},
-        {"name": "user_context", "description": "Return devices, consent, battery and health context"},
+        {"name": "web.search", "description": "Search the web for news, prices and current facts"},
+        {"name": "web.browse", "description": "Open a URL and read the page", "tags": ["open", "url", "page", "read", "link"]},
+        {"name": "vira.insights", "description": "Summarise app usage, screen time, focus and device health", "tags": ["social", "apps", "time", "screen", "usage", "activity", "device"]},
+        {"name": "database.query", "description": "Run one read-only SQL query against the VIRA database"},
+        {"name": "database.schema", "description": "Describe database tables and columns", "tags": ["columns", "table", "tables", "devices", "schema", "database"]},
+        {"name": "vira.rag_search", "description": "Search the user's knowledge base and documents"},
+        {"name": "workspace.read_file", "description": "Read files in the workspace"},
+        {"name": "workspace.write_file", "description": "Write files in the workspace"},
+        {"name": "runtime.run", "description": "Run an approved read-only system command"},
+        {"name": "workspace.sandbox", "description": "Write files and execute Python code in an isolated workspace", "tags": ["write", "run", "script", "python", "execute", "build", "test"]},
+        {"name": "vira.context", "description": "Return devices, consent, battery and health context"},
     ]
     catalog = ToolCatalog(specs)
     cases = [
-        ("web_search", "search the web for today's news", "mcp_server.web_search"),
-        ("web_browse", "open this URL and read it", "mcp_server.web_browse"),
-        ("insights", "how much time did I spend on social apps this week", "insights"),
-        ("database", "count devices in the database with a read-only SQL query", "database_query.database_query"),
-        ("schema", "what columns does the devices table have", "database_query.database_schema"),
-        ("rag", "search my saved documents for the project deadline", "rag_search"),
-        ("filesystem", "list files in my workspace folder", "filesystem"),
-        ("shell", "run git status in the workspace", "git"),
-        ("git", "inspect git status and recent commits", "git"),
-        ("sandbox", "write and run a Python script to calculate primes", "sandbox"),
-        ("utility", "what time is it in UTC", "utility"),
-        ("context", "which of my devices are low on battery", "user_context"),
+        ("web_search", "search the web for today's news", "web.search"),
+        ("web_browse", "open this URL and read it", "web.browse"),
+        ("insights", "how much time did I spend on social apps this week", "vira.insights"),
+        ("database", "count devices in the database with a read-only SQL query", "database.query"),
+        ("schema", "what columns does the devices table have", "database.schema"),
+        ("rag", "search my saved documents for the project deadline", "vira.rag_search"),
+        ("read_file", "read a file in my workspace folder", "workspace.read_file"),
+        ("write_file", "write a file in my workspace folder", "workspace.write_file"),
+        ("runtime", "run a read-only system command", "runtime.run"),
+        ("workspace.sandbox", "write and run a Python script to calculate primes", "workspace.sandbox"),
+        ("context", "which of my devices are low on battery", "vira.context"),
     ]
     results = []
     top1 = top3 = 0
@@ -194,11 +192,11 @@ def _memory_retrieval() -> SuiteResult:
 def _destructive_guard() -> SuiteResult:
     results = []
     checks = [
-        ("shell", approvals.approval_reason("shell", "execute", {}), True),
-        ("filesystem_write", approvals.approval_reason("filesystem", "execute", {"operation": "write"}), True),
-        ("sandbox_execute", approvals.approval_reason("sandbox", "execute", {"operation": "execute"}), True),
-        ("filesystem_read", approvals.approval_reason("filesystem", "execute", {"operation": "read"}), False),
-        ("database_read", approvals.approval_reason("database_query.database_query", "execute", {"sql": "SELECT 1"}), False),
+        ("runtime", approvals.approval_reason("runtime.run", "execute", {}), True),
+        ("workspace_write", approvals.approval_reason("workspace.write_file", "write", {"path": "x"}), True),
+        ("sandbox_execute", approvals.approval_reason("workspace.sandbox", "execute", {"operation": "execute"}), True),
+        ("workspace_read", approvals.approval_reason("workspace.read_file", "read", {"path": "x"}), False),
+        ("database_read", approvals.approval_reason("database.query", "execute", {"sql": "SELECT 1"}), False),
     ]
     for name, reason, expected in checks:
         results.append(CaseResult(
@@ -209,7 +207,7 @@ def _destructive_guard() -> SuiteResult:
 
     with _temp_database() as user_id, tempfile.TemporaryDirectory() as workspace:
         registry = ToolRegistry()
-        registry.register(FilesystemTool(workspace))
+        registry.register(WriteFileTool())
 
         class _AllowAll:
             def authorize(self, permission: str) -> bool:
@@ -217,20 +215,26 @@ def _destructive_guard() -> SuiteResult:
 
         executor = ToolExecutor(registry, _AllowAll(), approval_config={"enabled": True})
         kwargs = {"agent_id": "eval", "caller_user_id": user_id,
-                  "operation": "write", "path": "eval.txt", "content": "ok"}
-        blocked = asyncio.run(executor.execute("filesystem", **kwargs))
-        results.append(CaseResult(
-            "executor_blocks", blocked.isError and "APPROVAL_REQUIRED" in blocked.content[0].text,
-            blocked.content[0].text[:120], {"blocked": blocked.isError},
-        ))
-        pending = approvals.list_requests(user_id, "pending")
-        if pending:
-            approvals.decide(pending[0]["id"], True, user_id)
-        allowed = asyncio.run(executor.execute("filesystem", **kwargs))
-        results.append(CaseResult(
-            "executor_after_approval", not allowed.isError,
-            allowed.content[0].text[:120], {"executed": not allowed.isError},
-        ))
+                  "path": "eval.txt", "content": "ok"}
+        import vira.tooling.context as tool_context
+        token = tool_context.workspace.set(workspace)
+        try:
+            blocked = asyncio.run(executor.execute("workspace.write_file", **kwargs))
+            results.append(CaseResult(
+                "executor_blocks",
+                blocked.isError and "APPROVAL_REQUIRED" in blocked.content[0].text,
+                blocked.content[0].text[:120], {"blocked": blocked.isError},
+            ))
+            pending = approvals.list_requests(user_id, "pending")
+            if pending:
+                approvals.decide(pending[0]["id"], True, user_id)
+            allowed = asyncio.run(executor.execute("workspace.write_file", **kwargs))
+            results.append(CaseResult(
+                "executor_after_approval", not allowed.isError,
+                allowed.content[0].text[:120], {"executed": not allowed.isError},
+            ))
+        finally:
+            tool_context.workspace.reset(token)
     return SuiteResult(
         "destructive_guard",
         "Destructive calls must stop at an approval gate and execute only after a single-use approval.",

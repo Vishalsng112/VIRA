@@ -81,28 +81,33 @@ Server policy lives in `plugins.allowed_permissions`,
 ## Registering a tool
 
 ```python
-from vira.tools.base import BaseTool, ToolPermission, text_result
+from pydantic import Field
+from vira.tooling import BaseTool, StrictModel, ToolContext
+
+class ForecastInput(StrictModel):
+    city: str = Field(min_length=1)
+
+class ForecastOutput(StrictModel):
+    text: str
 
 class ForecastTool(BaseTool):
-    def __init__(self):
-        super().__init__(
-            name="acme_forecast",
-            description="Get a weather forecast for a city.",
-            permissions=ToolPermission(actions=["read"]),
-            input_schema={
-                "type": "object",
-                "properties": {"city": {"type": "string"}},
-                "required": ["city"],
-            },
-        )
+    namespace = "acme"
+    name = "forecast"
+    title = "Weather forecast"
+    description = "Get a weather forecast for a city."
+    when_to_use = "Use for current or future weather."
+    when_not_to_use = "Do not use for historical climate analysis."
+    category = "weather"
+    tags = ("weather", "forecast", "city")
+    input_model = ForecastInput
+    output_model = ForecastOutput
 
-    async def execute(self, city: str = "", **kwargs):
-        return text_result(f"Sunny in {city}")
+    async def run(self, params: ForecastInput, context: ToolContext) -> ForecastOutput:
+        return ForecastOutput(text=f"Sunny in {params.city}")
 ```
 
-`ctx.register_tool(ForecastTool())` makes the tool available immediately.
-It appears in the tool catalog, in `tool_search`, and in agent prompts on the
-next request. Use `qualified_name=` to namespace it.
+`ctx.register_tool(ForecastTool())` makes `acme.forecast` available immediately.
+It appears in the catalog, `tool_search` and agent prompts on the next request.
 
 ## HTTP routes
 

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from vira.agent.Agents.focus_coach import FocusCoachAgent
 from vira.agent.Agents.second_brain import SecondBrainAgent
 from vira.agent.base import TaskRequest
-from vira.tools.base import ToolPermission, text_result
+from vira.tooling import ToolPermission, text_result
 
 
 class _Tool:
@@ -46,7 +46,7 @@ class _Runtime:
         self.fail_llm = fail_llm
         self.prompts = []
         self.calls = []
-        self.tool_executor = _Executor([_Tool("user_context"), _Tool("insights")])
+        self.tool_executor = _Executor([_Tool("vira.context"), _Tool("vira.insights")])
 
     async def get_context(self, agent_id):
         return SimpleNamespace(agent_id=agent_id)
@@ -122,23 +122,23 @@ def _request(message="Update", **input_data):
 class FocusCoachTests(unittest.IsolatedAsyncioTestCase):
     async def test_evening_mode_uses_daily_insights(self):
         runtime = _Runtime(outputs={
-            "user_context": "Battery 50%.",
-            "insights": "Focus score: 62/100. Categories: work (120m).",
+            "vira.context": "Battery 50%.",
+            "vira.insights": "Focus score: 62/100. Categories: work (120m).",
         })
         agent = FocusCoachAgent(runtime, agent_id="focus-coach")
         await agent.initialize()
         result = await agent.run_task(_request("Evening review"))
         self.assertEqual(result.text, "COACH TEXT")
         self.assertEqual(result.data["focus_coach"]["mode"], "evening")
-        insight_calls = [call for call in runtime.calls if call[0] == "insights"]
+        insight_calls = [call for call in runtime.calls if call[0] == "vira.insights"]
         self.assertEqual(insight_calls[0][1]["days"], 1)
         self.assertIn("62/100", runtime.prompts[0])
         self.assertIn("Evening review", runtime.prompts[0])
 
     async def test_weekly_mode_hides_apps(self):
         runtime = _Runtime(outputs={
-            "user_context": "Device ok.",
-            "insights": "Focus score: 55/100. Top apps: hidden for privacy.",
+            "vira.context": "Device ok.",
+            "vira.insights": "Focus score: 55/100. Top apps: hidden for privacy.",
         })
         agent = FocusCoachAgent(runtime, agent_id="focus-coach")
         await agent.initialize()
@@ -146,16 +146,16 @@ class FocusCoachTests(unittest.IsolatedAsyncioTestCase):
             "Weekly report", mode="weekly"))
         self.assertEqual(result.data["focus_coach"]["mode"], "weekly")
         self.assertFalse(result.data["focus_coach"]["include_apps"])
-        self.assertNotIn("user_context", result.data["focus_coach"]["sources"])
-        insight_calls = [call for call in runtime.calls if call[0] == "insights"]
+        self.assertNotIn("vira.context", result.data["focus_coach"]["sources"])
+        insight_calls = [call for call in runtime.calls if call[0] == "vira.insights"]
         self.assertFalse(insight_calls[0][1]["include_apps"])
         self.assertIn("weekly focus report", runtime.prompts[0])
         self.assertIn("Do not name specific apps", runtime.prompts[0])
 
     async def test_morning_mode_asks_for_measured_numbers(self):
         runtime = _Runtime(outputs={
-            "user_context": "Battery 80%.",
-            "insights": "Focus score: 70/100.",
+            "vira.context": "Battery 80%.",
+            "vira.insights": "Focus score: 70/100.",
         })
         agent = FocusCoachAgent(runtime, agent_id="focus-coach", mode="morning")
         await agent.initialize()
@@ -165,7 +165,7 @@ class FocusCoachTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_goals_memory_is_included(self):
         runtime = _Runtime(
-            outputs={"user_context": "ok", "insights": "Focus 1h."},
+            outputs={"vira.context": "ok", "vira.insights": "Focus 1h."},
             memory=[SimpleNamespace(content="Goal: two deep-work blocks")])
         agent = FocusCoachAgent(runtime, agent_id="focus-coach")
         await agent.initialize()
@@ -175,7 +175,7 @@ class FocusCoachTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_fallback_when_model_fails(self):
         runtime = _Runtime(
-            outputs={"user_context": "Battery 20%.", "insights": "Focus score: 40/100."},
+            outputs={"vira.context": "Battery 20%.", "vira.insights": "Focus score: 40/100."},
             fail_llm=True)
         agent = FocusCoachAgent(runtime, agent_id="focus-coach")
         await agent.initialize()

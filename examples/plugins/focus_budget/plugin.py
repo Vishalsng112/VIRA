@@ -9,7 +9,7 @@ from datetime import date
 from fastapi import APIRouter
 
 from vira.plugins.api import Plugin
-from vira.tools.base import BaseTool, ToolPermission, text_result
+from vira.tooling import BaseTool, StrictModel, ToolContext
 
 
 def _today() -> str:
@@ -23,22 +23,35 @@ def _minutes(ctx, day: str | None = None) -> int:
     return int(bucket.get(day or _today(), 0) or 0)
 
 
+class FocusBudgetInput(StrictModel):
+    pass
+
+
+class FocusBudgetOutput(StrictModel):
+    text: str
+
+
 class FocusBudgetTool(BaseTool):
+    namespace = "example"
+    name = "focus_budget"
+    title = "Focus budget"
+    description = "Check today's focus minutes against the configured daily target."
+    when_to_use = "Use when the user asks about today's focus progress."
+    when_not_to_use = "Do not use for historical trends."
+    category = "wellbeing"
+    tags = ("focus", "budget", "minutes", "daily")
+    input_model = FocusBudgetInput
+    output_model = FocusBudgetOutput
+
     def __init__(self, ctx):
-        super().__init__(
-            name="focus_budget",
-            description="Check today's focus minutes against the configured daily target.",
-            permissions=ToolPermission(actions=["read"]),
-            input_schema={"type": "object", "properties": {}},
-        )
         self.ctx = ctx
 
-    async def execute(self, **kwargs):
+    async def run(self, params: FocusBudgetInput, context: ToolContext) -> FocusBudgetOutput:
         target = int(self.ctx.config.get("daily_target_minutes", 120))
         minutes = _minutes(self.ctx)
         remaining = max(0, target - minutes)
-        return text_result(
-            f"Today: {minutes} focus minutes. Target: {target}. Remaining: {remaining}."
+        return FocusBudgetOutput(
+            text=f"Today: {minutes} focus minutes. Target: {target}. Remaining: {remaining}."
         )
 
 

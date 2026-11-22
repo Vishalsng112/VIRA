@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from vira.agent.Agents.chat_agent import ChatAgent
 from vira.agent.base import TaskRequest, TaskResult
-from vira.tools.base import ToolPermission, text_result
+from vira.tooling import ToolPermission, text_result
 
 
 class _Tool:
@@ -39,8 +39,8 @@ class _Runtime:
     def __init__(self, replies, tools=None):
         self.replies = list(replies)
         self.tool_executor = _Executor(tools or [
-            _Tool("rag_search"),
-            _Tool("mcp_server.database_query", ("read", "execute"),
+            _Tool("vira.rag_search"),
+            _Tool("database.query", ("read", "execute"),
                   provider="mcp_server"),
         ])
         self.prompts = []
@@ -89,7 +89,7 @@ class ChatAgentTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_chat_runs_tool_loop_and_emits_response(self):
         runtime = _Runtime([
-            '{"tool": "rag_search", "params": {"query": "deploy"}}',
+            '{"tool": "vira.rag_search", "params": {"query": "deploy"}}',
             "The runbook says rotate keys.",
         ])
         agent = ChatAgent(runtime, {"delegation": False, "learn_lessons": False})
@@ -99,7 +99,7 @@ class ChatAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(result, TaskResult)
         self.assertTrue(result.ok)
         self.assertIn("rotate keys", result.text)
-        self.assertEqual(runtime.tool_calls[0][0], "rag_search")
+        self.assertEqual(runtime.tool_calls[0][0], "vira.rag_search")
         self.assertEqual(runtime.tool_calls[0][1], "read")  # not "execute"
         sender, event_type, data = runtime.messages[-1]
         self.assertEqual(event_type, "agent.response")
@@ -110,24 +110,24 @@ class ChatAgentTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_mcp_qualified_tools_are_offered_and_called(self):
         runtime = _Runtime([
-            '{"tool": "mcp_server.database_query", "params": {"query": "select 1"}}',
+            '{"tool": "database.query", "params": {"query": "select 1"}}',
             "one row",
         ])
         agent = ChatAgent(runtime, {"delegation": False, "learn_lessons": False})
         result = await agent.handle(self.event("query the database"))
-        self.assertIn("mcp_server.database_query",
+        self.assertIn("database.query",
                       [tool["name"] for tool in agent.available_tools])
-        self.assertEqual(runtime.tool_calls[0][0], "mcp_server.database_query")
+        self.assertEqual(runtime.tool_calls[0][0], "database.query")
         self.assertEqual(result.text, "one row")
 
     async def test_tool_policy_restricts_tools(self):
         runtime = _Runtime(["plain answer"])
         agent = ChatAgent(runtime, {
             "delegation": False,
-            "tools": {"allow": ["mcp_server.*"], "pinned": []},
+            "tools": {"allow": ["database.*"], "pinned": []},
         })
         self.assertEqual([tool["name"] for tool in agent.available_tools],
-                         ["mcp_server.database_query"])
+                         ["database.query"])
 
     async def test_history_is_used_and_remembered_per_instance(self):
         runtime = _Runtime(["first", "second"])
@@ -146,9 +146,9 @@ class ChatAgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(other._history_fallback, {})
 
     async def test_workspace_is_propagated_to_tool_context(self):
-        from vira.tools import context as tool_context
+        from vira.tooling import context as tool_context
         runtime = _Runtime([
-            '{"tool": "rag_search", "params": {"query": "deploy"}}',
+            '{"tool": "vira.rag_search", "params": {"query": "deploy"}}',
             "done",
         ])
         seen = {}

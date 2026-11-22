@@ -41,7 +41,7 @@ status.
 ## Morning Brief
 
 The Morning Brief agent is installed as `morning-brief`. It collects the
-configured context tools (by default `user_context` and `insights` for the last
+configured context tools (by default `vira.context` and `vira.insights` for the last
 day), adds recent memory, and writes a short brief with three sections:
 
 1. **Today** — priorities supported by the collected context.
@@ -63,8 +63,8 @@ agents:
     enabled: true
     config:
       context_tools:
-        - name: user_context
-        - name: insights
+        - name: vira.context
+        - name: vira.insights
           params: {days: 1}
         - name: mcp_server.calendar_today
         - name: mcp_server.tasks_due
@@ -93,7 +93,7 @@ Installed as `focus-coach`. One agent supports four modes through the schedule
 | `evening` | An evening review with one win, one adjustment and tomorrow’s first block |
 | `weekly` | A weekly report with totals, category balance and three recommendations |
 
-Recommendations cite measured numbers from `insights` and `user_context`. Goals
+Recommendations cite measured numbers from `vira.insights` and `vira.context`. Goals
 come from memory. Weekly mode hides specific app names by default; categories and
 totals remain.
 

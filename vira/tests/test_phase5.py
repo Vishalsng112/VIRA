@@ -15,7 +15,7 @@ from vira.generated import service as generated
 from vira.generated import store as generated_store
 from vira.llm import usage
 from vira.memory.manager import MemoryManager
-from vira.tools.registry import ToolRegistry
+from vira.tooling.registry import ToolRegistry
 
 
 class _FakeRuntime:

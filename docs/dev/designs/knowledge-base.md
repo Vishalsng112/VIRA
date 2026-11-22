@@ -71,7 +71,7 @@ agent write ──► draft / verified ──► candidate ──► promoted (g
 | `vira/knowledge/service.py` | merged retrieval over knowledge + documents + memories |
 | `vira/knowledge/events.py` | durable `knowledge.*` event trail (event-bus bridge) |
 | `vira/knowledge/consolidation.py` | `PromotionPolicy` and the worker job stub |
-| `vira/tools/knowledge_tool.py` | `knowledge_search`, `knowledge_write` agent tools |
+| `vira/tooling/servers/vira_core/tools.py` | `vira.knowledge_search`, `vira.knowledge_write` agent tools |
 | `vira/api/routes_knowledge.py` | `/api/v1/knowledge` REST surface |
 
 Storage tables: `knowledge_items`, `knowledge_chunks`, `knowledge_events`

@@ -560,7 +560,7 @@ agents:                                # auto-loaded agents
     subscribed_events: []
 
 mcp_server:
-  command: ["python", "vira/tools/mcp_server.py"]
+  command: ["python", "-m", "vira.mcp.servers.web.server"]
   permissions: ["read", "write", "execute"]
 ```
 

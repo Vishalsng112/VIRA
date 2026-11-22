@@ -10,8 +10,8 @@ from vira.agent.definitions import load_definitions
 from vira.agent_orchestration.registry import AgentRegistry
 from vira.auth import database
 from vira.kernel.plugin_manager import PluginManager
-from vira.tools.connection import MCPServerConnection
-from vira.tools.registry import ToolRegistry
+from vira.mcp.connection import MCPServerConnection
+from vira.tooling.registry import ToolRegistry
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -73,7 +73,7 @@ class ExamplePluginTests(unittest.TestCase):
 
         tools = set(self.kernel.agent_orchestrator.tool_registry.list())
         self.assertTrue({
-            "example_word_count", "reading_list", "reading_add", "focus_budget",
+            "example.word_count", "example.reading_list", "example.reading_add", "example.focus_budget",
         } <= tools)
         self.assertEqual(len(self.manager.collect_routers()), 3)
         self.assertIn("reading_coach", load_definitions())
@@ -82,8 +82,8 @@ class ExamplePluginTests(unittest.TestCase):
     def test_reading_list_tool_round_trip(self):
         asyncio.run(self.manager.load_plugins())
         registry = self.kernel.agent_orchestrator.tool_registry
-        add = registry.get("reading_add")
-        listing = registry.get("reading_list")
+        add = registry.get("example.reading_add")
+        listing = registry.get("example.reading_list")
         added = asyncio.run(add.execute(title="Designing Data-Intensive Applications",
                                         url="https://example.com/ddia"))
         self.assertFalse(added.isError)
@@ -93,7 +93,7 @@ class ExamplePluginTests(unittest.TestCase):
 
     def test_focus_budget_tool_and_event(self):
         asyncio.run(self.manager.load_plugins())
-        tool = self.kernel.agent_orchestrator.tool_registry.get("focus_budget")
+        tool = self.kernel.agent_orchestrator.tool_registry.get("example.focus_budget")
         result = asyncio.run(tool.execute())
         self.assertIn("focus minutes", result.content[0].text)
 

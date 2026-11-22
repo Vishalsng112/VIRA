@@ -5,7 +5,24 @@ import unittest
 
 from vira.sandbox.bubblewrap import BubblewrapBackend
 from vira.sandbox.models import SandboxPolicy
-from vira.tools.sandbox import SandboxTool
+from vira.tooling.servers.workspace.sandbox import SandboxTool
+from vira.tooling import ToolContext, text_result
+
+
+class TestSandboxTool(SandboxTool):
+    """Test adapter that presents the tool envelope as a legacy MCP result."""
+
+    async def execute(self, operation, agent_id="a", user_id=1, **kwargs):
+        envelope = await self.invoke(
+            {"operation": operation, **kwargs},
+            ToolContext(agent_id=agent_id, user_id=user_id),
+        )
+        payload = (
+            envelope.data.payload if envelope.ok and envelope.data
+            else (envelope.error.details if envelope.error and envelope.error.details else
+                  {"error": envelope.error.message if envelope.error else "unknown error"})
+        )
+        return text_result(json.dumps(payload), is_error=not envelope.ok)
 
 
 class SandboxLifecycleTests(unittest.IsolatedAsyncioTestCase):
@@ -45,7 +62,7 @@ class SandboxLifecycleTests(unittest.IsolatedAsyncioTestCase):
             async def get(self, sandbox_id, agent_id):
                 return {"sandbox_id": sandbox_id, "workspace": "/AgentWorkspace/generated/workspace"}
 
-        result = await SandboxTool(FakeManager()).execute(
+        result = await TestSandboxTool(FakeManager()).execute(
             "install", agent_id="agent-a", packages=["matplotlib"]
         )
         payload = json.loads(result.content[0].text)
@@ -80,7 +97,7 @@ def test_tool_auto_creates_sandbox_for_execute():
             return {"sandbox_id": sandbox_id, "workspace": "/AgentWorkspace/generated/workspace"}
 
     import asyncio
-    result = asyncio.run(SandboxTool(FakeManager()).execute(
+    result = asyncio.run(TestSandboxTool(FakeManager()).execute(
         "execute", agent_id="agent-a", command=["python", "plot.py"]
     ))
     payload = json.loads(result.content[0].text)
@@ -109,7 +126,7 @@ def test_tool_installs_packages_and_normalizes_python_command():
             return {"sandbox_id": sandbox_id, "workspace": "/AgentWorkspace/generated/workspace"}
 
     manager = FakeManager()
-    result = asyncio.run(SandboxTool(manager).execute(
+    result = asyncio.run(TestSandboxTool(manager).execute(
         "execute", agent_id="agent-a", packages=["matplotlib"],
         command=["python -c \"print('figure.png')\""],
     ))
@@ -146,7 +163,7 @@ class SandboxFileTests(unittest.IsolatedAsyncioTestCase):
         from vira.sandbox import SandboxManager
         with tempfile.TemporaryDirectory() as root:
             manager = SandboxManager(root=root, bwrap_binary="/bin/true")
-            tool = SandboxTool(manager)
+            tool = TestSandboxTool(manager)
             wrote = await tool.execute("write", agent_id="a", user_id=1, path="max.py", content="print(1)")
             first = json.loads(wrote.content[0].text)
             self.assertEqual(first["path"], "max.py")
@@ -169,7 +186,7 @@ class SandboxWorkspaceTests(unittest.IsolatedAsyncioTestCase):
         from vira.sandbox import SandboxManager
         self.temp_dir = tempfile.TemporaryDirectory()
         self.manager = SandboxManager(root=self.temp_dir.name, bwrap_binary="/bin/true")
-        self.tool = SandboxTool(self.manager)
+        self.tool = TestSandboxTool(self.manager)
         created = await self.tool.execute("create", agent_id="agent-a", user_id=7)
         self.sandbox_id = json.loads(created.content[0].text)["sandbox_id"]
 

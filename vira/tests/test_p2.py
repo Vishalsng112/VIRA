@@ -8,11 +8,11 @@ from vira.agent.loop import AgentLoop
 from vira.agent_runtime.run_store import append, list_events
 from vira.auth import auth, database
 from vira.memory.manager import MemoryManager
-from vira.tools.catalog import ToolCatalog
+from vira.tooling.catalog import ToolCatalog
 
 
 SPECS = [
-    {"name": "mcp_server.web_search", "description": "Search the web for news",
+    {"name": "web.search", "description": "Search the web for news",
      "parameters": {}},
     {"name": "photoshop.export", "description": "Export Adobe Photoshop layers and images",
      "parameters": {}},
@@ -35,7 +35,7 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(catalog.search("device usage focus", 2)[0].name,
                          "insights")
         self.assertEqual(catalog.search("web search news", 2)[0].name,
-                         "mcp_server.web_search")
+                         "web.search")
 
     def test_fallback_returns_usable_tools(self):
         catalog = ToolCatalog(SPECS)
@@ -68,7 +68,7 @@ class SpecialistDefinitionTests(unittest.TestCase):
         self.assertIn("insight_coach", definitions)
         self.assertIn("study_coach", definitions)
         self.assertIn("device_doctor", definitions)
-        self.assertIn("insights", definitions["insight_coach"].tools or [])
+        self.assertIn("vira.insights", definitions["insight_coach"].tools or [])
 
 
 class MemoryRankingTests(unittest.TestCase):

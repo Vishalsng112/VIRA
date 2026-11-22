@@ -1394,7 +1394,7 @@ Rules: payload delivered to the device is always `{ "t": "sync" }` (plus the col
 | WP-S2 | Token auth: pairing, refresh, scopes, `Authorization: Bearer` dependency, platform role `member` | `auth/`, `api/deps.py`, new `api/routes_pairing.py` |
 | WP-S3 | Sync service (`apply_op`, change log, visibility filter, compaction, `/sync/*`) | new `vira/family/sync.py`, `api/routes_sync.py` |
 | WP-S4 | SSE `sync.changed`, `device.revoked`; long-poll `/sync/wait` | `api/streams.py` |
-| WP-S5 | Notes-search tool for chat grounding with per-user visibility | `vira/tools/`, `agent/Agents/chat_agent.py` |
+| WP-S5 | Notes-search tool for chat grounding with per-user visibility | `vira/tooling/`, `agent/Agents/chat_agent.py` |
 | WP-S6 | Push registration + gateway client; notification policy | new `vira/family/push.py` |
 | WP-S7 | Attachments (v2) | new `vira/family/attachments.py` |
 | WP-S8 | `GET /client-config`, `PUT push-registration`, `/auth/me` extension | `api/app.py` |

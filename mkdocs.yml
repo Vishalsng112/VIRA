@@ -72,6 +72,7 @@ nav:
           - System design: dev/architecture/system-design.md
           - Agent design: dev/architecture/agent-design.md
           - Agent architectures: dev/architecture/agent-architectures.md
+          - Tooling and MCP servers: dev/architecture/tooling.md
           - Tool search: dev/architecture/tool-search.md
           - Database tools: dev/architecture/database-tools.md
       - Agent and tool platform: dev/agent-platform.md

@@ -54,6 +54,17 @@ class _Kernel:
         return True
 
 
+class RedactedConfigTests(unittest.TestCase):
+    def test_redacted_values_inside_lists_are_preserved(self):
+        from vira.api.app import _preserve_redacted_values
+
+        existing = {"agents": [{"config": {"max_tokens": 65536, "temperature": 0.1}}]}
+        incoming = {"agents": [{"config": {"max_tokens": "***", "temperature": 0.2}}]}
+        merged = _preserve_redacted_values(incoming, existing)
+        self.assertEqual(merged["agents"][0]["config"]["max_tokens"], 65536)
+        self.assertEqual(merged["agents"][0]["config"]["temperature"], 0.2)
+
+
 class OpenApiContractTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -121,6 +132,7 @@ class OpenApiContractTests(unittest.TestCase):
             "/api/v1/runs/{run_id}/resume",
             "/api/v1/models",
             "/api/v1/models/select",
+            "/v1/models",
             "/api/v1/memories/{memory_id}/feedback",
             "/api/v1/plugins",
             "/api/v1/plugins/sdk",

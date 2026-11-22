@@ -30,15 +30,15 @@ def _spec(name: str, description: str, props: Optional[Dict[str, Any]] = None,
 
 
 TOOLS = [
-    _spec("insights", "Summarize device usage, focus and wellbeing.",
+    _spec("vira.insights", "Summarize device usage, focus and wellbeing.",
           {"days": {"type": "integer"}}),
-    _spec("database_query.database_query", "Run one read-only SELECT against the VIRA database.",
+    _spec("database.query", "Run one read-only SELECT against the VIRA database.",
           {"sql": {"type": "string"}}, ["sql"]),
-    _spec("rag_search", "Search the user's knowledge base and documents.",
+    _spec("vira.rag_search", "Search the user's knowledge base and documents.",
           {"query": {"type": "string"}}, ["query"]),
-    _spec("mcp_server.web_search", "Search the web for current information.",
+    _spec("web.search", "Search the web for current information.",
           {"query": {"type": "string"}}, ["query"]),
-    _spec("mcp_server.web_browse", "Open a URL and read its text.",
+    _spec("web.browse", "Open a URL and read its text.",
           {"url": {"type": "string"}}, ["url"]),
 ]
 
@@ -106,10 +106,10 @@ def _result(name: str, category: str, passed: bool, detail: str,
 
 def scenario_device_question() -> ScenarioResult:
     result, runtime = _run_loop([
-        '{"tool": "insights", "params": {"days": 7}}',
+        '{"tool": "vira.insights", "params": {"days": 7}}',
         "You used 3.5 hours per day across 2 devices this week.",
     ], lambda name, params: "weekly focus: 3.5h/day across 2 devices")
-    ok = ("insights" in [call[0] for call in runtime.calls]
+    ok = ("vira.insights" in [call[0] for call in runtime.calls]
           and "3.5 hours" in result.text)
     return _result("device_question", "device", ok,
                    "Asked for a device summary and answered from the insights tool.",
@@ -118,10 +118,10 @@ def scenario_device_question() -> ScenarioResult:
 
 def scenario_database_question() -> ScenarioResult:
     result, runtime = _run_loop([
-        '{"tool": "database_query.database_query", "params": {"sql": "SELECT COUNT(*) AS n FROM devices"}}',
+        '{"tool": "database.query", "params": {"sql": "SELECT COUNT(*) AS n FROM devices"}}',
         "There are 4 devices connected to the server.",
     ], lambda name, params: '[{"n": 4}]')
-    ok = ("database_query.database_query" in [call[0] for call in runtime.calls]
+    ok = ("database.query" in [call[0] for call in runtime.calls]
           and "4 devices" in result.text)
     return _result("database_question", "database", ok,
                    "Used the read-only SQL tool and answered from its row set.",
@@ -130,10 +130,10 @@ def scenario_database_question() -> ScenarioResult:
 
 def scenario_rag_question() -> ScenarioResult:
     result, runtime = _run_loop([
-        '{"tool": "rag_search", "params": {"query": "project deadline"}}',
+        '{"tool": "vira.rag_search", "params": {"query": "project deadline"}}',
         "The project deadline in your notes is 12 December.",
     ], lambda name, params: "Note: project deadline is 12 December.")
-    ok = ("rag_search" in [call[0] for call in runtime.calls]
+    ok = ("vira.rag_search" in [call[0] for call in runtime.calls]
           and "12 December" in result.text)
     return _result("rag_question", "rag", ok,
                    "Retrieved a note with RAG before answering.",
@@ -142,20 +142,20 @@ def scenario_rag_question() -> ScenarioResult:
 
 def scenario_web_failure_recovery() -> ScenarioResult:
     def tool(name: str, params: Dict[str, Any]) -> str:
-        if name == "mcp_server.web_search":
+        if name == "web.search":
             raise RuntimeError("search backend timed out")
-        if name == "mcp_server.web_browse" and params.get("url") == "https://example.com":
+        if name == "web.browse" and params.get("url") == "https://example.com":
             return "Example page: today is a benchmark day."
         return "ok"
 
     result, runtime = _run_loop([
-        '{"tool": "web_search", "params": {"query": "today"}}',
-        '{"tool": "web_browse", "params": {"url": "https://example.com"}}',
+        '{"tool": "web.search", "params": {"query": "today"}}',
+        '{"tool": "web.browse", "params": {"url": "https://example.com"}}',
         "According to example.com, today is a benchmark day.",
     ], tool)
     calls = [call[0] for call in runtime.calls]
-    ok = ("mcp_server.web_search" in calls
-          and "mcp_server.web_browse" in calls
+    ok = ("web.search" in calls
+          and "web.browse" in calls
           and "benchmark day" in result.text)
     return _result("web_failure_recovery", "web", ok,
                    "Recovered from a failed search by browsing a result.",
@@ -164,14 +164,14 @@ def scenario_web_failure_recovery() -> ScenarioResult:
 
 def scenario_repeated_call() -> ScenarioResult:
     result, runtime = _run_loop([
-        '{"tool": "insights", "params": {"days": 7}}',
-        '{"tool": "insights", "params": {"days": 7}}',
-        '{"tool": "insights", "params": {"days": 30}}',
+        '{"tool": "vira.insights", "params": {"days": 7}}',
+        '{"tool": "vira.insights", "params": {"days": 7}}',
+        '{"tool": "vira.insights", "params": {"days": 30}}',
         "Thirty-day summary: focus is stable.",
     ], lambda name, params: f"summary for {params.get('days')} days")
     calls = [call[0] for call in runtime.calls]
     # The identical second call must be blocked; the changed call is allowed.
-    ok = (calls.count("insights") == 2
+    ok = (calls.count("vira.insights") == 2
           and runtime.calls[-1][1].get("days") == 30
           and result.stopped == "final")
     return _result("repeated_call_guard", "robustness", ok,
@@ -181,12 +181,12 @@ def scenario_repeated_call() -> ScenarioResult:
 
 def scenario_malformed_json() -> ScenarioResult:
     result, runtime = _run_loop([
-        'Sure, calling the tool:\n```json\n{"tool": "database_query.database_query", '
+        'Sure, calling the tool:\n```json\n{"tool": "database.query", '
         '"params": {"sql": "SELECT COUNT(*) FROM devices",},}\n```',
         "There are 4 devices.",
     ], lambda name, params: '[{"COUNT(*)": 4}]')
     calls = [call[0] for call in runtime.calls]
-    ok = (bool(calls) and calls[0] == "database_query.database_query"
+    ok = (bool(calls) and calls[0] == "database.query"
           and result.text == "There are 4 devices.")
     return _result("malformed_json", "robustness", ok,
                    "Repaired fenced JSON with trailing commas.",
@@ -196,12 +196,12 @@ def scenario_malformed_json() -> ScenarioResult:
 def scenario_unknown_tool() -> ScenarioResult:
     result, runtime = _run_loop([
         '{"tool": "ghost_tool", "params": {}}',
-        '{"tool": "insights", "params": {"days": 1}}',
+        '{"tool": "vira.insights", "params": {"days": 1}}',
         "Today's summary is ready.",
     ], lambda name, params: "today: 2 devices")
     kinds = [step.kind for step in result.steps]
     ok = ("unknown_tool" in kinds
-          and "insights" in [call[0] for call in runtime.calls]
+          and "vira.insights" in [call[0] for call in runtime.calls]
           and result.stopped == "final")
     return _result("unknown_tool_recovery", "robustness", ok,
                    "Rejected an invented tool and picked a real one.",

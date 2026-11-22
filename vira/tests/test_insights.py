@@ -121,19 +121,24 @@ class InsightsToolTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_tool_summarises_selected_device(self):
-        from vira.tools.insights import InsightsTool
-        result = asyncio.run(InsightsTool().execute(
-            user_id=1, device_id=self.device_id, days=7))
-        text = result.content[0].text
+        from vira.tooling import ToolContext
+        from vira.tooling.servers.vira_core.tools import ViraInsightsTool
+        result = asyncio.run(ViraInsightsTool().invoke(
+            {"device_id": self.device_id, "days": 7},
+            ToolContext(user_id=1)))
+        self.assertTrue(result.ok)
+        text = result.data.text
         self.assertIn("VS Code", text)
         self.assertIn("Focus score", text)
         self.assertIn("Laptop", text)
 
     def test_tool_rejects_unknown_device(self):
-        from vira.tools.insights import InsightsTool
-        result = asyncio.run(InsightsTool().execute(
-            user_id=1, device_id="not-a-device", days=7))
-        self.assertTrue(result.isError)
+        from vira.tooling import ToolContext
+        from vira.tooling.servers.vira_core.tools import ViraInsightsTool
+        result = asyncio.run(ViraInsightsTool().invoke(
+            {"device_id": "not-a-device", "days": 7},
+            ToolContext(user_id=1)))
+        self.assertFalse(result.ok)
 
 
 if __name__ == "__main__":

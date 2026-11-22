@@ -1,19 +1,10 @@
-"""Example VIRA plugin: a private reading list.
-
-Demonstrates the complete plugin surface used by the SDK examples:
-
-* a read-only tool and a write tool;
-* an authenticated HTTP route (the host authenticates before mounting);
-* namespaced persisted state;
-* a prompt-defined specialist that can only use this plugin's tools.
-
-Copy the directory into ``plugins.directories`` and reload plugins.
-"""
+"""Example VIRA plugin: a private reading list."""
 from fastapi import APIRouter
+from pydantic import Field
 
 from vira.agent.definitions import AgentDefinition
 from vira.plugins.api import Plugin
-from vira.tools.base import BaseTool, ToolPermission, text_result
+from vira.tooling import BaseTool, StrictModel, ToolContext, ToolError
 
 
 def _items(ctx) -> list:
@@ -21,66 +12,80 @@ def _items(ctx) -> list:
     return value if isinstance(value, list) else []
 
 
+class TextOut(StrictModel):
+    text: str
+
+
+class ListInput(StrictModel):
+    limit: int = Field(default=20, ge=1, le=100)
+
+
+class AddInput(StrictModel):
+    title: str = Field(min_length=1, max_length=300)
+    url: str = ""
+
+
 class ReadingListTool(BaseTool):
+    namespace = "example"
+    name = "reading_list"
+    title = "Show reading list"
+    description = "List the user's private reading list entries."
+    when_to_use = "Use when the user asks what is on their reading list."
+    when_not_to_use = "Do not use to add entries."
+    category = "productivity"
+    tags = ("reading", "list", "books", "articles")
+    input_model = ListInput
+    output_model = TextOut
+
     def __init__(self, ctx):
-        super().__init__(
-            name="reading_list",
-            description="List the user's private reading list entries.",
-            permissions=ToolPermission(actions=["read"]),
-            input_schema={
-                "type": "object",
-                "properties": {"limit": {"type": "integer"}},
-            },
-        )
         self.ctx = ctx
 
-    async def execute(self, limit: int = 20, **kwargs):
+    async def run(self, params: ListInput, context: ToolContext) -> TextOut:
         items = _items(self.ctx)
-        limit = max(1, min(int(limit or 20), 100))
         if not items:
-            return text_result("The reading list is empty.")
+            return TextOut(text="The reading list is empty.")
         lines = [
             f"{index + 1}. {entry.get('title', 'Untitled')}"
             + (f" — {entry['url']}" if entry.get("url") else "")
-            for index, entry in enumerate(items[:limit])
+            for index, entry in enumerate(items[:params.limit])
         ]
-        return text_result("\n".join(lines))
+        return TextOut(text="\n".join(lines))
 
 
 class ReadingAddTool(BaseTool):
+    namespace = "example"
+    name = "reading_add"
+    title = "Add to reading list"
+    description = "Add a title and optional URL to the user's private reading list."
+    when_to_use = "Use when the user asks to save something to read later."
+    when_not_to_use = "Do not use to edit unrelated notes."
+    category = "productivity"
+    tags = ("reading", "add", "bookmark", "articles")
+    side_effects = "write"
+    idempotent = False
+    input_model = AddInput
+    output_model = TextOut
+
     def __init__(self, ctx):
-        super().__init__(
-            name="reading_add",
-            description="Add a title and optional URL to the user's private reading list.",
-            permissions=ToolPermission(actions=["write"]),
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string"},
-                    "url": {"type": "string"},
-                },
-                "required": ["title"],
-            },
-        )
         self.ctx = ctx
 
-    async def execute(self, title: str = "", url: str = "", **kwargs):
-        title = " ".join(str(title).split())[:300]
+    async def run(self, params: AddInput, context: ToolContext) -> TextOut:
+        title = " ".join(params.title.split())[:300]
         if not title:
-            return text_result("title is required", is_error=True)
+            raise ToolError("title_required", "title is required")
         items = _items(self.ctx)
         max_items = int(self.ctx.config.get("max_items", 200))
         if len(items) >= max_items:
-            return text_result(
+            raise ToolError(
+                "reading_list_full",
                 f"The reading list is full ({max_items} entries). Remove one first.",
-                is_error=True,
             )
         entry = {"title": title}
-        if url:
-            entry["url"] = str(url)[:2000]
+        if params.url:
+            entry["url"] = params.url[:2000]
         items.append(entry)
         self.ctx.set_state("items", items)
-        return text_result(f"Added '{title}' ({len(items)} total).")
+        return TextOut(text=f"Added '{title}' ({len(items)} total).")
 
 
 class ReadingListPlugin(Plugin):
@@ -113,11 +118,11 @@ class ReadingListPlugin(Plugin):
             name="reading_coach",
             description="Use when the user asks what to read next or wants their reading list reviewed.",
             prompt=(
-                "You are VIRA's reading coach. Use reading_list before answering. "
+                "You are VIRA's reading coach. Use example.reading_list before answering. "
                 "Never invent entries. Suggest at most three next reads and explain "
                 "why in one sentence each."
             ),
-            tools=["reading_list"],
+            tools=["example.reading_list"],
             max_steps=3,
             version="1.0.0",
         ))

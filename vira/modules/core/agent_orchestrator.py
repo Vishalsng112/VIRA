@@ -15,18 +15,13 @@ from vira.agent.proactive import ProactiveScheduler
 from vira.agent_runtime.runtime import AgentRuntime
 from vira.memory.manager import MemoryManager
 from vira.llm.manager import LLMManager
-from vira.tools.executor import ToolExecutor
-from vira.tools.registry import ToolRegistry
-from vira.tools.connection import MCPServerConnection
-from vira.tools.base import ToolPermission
+from vira.tooling.executor import ToolExecutor
+from vira.tooling.registry import ToolRegistry
+from vira.mcp.connection import MCPServerConnection
+from vira.tooling import ToolPermission
 from vira.sandbox import SandboxManager
 from vira.sandbox import SandboxPolicy
-from vira.tools.sandbox import SandboxTool
-from vira.tools.chat_statistics import ChatStatisticsTool
-from vira.tools.insights import InsightsTool
-from vira.tools.context_tool import UserContextTool
-from vira.tools.rag_tool import RagSearchTool
-from vira.tools.knowledge_tool import KnowledgeSearchTool, KnowledgeWriteTool
+from vira.tooling.servers.workspace.sandbox import SandboxTool
 from vira.knowledge import events as knowledge_events
 from vira.auth import database
 from vira.mcp import store as mcp_store
@@ -108,13 +103,7 @@ class AgentOrchestratorModule(ViraModule):
             )
             tool_root = (self._config_manager.get("tools", {}) or {}).get("workspace_root", ".")
             builtins = self.tool_registry.register_builtins(tool_root)
-            logger.info("Registered built-in tools: {}", builtins)
-            self.tool_registry.register(ChatStatisticsTool())
-            self.tool_registry.register(InsightsTool())
-            self.tool_registry.register(UserContextTool())
-            self.tool_registry.register(RagSearchTool())
-            self.tool_registry.register(KnowledgeSearchTool())
-            self.tool_registry.register(KnowledgeWriteTool())
+            logger.info("Registered domain tools: {}", builtins)
             sandbox_config = self._config_manager.get("sandbox", {}) or {}
             default_policy = SandboxPolicy.from_dict({
                 key: sandbox_config[key]
@@ -165,9 +154,9 @@ class AgentOrchestratorModule(ViraModule):
                     logger.error(f"Failed to connect to MCP server: {e}")
                     # Continue without MCP tools
             else:
-                logger.warning(
-                    "MCP not available or no 'mcp_server' config. "
-                    "Only local tools (if any) will be available."
+                logger.debug(
+                    "No external MCP server configured; built-in domain tools are "
+                    "registered in-process."
                 )
 
             # Built-in read-only database MCP server. It gives the Chatbot
@@ -175,19 +164,14 @@ class AgentOrchestratorModule(ViraModule):
             database_mcp = self._config_manager.get("database_mcp", {}) or {}
             if (
                 MCP_AVAILABLE
-                and database_mcp.get("enabled", True)
-                and "database_query" not in self._mcp_by_name
+                and database_mcp.get("enabled", False)
+                and "database" not in self._mcp_by_name
             ):
                 try:
-                    default_script = (
-                        Path(__file__).resolve().parents[3]
-                        / "vira"
-                        / "tools"
-                        / "database_mcp_server.py"
-                    )
                     command = database_mcp.get("command") or [
                         sys.executable,
-                        str(default_script),
+                        "-m",
+                        "vira.mcp.servers.database.server",
                     ]
                     args = list(database_mcp.get("args") or [])
                     if isinstance(command, list):
@@ -203,7 +187,7 @@ class AgentOrchestratorModule(ViraModule):
                         }.items()
                     }
                     connection = MCPServerConnection.stdio(
-                        name="database_query",
+                        name="database",
                         command=cmd,
                         args=args,
                         env=child_env,
@@ -217,14 +201,10 @@ class AgentOrchestratorModule(ViraModule):
                         ),
                     )
                     self._mcp_connections.append(connection)
-                    self._mcp_by_name["database_query"] = connection
-                    logger.info(
-                        "Registered database_query MCP tools: {}", registered
-                    )
+                    self._mcp_by_name["database"] = connection
+                    logger.info("Registered database MCP tools: {}", registered)
                 except Exception as exc:
-                    logger.error(
-                        "Failed to connect database_query MCP server: {}", exc
-                    )
+                    logger.error("Failed to connect database MCP server: {}", exc)
 
             # Installed MCP marketplace servers (DB-backed allow-lists).
             if MCP_AVAILABLE:

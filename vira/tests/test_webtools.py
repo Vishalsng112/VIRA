@@ -2,7 +2,7 @@ import base64
 import unittest
 from unittest import mock
 
-from vira.tools import webtools as w
+from vira.tooling.services import webtools as w
 
 DDG_HTML = """<div class="result results_links"><a class="result__a"
  href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fa&rut=x">Example A</a>

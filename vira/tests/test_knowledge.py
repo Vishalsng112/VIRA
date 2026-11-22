@@ -7,7 +7,8 @@ from vira.auth import auth, database
 from vira.knowledge import consolidation, policy, service
 from vira.knowledge.models import KnowledgeItem
 from vira.knowledge.store import SqliteKnowledgeStore, get_store
-from vira.tools.knowledge_tool import KnowledgeSearchTool, KnowledgeWriteTool
+from vira.tooling import ToolContext
+from vira.tooling.servers.vira_core.tools import ViraKnowledgeSearchTool, ViraKnowledgeWriteTool
 
 
 class KnowledgeBaseTest(unittest.IsolatedAsyncioTestCase):
@@ -167,16 +168,15 @@ class KnowledgeBaseTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse([r for r in outside if r["id"] == item["id"]])
 
     async def test_tools_write_then_search(self):
-        written = await KnowledgeWriteTool().execute(
-            content="The project codename is VIRA.",
-            requested_by_user=True,
-            user_id=self.user_id,
+        written = await ViraKnowledgeWriteTool().invoke(
+            {"content": "The project codename is VIRA.", "requested_by_user": True},
+            ToolContext(user_id=self.user_id),
         )
-        self.assertFalse(written.isError)
-        found = await KnowledgeSearchTool().execute(
-            query="project codename", user_id=self.user_id)
-        self.assertFalse(found.isError)
-        self.assertIn("VIRA", found.content[0].text)
+        self.assertTrue(written.ok)
+        found = await ViraKnowledgeSearchTool().invoke(
+            {"query": "project codename"}, ToolContext(user_id=self.user_id))
+        self.assertTrue(found.ok)
+        self.assertIn("VIRA", str(found.data.payload))
 
     async def test_scope_policy_defaults(self):
         self.assertEqual(

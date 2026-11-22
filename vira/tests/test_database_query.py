@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from vira.auth import database
-from vira.tools import database_query as dbq
+from vira.tooling.services import database_query as dbq
 
 
 class DatabaseQueryTests(unittest.TestCase):

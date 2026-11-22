@@ -13,7 +13,7 @@ from vira.agent.proactive import ProactiveScheduler
 from vira.agent_orchestration.registry import AgentRegistry
 from vira.agent_orchestration.scheduler import RuntimeScheduler
 from vira.auth import auth, database
-from vira.tools.base import ToolPermission, text_result
+from vira.tooling import ToolPermission, text_result
 
 
 class _Tool:
@@ -54,7 +54,7 @@ class _Runtime:
         self.fail_llm = fail_llm
         self.prompts = []
         self.calls = []
-        tools = [_Tool("user_context"), _Tool("insights")]
+        tools = [_Tool("vira.context"), _Tool("vira.insights")]
         self.tool_executor = _Executor(tools)
 
     async def get_context(self, agent_id):
@@ -92,15 +92,15 @@ def _request(message="Generate the morning brief") -> TaskRequest:
 class MorningBriefTests(unittest.IsolatedAsyncioTestCase):
     async def test_brief_uses_collected_sources(self):
         runtime = _Runtime(outputs={
-            "user_context": "Battery: 42%. Devices: Pixel.",
-            "insights": "Yesterday: 3h focus, top app Editor.",
+            "vira.context": "Battery: 42%. Devices: Pixel.",
+            "vira.insights": "Yesterday: 3h focus, top app Editor.",
         })
         agent = MorningBriefAgent(runtime, agent_id="morning-brief")
         await agent.initialize()
         result = await agent.run_task(_request())
         self.assertEqual(result.text, "BRIEF TEXT")
         self.assertEqual(set(result.data["morning_brief"]["sources"]),
-                         {"user_context", "insights"})
+                         {"vira.context", "vira.insights"})
         self.assertEqual(result.data["morning_brief"]["generated_by"], "llm")
         self.assertEqual(result.data["architecture"], "single")
         prompt = runtime.prompts[0]
@@ -110,14 +110,14 @@ class MorningBriefTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_tool_is_labelled_unavailable(self):
         runtime = _Runtime(outputs={
-            "user_context": "No linked devices.",
-            "insights": "No usage yet.",
+            "vira.context": "No linked devices.",
+            "vira.insights": "No usage yet.",
         })
         agent = MorningBriefAgent(
             runtime, agent_id="morning-brief",
             context_tools=[
-                {"name": "user_context"},
-                {"name": "insights", "params": {"days": 1}},
+                {"name": "vira.context"},
+                {"name": "vira.insights", "params": {"days": 1}},
                 {"name": "calendar"},
             ])
         await agent.initialize()
@@ -128,31 +128,31 @@ class MorningBriefTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_tool_error_is_labelled_unavailable(self):
         runtime = _Runtime(outputs={
-            "user_context": RuntimeError("permission denied"),
-            "insights": "Usage exists.",
+            "vira.context": RuntimeError("permission denied"),
+            "vira.insights": "Usage exists.",
         })
         agent = MorningBriefAgent(runtime, agent_id="morning-brief")
         await agent.initialize()
         result = await agent.run_task(_request())
         unavailable = result.data["morning_brief"]["unavailable"]
-        self.assertEqual(unavailable[0]["source"], "user_context")
+        self.assertEqual(unavailable[0]["source"], "vira.context")
         self.assertIn("permission denied", unavailable[0]["reason"])
 
     async def test_disallowed_tool_is_labelled_unavailable(self):
-        runtime = _Runtime(outputs={"user_context": "Device ok.",
-                                    "insights": "Focus 2h."})
+        runtime = _Runtime(outputs={"vira.context": "Device ok.",
+                                    "vira.insights": "Focus 2h."})
         agent = MorningBriefAgent(
             runtime, agent_id="morning-brief",
-            tools={"allow": ["insights"]})
+            tools={"allow": ["vira.insights"]})
         await agent.initialize()
         result = await agent.run_task(_request())
         unavailable = result.data["morning_brief"]["unavailable"]
-        self.assertEqual(unavailable[0]["source"], "user_context")
+        self.assertEqual(unavailable[0]["source"], "vira.context")
         self.assertIn("not allowed", unavailable[0]["reason"])
 
     async def test_memory_is_optional_context(self):
         runtime = _Runtime(
-            outputs={"user_context": "Device ok.", "insights": "Focus 2h."},
+            outputs={"vira.context": "Device ok.", "vira.insights": "Focus 2h."},
             memory=[SimpleNamespace(content="Prefers deep work at 09:00")])
         agent = MorningBriefAgent(runtime, agent_id="morning-brief")
         await agent.initialize()
@@ -162,7 +162,7 @@ class MorningBriefTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_fallback_when_model_fails(self):
         runtime = _Runtime(
-            outputs={"user_context": "Battery 20%.", "insights": "Focus 1h."},
+            outputs={"vira.context": "Battery 20%.", "vira.insights": "Focus 1h."},
             fail_llm=True)
         agent = MorningBriefAgent(runtime, agent_id="morning-brief")
         await agent.initialize()
@@ -173,7 +173,7 @@ class MorningBriefTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Do first", result.text)
 
     async def test_empty_message_still_produces_brief(self):
-        runtime = _Runtime(outputs={"user_context": "ok", "insights": "ok"})
+        runtime = _Runtime(outputs={"vira.context": "ok", "vira.insights": "ok"})
         agent = MorningBriefAgent(runtime, agent_id="morning-brief")
         await agent.initialize()
         result = await agent.run_task(_request(""))
@@ -191,8 +191,8 @@ class MorningBriefScheduleTests(unittest.IsolatedAsyncioTestCase):
         self.tmp.cleanup()
 
     async def test_schedule_delivers_one_brief_notification(self):
-        runtime = _Runtime(outputs={"user_context": "Device ok.",
-                                    "insights": "Focus 3h."},
+        runtime = _Runtime(outputs={"vira.context": "Device ok.",
+                                    "vira.insights": "Focus 3h."},
                            reply="Today: one priority.")
         agent = MorningBriefAgent(runtime, agent_id="morning-brief")
         await agent.initialize()

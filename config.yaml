@@ -206,7 +206,7 @@ security:
     # Force every operation of these tools through approval.
     # destructive_tools: ["mcp_server.custom_shell"]
     # Tools allowed without a per-call approval.
-    safe_tools: ["sandbox"]
+    safe_tools: ["workspace.sandbox"]
     # Gate unknown MCP/plugin tools unless explicitly listed as safe.
     unknown_tools: false
     # Per-tool operation policy, for example:
@@ -277,13 +277,18 @@ knowledge:
 # Local and MCP tools
 # ---------------------------------------------------------------------------
 mcp_server:
-  command: ["python", "vira/tools/mcp_server.py"]
+  # Built-in web tools are registered in-process from vira.tooling.servers.web.
+  # Set command to connect an external MCP server instead of the built-in pack.
+  # command: ["python", "-m", "vira.mcp.servers.web.server"]
   permissions: ["read", "write", "execute"]
 
 database_mcp:
-  enabled: true
+  # Database tools are registered locally by the tooling framework so the
+  # authenticated caller can be passed explicitly. Enable this only for a
+  # single-user MCP deployment that sets VIRA_CALLER_USER_ID in the server env.
+  enabled: false
   # Omit command to use the running Python interpreter.
-  # command: ["python", "vira/tools/database_mcp_server.py"]
+  # command: ["python", "-m", "vira.mcp.servers.database.server"]
   permissions: ["read", "execute"]
 
 # ---------------------------------------------------------------------------
@@ -333,8 +338,8 @@ agents:
     agent_id: chatbot
     enabled: true
     config:
-      system_prompt: "You are VIRA, a friendly, helpful assistant. For news, recent events, people, prices or anything you are not sure about, do not answer from memory: call web_search first, then web_browse on the best result, then answer from what you read and name your sources. If a tool fails, say exactly what failed."
-      temperature: 0.7
+      system_prompt: "You are VIRA, a friendly, helpful assistant. For news, recent events, people, prices or anything you are not sure about, do not answer from memory: call web.search first, then web.browse on the best result, then answer from what you read and name your sources. If a tool fails, say exactly what failed."
+      temperature: 0.1
       max_tokens: 65536
       max_steps: 6
       max_prompt_chars: 12000
@@ -343,7 +348,7 @@ agents:
       max_seconds: 600
       tool_timeout: 90
       tool_timeouts:
-        sandbox: 600
+        workspace.sandbox: 600
       llm_timeout: 300
       history_limit: 20
       history_fallback: true
@@ -353,7 +358,7 @@ agents:
       delegation: true
       tools:
         allow: []
-        pinned: ["sandbox"]
+        pinned: ["workspace.sandbox"]
       # definitions_dir: "~/.vira/agents"
 
   - name: MorningBriefAgent
@@ -370,8 +375,8 @@ agents:
       include_memory: true
       include_knowledge: false
       context_tools:
-        - name: user_context
-        - name: insights
+        - name: vira.context
+        - name: vira.insights
           params:
             days: 1
 

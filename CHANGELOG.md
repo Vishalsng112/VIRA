@@ -8,7 +8,14 @@ All notable changes to VIRA are documented here. The format follows
 
 ### Added
 
-- No unreleased changes yet.
+- Pydantic-first tool contract with typed input/output models, metadata,
+  timeouts and structured success/error envelopes.
+- Domain MCP foundation: `ToolCatalog`, `ToolRegistry`, `Toolbox`,
+  `tool_search`, `tool_describe` and per-agent allow/deny/pinned policies.
+- New domain servers and qualified tools for `web`, `runtime`, `workspace`,
+  `database` and `vira`, with manifests and stdio entrypoints.
+- Removed the legacy `vira.tools` package; agents, plugins, generated tools and
+  MCP servers now use the new tooling contract and qualified names exclusively.
 
 ## [0.6.1] - 2026-11-22
 

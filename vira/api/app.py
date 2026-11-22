@@ -220,6 +220,28 @@ def _redact(value):
     return value
 
 
+def _preserve_redacted_values(value: Any, existing: Any) -> Any:
+    """Keep existing values wherever the API returned a redacted placeholder.
+
+    The dashboard round-trips the redacted config. Recursing through lists is
+    important: agent settings live in a list, so redacted values there must be
+    restored instead of being saved as ``"***"``.
+    """
+    if isinstance(value, dict) and isinstance(existing, dict):
+        return {
+            key: _preserve_redacted_values(item, existing.get(key))
+            for key, item in value.items()
+        }
+    if isinstance(value, list) and isinstance(existing, list):
+        return [
+            _preserve_redacted_values(item, existing[index] if index < len(existing) else None)
+            for index, item in enumerate(value)
+        ]
+    if value == "***" and existing is not None:
+        return existing
+    return value
+
+
 def create_app(kernel: Kernel) -> FastAPI:
     set_kernel(kernel)
 
@@ -613,19 +635,7 @@ def create_app(kernel: Kernel) -> FastAPI:
     @app.put("/config")
     async def replace_config(request: ConfigReplaceRequest, user: auth.Principal = Depends(require_admin)):
         current = kernel.config_manager.get_all()
-        updated = request.config
-
-        def preserve_redacted_values(value: Any, existing: Any) -> Any:
-            if isinstance(value, dict) and isinstance(existing, dict):
-                return {
-                    key: preserve_redacted_values(item, existing.get(key))
-                    for key, item in value.items()
-                }
-            if value == "***" and existing is not None:
-                return existing
-            return value
-
-        updated = preserve_redacted_values(updated, current)
+        updated = _preserve_redacted_values(request.config, current)
         kernel.config_manager.save(updated)
         await kernel.reload()
         return {"status": "reloaded", "config": _redact(kernel.config_manager.get_all())}
@@ -826,6 +836,35 @@ def create_app(kernel: Kernel) -> FastAPI:
             "can_select": bool(getattr(user, "is_admin", False)),
             "guidance": model_guidance.recommend(ram),
             "cloud_fallback": model_guidance.cloud_fallback(),
+        }
+
+    @app.get("/v1/models")
+    async def openai_compatible_models():
+        """OpenAI-compatible model discovery for local chat clients.
+
+        VIRA's own web UI uses ``/api/v1/models``. Some local clients probe the
+        standard OpenAI path; return installed Ollama models in that shape rather
+        than a confusing 404.
+        """
+        _config, base_url, default_model, _current, _llm = _ollama_runtime()
+        try:
+            installed = await asyncio.to_thread(model_catalog.list_ollama_models, base_url, 3.0)
+        except Exception:  # noqa: BLE001 - discovery must not fail hard
+            installed = []
+        names = [item.get("name") for item in installed if item.get("name")]
+        if default_model and default_model not in names:
+            names.append(default_model)
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": name,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "vira",
+                }
+                for name in names
+            ],
         }
 
     @app.post("/api/v1/models/select")

@@ -15,9 +15,9 @@ from vira.mcp import policy as mcp_policy
 from vira.organizations import service as orgs
 from vira.scaling import get_broker
 from vira.storage import service as storage
-from vira.tools.base import BaseTool, ToolPermission, text_result
-from vira.tools.executor import ToolExecutor
-from vira.tools.registry import ToolRegistry
+from vira.tooling import ToolPermission, text_result
+from vira.tooling.executor import ToolExecutor
+from vira.tooling.registry import ToolRegistry
 from vira.updates import service as updates
 from vira.llm import usage
 
@@ -46,10 +46,16 @@ class _Kernel:
         pass
 
 
-class _RiskTool(BaseTool):
+class _RiskTool:
     def __init__(self, name="echo", server_name="demo"):
-        super().__init__(name, "Echo text", ToolPermission(actions=["read"]))
+        self.name = name
+        self.description = "Echo text"
+        self.permissions = ToolPermission(actions=["read"])
         self.server_name = server_name
+        self.input_schema = {"type": "object", "properties": {"text": {"type": "string"}}}
+
+    def get_schema(self):
+        return self.input_schema
 
     async def execute(self, text: str = "", **kwargs):
         return text_result(text)
@@ -76,7 +82,7 @@ class PluginSdkTests(P4Base):
         self.assertEqual(status["loaded"], 3)
         plugins = {item["id"]: item for item in manager.list_plugins()}
         self.assertEqual(plugins["example.hello-world"]["status"], "active")
-        self.assertIn("example_word_count", kernel.agent_orchestrator.tool_registry.list())
+        self.assertIn("example.word_count", kernel.agent_orchestrator.tool_registry.list())
         self.assertTrue(manager.collect_routers())
 
         asyncio.run(manager.set_enabled("example.hello-world", False))
@@ -95,12 +101,13 @@ class PluginSdkTests(P4Base):
             "from vira.plugins.api import Plugin\n"
             "class Bad(Plugin):\n"
             "    async def setup(self, ctx):\n"
-            "        from vira.tools.base import BaseTool, ToolPermission\n"
-            "        class T(BaseTool):\n"
-            "            def __init__(self):\n"
-            "                super().__init__('bad_tool','bad',ToolPermission(actions=['read']))\n"
-            "            async def execute(self, **kw):\n"
-            "                return None\n"
+            "        from vira.tooling import ToolPermission\n"
+            "        class T:\n"
+            "            name = 'bad_tool'\n"
+            "            description = 'bad'\n"
+            "            permissions = ToolPermission(actions=['read'])\n"
+            "            def get_schema(self): return {'type':'object','properties':{}}\n"
+            "            async def execute(self, **kw): return None\n"
             "        ctx.register_tool(T())\n"
         )
         manager = PluginManager(str(plugin_dir.parent), kernel=_Kernel())

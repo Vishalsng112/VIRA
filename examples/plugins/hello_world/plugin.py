@@ -1,37 +1,41 @@
-"""Reference VIRA plugin.
-
-Copy this directory into a configured plugin directory (or add
-``examples/plugins`` to ``plugins.directories``) and reload plugins.
-"""
+"""Reference VIRA plugin using the Pydantic-first tool contract."""
 from fastapi import APIRouter
+from pydantic import Field
 
 from vira.plugins.api import Plugin
-from vira.tools.base import BaseTool, ToolPermission, text_result
+from vira.tooling import BaseTool, StrictModel, ToolContext
+
+
+class WordCountInput(StrictModel):
+    text: str = Field(min_length=0, max_length=20000)
+
+
+class WordCountOutput(StrictModel):
+    text: str
 
 
 class WordCountTool(BaseTool):
-    def __init__(self):
-        super().__init__(
-            name="example_word_count",
-            description="Count words and characters in a short piece of text.",
-            permissions=ToolPermission(actions=["read"]),
-            input_schema={
-                "type": "object",
-                "properties": {"text": {"type": "string"}},
-                "required": ["text"],
-            },
-        )
+    namespace = "example"
+    name = "word_count"
+    title = "Count words"
+    description = "Count words and characters in a short piece of text."
+    when_to_use = "Use for deterministic word or character counts."
+    when_not_to_use = "Do not use for semantic analysis."
+    category = "utility"
+    tags = ("text", "count", "words", "characters")
+    input_model = WordCountInput
+    output_model = WordCountOutput
 
-    async def execute(self, text: str = "", **kwargs):
-        words = text.split()
-        return text_result(f"words={len(words)} characters={len(text)}")
+    async def run(self, params: WordCountInput, context: ToolContext) -> WordCountOutput:
+        words = params.text.split()
+        return WordCountOutput(
+            text=f"words={len(words)} characters={len(params.text)}")
 
 
 class HelloWorldPlugin(Plugin):
     async def setup(self, ctx):
         self.ctx = ctx
         ctx.register_tool(WordCountTool())
-        # Every plugin router is mounted at /api/v1/ext/<plugin-id>.
         router = APIRouter()
 
         @router.get("/hello")
@@ -47,7 +51,6 @@ class HelloWorldPlugin(Plugin):
         ctx.register_router(router)
 
     async def start(self):
-        # Optional background work is tied to the plugin lifecycle.
         pass
 
     async def stop(self):

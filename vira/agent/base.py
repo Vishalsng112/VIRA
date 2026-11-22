@@ -395,7 +395,10 @@ class BaseAgent:
         authenticated caller so they cannot be used without identity.
         """
         request = self.current_request()
-        if request is not None and "." not in name:
+        registry = getattr(getattr(self.runtime, "tool_executor", None), "_registry", None)
+        tool = registry.get(name) if registry is not None else None
+        is_mcp = bool(getattr(tool, "server_name", None))
+        if request is not None and not is_mcp:
             params.setdefault("user_id", request.user_id)
             if request.device_id:
                 params.setdefault("device_id", request.device_id)

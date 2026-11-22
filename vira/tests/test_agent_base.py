@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from vira.agent import runtime_context
 from vira.agent.base import BaseAgent, TaskRequest, TaskResult
 from vira.agent.toolbox import ToolPolicy, Toolbox
-from vira.tools.base import ToolPermission, text_result
+from vira.tooling import ToolPermission, text_result
 
 
 class _Tool:
@@ -168,19 +168,19 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
 class ToolboxTests(unittest.IsolatedAsyncioTestCase):
     def runtime(self):
         return _Runtime([
-            _Tool("sandbox", ["read", "write", "execute"]),
-            _Tool("rag_search", ["read"]),
-            _Tool("mcp_server.database_query", ["read", "execute"], provider="mcp_server"),
+            _Tool("workspace.sandbox", ["read", "write", "execute"]),
+            _Tool("vira.rag_search", ["read"]),
+            _Tool("database.query", ["read", "execute"], provider="mcp_server"),
         ])
 
     def test_policy_allow_deny_pinned(self):
         policy = ToolPolicy.from_config({
-            "tools": {"allow": ["sandbox", "mcp_server.*"],
-                      "deny": ["web"], "pinned": ["sandbox"]}})
-        self.assertTrue(policy.allows("sandbox"))
-        self.assertTrue(policy.allows("mcp_server.database_query"))
-        self.assertFalse(policy.allows("rag_search"))
-        self.assertTrue(policy.is_pinned("sandbox"))
+            "tools": {"allow": ["workspace.sandbox", "database.*"],
+                      "deny": ["web"], "pinned": ["workspace.sandbox"]}})
+        self.assertTrue(policy.allows("workspace.sandbox"))
+        self.assertTrue(policy.allows("database.query"))
+        self.assertFalse(policy.allows("vira.rag_search"))
+        self.assertTrue(policy.is_pinned("workspace.sandbox"))
 
     def test_empty_allow_means_every_tool(self):
         policy = ToolPolicy.from_config({"tools": {"allow": []}})
@@ -188,32 +188,32 @@ class ToolboxTests(unittest.IsolatedAsyncioTestCase):
 
     def test_toolbox_discovers_and_selects(self):
         toolbox = Toolbox(self.runtime(), ToolPolicy.from_config({
-            "tools": {"allow": [], "pinned": ["sandbox"]}}))
+            "tools": {"allow": [], "pinned": ["workspace.sandbox"]}}))
         self.assertEqual(set(toolbox.names),
-                         {"sandbox", "rag_search", "mcp_server.database_query"})
-        self.assertEqual(toolbox.pinned, ["sandbox"])
+                         {"workspace.sandbox", "vira.rag_search", "database.query"})
+        self.assertEqual(toolbox.pinned, ["workspace.sandbox"])
         selected = toolbox.select("query the database", limit=2)
         self.assertTrue(selected)
-        self.assertIn("sandbox", [spec["name"] for spec in toolbox.select("x", limit=8)])
+        self.assertIn("workspace.sandbox", [spec["name"] for spec in toolbox.select("x", limit=8)])
 
     async def test_toolbox_passes_the_right_permission_action(self):
         runtime = self.runtime()
         toolbox = Toolbox(runtime)
-        await toolbox.call("agent-1", "rag_search", q="x")
-        await toolbox.call("agent-1", "sandbox", operation="read")
+        await toolbox.call("agent-1", "vira.rag_search", q="x")
+        await toolbox.call("agent-1", "workspace.sandbox", operation="read")
         self.assertEqual(runtime.tool_calls[0][1], "read")
         self.assertEqual(runtime.tool_calls[1][1], "execute")
 
 
 class HelperTests(unittest.IsolatedAsyncioTestCase):
     async def test_call_tool_injects_identity_for_local_tools_only(self):
-        runtime = _Runtime([_Tool("rag_search", ["read"]),
-                            _Tool("mcp_server.database_query", ["read", "execute"])])
+        runtime = _Runtime([_Tool("vira.rag_search", ["read"]),
+                            _Tool("database.query", ["read", "execute"], provider="database")])
         agent = BaseAgent("helper", runtime=runtime)
 
         async def task():
-            await agent.call_tool("rag_search", q="x")
-            await agent.call_tool("mcp_server.database_query", q="y")
+            await agent.call_tool("vira.rag_search", q="x")
+            await agent.call_tool("database.query", q="y")
 
         token = runtime_context.current_request.set(
             TaskRequest(input="x", user_id=9, device_id="dev-1"))
@@ -247,11 +247,11 @@ class HelperTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["conversation_id"], "conv-4")
 
     async def test_describe_and_health(self):
-        runtime = _Runtime([_Tool("sandbox", ["read", "write", "execute"])])
+        runtime = _Runtime([_Tool("workspace.sandbox", ["read", "write", "execute"])])
         agent = BaseAgent("inspect", runtime=runtime)
         described = agent.describe()
         self.assertEqual(described["name"], "inspect")
-        self.assertEqual(described["tools"]["names"], ["sandbox"])
+        self.assertEqual(described["tools"]["names"], ["workspace.sandbox"])
         self.assertFalse(agent.health()["initialised"])
 
 

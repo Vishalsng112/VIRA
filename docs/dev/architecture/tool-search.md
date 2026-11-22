@@ -12,11 +12,12 @@ Examples:
 
 - `photoshop` → tools tagged `adobe`/`photoshop`
 - `davinci resolve` → tools tagged `davinci-resolve`/`media`
-- `device usage focus` → `insights`
-- `web news` → web search/research/browse tools
+- `device usage focus` → `vira.insights`
+- `web news` → `web.search`, `web.research`, `web.browse`
 
-The MCP server also exposes `search_tools` with its own catalogue so standalone
-MCP clients can avoid loading every tool.
+The new domain framework exposes `tooling.tool_search` and `tooling.tool_describe`
+over the same catalog, so standalone MCP clients and agents use one discovery
+surface. See [Tooling and domain MCP servers](tooling.md).
 
 ## Current scoring
 

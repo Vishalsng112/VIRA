@@ -1,34 +1,33 @@
 # Database tools (read-only)
 
-VIRA ships a dedicated MCP server at `vira/tools/database_mcp_server.py`. It
+VIRA ships a dedicated MCP server at `vira/mcp/servers/database/server.py`. It
 lets the Chatbot and agents inspect the server database safely, without giving
 them write access.
 
-The server is enabled by default in `config.yaml`:
+The same tool pack is registered locally by the tooling framework, where the
+authenticated `ToolContext` is explicit. The standalone MCP server is available
+for single-user deployments that set `VIRA_CALLER_USER_ID` in its environment:
 
 ```yaml
 database_mcp:
-  enabled: true
+  enabled: false
   permissions: ["read", "execute"]
 ```
-
-The orchestrator connects it at boot and registers the tools under the
-`database_query` namespace.
 
 ## Tools
 
 | Tool | Purpose |
 |---|---|
-| `database_query.database_tables` | List queryable tables, descriptions and key columns. |
-| `database_query.database_schema` | Show full columns, types and foreign keys for matching tables. |
-| `database_query.database_examples` | Curated SQL templates for common questions. |
-| `database_query.database_account_summary` | Safe summary of the signed-in user's own account. |
-| `database_query.database_query` | Run one custom `SELECT`/`WITH` query (administrators). |
+| `database.tables` | List queryable tables, descriptions and key columns. |
+| `database.schema` | Show full columns, types and foreign keys for matching tables. |
+| `database.examples` | Curated SQL templates for common questions. |
+| `database.account_summary` | Safe summary of the signed-in user's own account. |
+| `database.query` | Run one custom `SELECT`/`WITH` query (administrators). |
 
 The intended workflow for the model is:
 
 ```text
-database_tables -> database_schema -> database_query
+database.tables -> database.schema -> database.query
 ```
 
 Example questions and queries:
@@ -49,7 +48,7 @@ GROUP BY status;
 ```
 
 `{{caller_user_id}}` is replaced by the authenticated caller's user id. The
-agent loop injects that identity only for the `database_query.*` tools; the
+agent loop injects that identity only for the `database.*` tools; the
 model never needs to guess or type another user's id.
 
 ## Safety

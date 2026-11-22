@@ -205,14 +205,14 @@ class LoopTests(unittest.IsolatedAsyncioTestCase):
 
 
 class McpToolTests(unittest.IsolatedAsyncioTestCase):
-    SPECS = [{"name": "mcp_server.web_browse", "description": "d",
+    SPECS = [{"name": "web.browse", "description": "d",
               "parameters": {"properties": {"url": {"type": "string"}}, "required": ["url"]}}]
 
     async def test_short_name_resolves_and_mcp_gets_only_declared_args(self):
         rt = FakeRuntime(['{"tool": "web_browse", "params": {"url": "https://a.io", "bogus": 1}}', "done"])
         res = await AgentLoop(rt, "a", "s", self.SPECS).run("q", user_id=9)
         name, kwargs = rt.tool_calls[0]
-        self.assertEqual(name, "mcp_server.web_browse")
+        self.assertEqual(name, "web.browse")
         self.assertEqual(kwargs, {"url": "https://a.io"})  # no user_id, no undeclared params
         self.assertEqual(res.text, "done")
 
@@ -223,7 +223,7 @@ class McpToolTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_database_mcp_gets_the_authenticated_caller(self):
         specs = [{
-            "name": "database_query.database_query",
+            "name": "database.query",
             "description": "read-only SQL",
             "parameters": {"properties": {
                 "sql": {"type": "string"},
@@ -231,7 +231,7 @@ class McpToolTests(unittest.IsolatedAsyncioTestCase):
             }, "required": ["sql"]},
         }]
         rt = FakeRuntime([
-            '{"tool": "database_query.database_query", "params": '
+            '{"tool": "database.query", "params": '
             '{"sql": "SELECT 1", "vira_caller_user_id": 999}}',
             "done",
         ])

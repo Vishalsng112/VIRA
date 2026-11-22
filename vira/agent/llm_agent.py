@@ -31,7 +31,7 @@ from vira.agent.lessons import LessonStore
 from vira.agent.loop import AgentLoop, LoopConfig, LoopResult
 from vira.agent.toolcalls import clip
 from vira.agent.toolbox import ToolPolicy, Toolbox
-from vira.tools.catalog import ToolCatalog
+from vira.tooling.catalog import ToolCatalog
 
 DELEGATE = "delegate"
 
