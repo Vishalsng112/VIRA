@@ -433,7 +433,7 @@ async function loadRuntimeContext() {
       api("/api/v1/agent-definitions"),
     ]);
     const agents = (orchestration?.agents || [])
-      .filter((agent) => agent.enabled !== false)
+      .filter((agent) => agent.enabled !== false && agent.chat_capable !== false)
       .sort((a, b) => {
         const rank = (agent) => (
           agent.id === "chatbot" || String(agent.name || "").toLowerCase() === "chatagent"

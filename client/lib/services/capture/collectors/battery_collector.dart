@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../core/config/app_config.dart';
 import '../../../core/models/captured_event.dart';
 import '../../../core/models/device_signals.dart';
@@ -29,7 +31,10 @@ class BatteryCollector extends Collector {
   @override
   Duration get interval => const Duration(minutes: 5);
   @override
-  bool get enabledByDefault => true;
+  bool get enabledByDefault =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   @override
   Future<CollectorResult> collect(PlatformProbe probe) async {

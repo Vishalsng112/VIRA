@@ -17,11 +17,35 @@ from loguru import logger
 from vira.agent import schedules
 from vira.agent.base import TaskRequest
 from vira.agent_runtime import run_store
+from vira.auth import database
 from vira.notifications import create as create_notification
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _default_device_id(user_id: int) -> Optional[str]:
+    """Prefer the user's most recently active client device.
+
+    Agents otherwise fall back to the server-local device and answer with
+    runtime metrics instead of the user's phone or desktop telemetry.
+    """
+    with database.get_connection() as conn:
+        row = conn.execute(
+            "SELECT id FROM devices "
+            "WHERE created_by_user_id = ? AND status = 'active' "
+            "AND is_server_local = 0 "
+            "ORDER BY COALESCE(last_seen_at, created_at) DESC LIMIT 1",
+            (user_id,),
+        ).fetchone()
+        if row:
+            return row["id"]
+        row = conn.execute(
+            "SELECT id FROM devices WHERE is_server_local = 1 "
+            "AND status = 'active' ORDER BY last_seen_at DESC LIMIT 1"
+        ).fetchone()
+        return row["id"] if row else None
 
 
 class ProactiveScheduler:
@@ -160,10 +184,18 @@ class ProactiveScheduler:
             "schedule_id": schedule_id,
             "scheduled_for": scheduled_for,
         })
+        device_id = (
+            schedule.get("device_id")
+            or payload.get("device_id")
+            or _default_device_id(int(schedule["user_id"]))
+        )
+        if device_id:
+            payload["device_id"] = device_id
         request = TaskRequest(
             input=payload,
             user_id=int(schedule["user_id"]),
             organization_id=schedule.get("organization_id"),
+            device_id=device_id,
             run_id=run_id,
             metadata={
                 "schedule_id": schedule_id,

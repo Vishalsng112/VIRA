@@ -44,14 +44,16 @@ class UserContextTool(BaseTool):
                   for row in device_store.get_latest_state(selected["id"])}
         summary = summarize_device(selected["id"], 7)
         enabled = [row["collector"] for row in consent_rows if row["enabled"]]
+        battery = latest.get("device.battery.state") or summary.get("battery") or {}
+        health = latest.get("device.health.state") or summary.get("health") or {}
         return text_result(
             "\n".join([
                 f"User id: {numeric}",
                 f"Devices: " + ", ".join(f"{d['display_name']} ({d['platform']})" for d in devices[:5]),
                 f"Selected device: {selected['display_name']} ({selected['platform']})",
                 f"Enabled collectors: {', '.join(enabled) or 'none'}",
-                f"Battery: {latest.get('device.battery.state', {})}",
-                f"Health: {latest.get('device.health.state', {})}",
+                f"Battery: {battery}",
+                f"Health: {health}",
                 summary["summary"],
             ])
         )

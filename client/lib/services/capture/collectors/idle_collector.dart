@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../core/config/app_config.dart';
 import '../../../core/models/captured_event.dart';
 import '../../../core/utils/ids.dart';
@@ -27,7 +29,11 @@ class IdleCollector extends Collector {
   @override
   Duration get interval => const Duration(minutes: 1);
   @override
-  bool get enabledByDefault => true;
+  bool get enabledByDefault =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS);
 
   @override
   Future<CollectorResult> collect(PlatformProbe probe) async {

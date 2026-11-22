@@ -6,6 +6,18 @@ All notable changes to VIRA are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- VIRA Link chat requests now send the enrolled `device_id`, so agent answers
+  use the phone/desktop telemetry instead of the server-local device.
+- Scheduled agents now default to the user's most recently active client device
+  when no device is specified.
+- The web chat agent picker only lists agents that subscribe to `user.message`;
+  task-only agents remain available through schedules.
+- Platform-specific collectors now default to off when unavailable: Android
+  active-window/hardware/idle and Linux active-window/battery. Linux Wayland
+  active-window limitations are documented.
+
 ## [1.2.1] - 2026-11-22
 
 ### Fixed

@@ -87,6 +87,12 @@ Known limits:
 - **Activity insights** (app usage and screen time) are **off by default**.
   Enabling them opens Android's Usage Access page. Android does not allow an app
   to grant this special access itself.
+- Platform-specific collectors now default to off when the platform cannot
+  provide them. Android leaves active-window, hardware and idle collectors off;
+  Linux leaves active-window and battery collectors off.
+- Linux active-window capture is unavailable under GNOME Wayland because the
+  compositor does not expose foreground windows. It remains available on
+  supported X11/Wayland compositors and can be enabled manually.
 - If VIRA Link was installed outside the Play Store and the Usage Access switch
   is greyed out, Android is applying its sideloading restriction. Open
   **App info → ⋮ → Allow restricted settings** once, then retry. Play Store

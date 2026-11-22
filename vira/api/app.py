@@ -696,6 +696,10 @@ def create_app(kernel: Kernel) -> FastAPI:
                     "enabled": metadata.enabled,
                     "capabilities": capabilities,
                     "subscribed_events": metadata.subscribed_events,
+                    "chat_capable": (
+                        "user.message" in (metadata.subscribed_events or [])
+                        or "*" in (metadata.subscribed_events or [])
+                    ),
                     "interval_seconds": metadata.interval_seconds,
                     "created_at": metadata.created_at,
                     "updated_at": metadata.updated_at,
@@ -1176,6 +1180,18 @@ def create_app(kernel: Kernel) -> FastAPI:
                     next_steps=[
                         "Use an agent_id or name from /api/v1/agents.",
                         "Use 'chatbot' for the general assistant.",
+                    ],
+                )
+            subscribed = match.subscribed_events or []
+            if "user.message" not in subscribed and "*" not in subscribed:
+                raise _chat_http_error(
+                    400,
+                    f"Agent '{match.name}' handles scheduled tasks, not interactive chat.",
+                    stage="request", user_message=request.message,
+                    recoverable=False,
+                    next_steps=[
+                        "Use 'chatbot' for interactive chat.",
+                        "Create an agent schedule for this agent instead.",
                     ],
                 )
         correlation_id = correlation_id_of(http_request)

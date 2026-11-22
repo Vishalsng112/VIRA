@@ -316,6 +316,7 @@ class _ChatPageState extends State<ChatPage> {
       await for (final event in api.streamChat(
         message: text,
         conversationId: conversation.id,
+        deviceId: _controller.deviceId,
       )) {
         if (event.type == 'done') {
           answer = event.response ?? '';

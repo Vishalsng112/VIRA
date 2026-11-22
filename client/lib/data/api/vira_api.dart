@@ -262,6 +262,7 @@ class ViraApi {
     required String message,
     String? conversationId,
     String? agentId,
+    String? deviceId,
     String? idempotencyKey,
   }) async* {
     final request = http.Request('POST', _uri('/chat/stream'))
@@ -274,6 +275,7 @@ class ViraApi {
       'message': message,
       'conversation_id': ?conversationId,
       'agent_id': ?agentId,
+      'device_id': ?deviceId,
     });
 
     http.StreamedResponse response;

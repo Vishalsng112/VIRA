@@ -49,7 +49,10 @@ class ActiveWindowCollector extends Collector {
   @override
   Duration get interval => const Duration(minutes: 1);
   @override
-  bool get enabledByDefault => true;
+  bool get enabledByDefault =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS);
   @override
   bool get hasLocalData => true;
 

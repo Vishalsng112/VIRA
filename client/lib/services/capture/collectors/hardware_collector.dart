@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../core/config/app_config.dart';
 import '../../../core/models/captured_event.dart';
 import '../../../core/utils/ids.dart';
@@ -22,7 +24,11 @@ class HardwareCollector extends Collector {
   @override
   Duration get interval => const Duration(seconds: 30);
   @override
-  bool get enabledByDefault => true;
+  bool get enabledByDefault =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS);
 
   @override
   bool get canRequestAccess => false;
