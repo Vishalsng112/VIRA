@@ -572,6 +572,16 @@ textarea { resize: vertical; min-height: 4rem; }
 .access-warning { margin-top: 0.9rem; padding: 0.7rem 0.8rem; border-radius: 0.6rem; background: var(--warn-soft, rgba(245, 158, 11, 0.12)); }
 .access-warning p { margin: 0; color: var(--muted); font-size: var(--text-sm); }
 .access-warning-inline { margin-top: 0.35rem; color: var(--muted); font-size: var(--text-xs); word-break: break-word; }
+.tailscale-panel { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.tailscale-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.8rem; }
+.tailscale-panel-head strong { display: block; margin-top: 0.15rem; }
+.tailscale-login { display: flex; align-items: center; gap: 1.2rem; flex-wrap: wrap; margin-top: 0.8rem; }
+.tailscale-steps { margin: 0.7rem 0 0; padding-left: 1.2rem; color: var(--muted); font-size: var(--text-sm); }
+.tailscale-steps li { margin: 0.2rem 0; }
+.tailscale-advanced { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px dashed var(--border); }
+.tailscale-advanced summary { cursor: pointer; font-size: var(--text-sm); color: var(--muted); }
+.tailscale-key-row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 0.6rem; }
+.tailscale-key-row input { flex: 1 1 16rem; min-width: 10rem; }
 .mono { font-family: var(--mono); font-size: 0.9em; }
 
 @media (max-width: 70rem) {

@@ -39,9 +39,42 @@ Check that another device on the tailnet can reach the server:
 curl http://vira-server.tail1234.ts.net:8000/health
 ```
 
-## 2. Let VIRA discover it
+## 2. Guided setup in the dashboard
 
-The default configuration already detects Tailscale:
+You can let VIRA run the Tailscale login flow instead of using the CLI manually:
+
+1. Open **Devices → Remote access**.
+2. Click **Set up Tailscale**.
+3. If Tailscale is installed but logged out, VIRA shows a **Tailscale login URL
+   and QR code**. Open the link or scan the QR.
+4. Sign in to Tailscale or create an account. VIRA polls the local Tailscale
+   state and detects completion automatically.
+5. When connected, the panel shows the tailnet address and the pairing QR uses
+   it immediately.
+
+VIRA never creates the Tailscale account itself. The signup/login step happens
+in Tailscale's browser flow because it is third-party authentication.
+
+The service user that runs VIRA needs permission to manage Tailscale. On Linux:
+
+```bash
+sudo tailscale set --operator=<vira-user>
+```
+
+If VIRA runs in Docker, run Tailscale on the host or use a sidecar container;
+the container cannot authenticate the host's Tailscale node by itself.
+
+### Auth key alternative
+
+For headless hosts or Docker, expand **Use an auth key instead** in the panel.
+Create an auth key in the Tailscale admin console and paste it into VIRA. VIRA
+runs `tailscale up --auth-key=file:...` once using a temporary `0600` file, does
+not store the key, never returns it in an API response, and removes the file
+immediately. The key never appears in the process list.
+
+## 3. Manual discovery
+
+The default configuration also detects an existing Tailscale connection:
 
 ```yaml
 access:
@@ -51,6 +84,7 @@ access:
     binary: tailscale
     scheme: http
     port: 8000
+    hostname: null          # defaults to the machine hostname
     prefer_dns_name: true
     timeout_seconds: 2
 ```
@@ -72,7 +106,7 @@ On a working tailnet, the QR contains:
 http://vira-server.tail1234.ts.net:8000
 ```
 
-## 3. Verify in VIRA
+## 4. Verify in VIRA
 
 1. Open **Devices** in the dashboard.
 2. Confirm **Remote access** shows **Tailscale private** and the expected URL.

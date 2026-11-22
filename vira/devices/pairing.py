@@ -1,12 +1,11 @@
 """Short-lived pairing codes for enrolling a new device without a session."""
-import base64
 import hashlib
-import io
 import secrets as py_secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
+from vira.access.qr import qr_svg_data_uri
 from vira.auth import auth, database
 from vira.auth.principals import UserPrincipal
 
@@ -27,18 +26,6 @@ def pairing_uri(server: str, code: str, provider: Optional[str] = None) -> str:
     if provider:
         params["provider"] = provider
     return f"vira://pair?{urlencode(params)}"
-
-
-def qr_svg_data_uri(payload: str) -> str:
-    """Render a payload as an inline SVG data URI so the dashboard stays offline."""
-    import qrcode
-    import qrcode.image.svg
-
-    image = qrcode.make(payload, image_factory=qrcode.image.svg.SvgPathImage)
-    buffer = io.BytesIO()
-    image.save(buffer)
-    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"data:image/svg+xml;base64,{encoded}"
 
 
 def create_code(user_id: int, ttl_minutes: int = 10) -> Dict[str, Any]:

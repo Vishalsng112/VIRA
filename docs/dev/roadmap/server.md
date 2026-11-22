@@ -90,6 +90,8 @@ load test with concurrent device ingestion + chat + admin.
   device rename/revoke/re-enrollment APIs.
 - [x] **Pluggable private access**: access-provider resolver, automatic Tailscale
   MagicDNS discovery for pairing addresses, request and custom-URL fallbacks.
+- [x] **Guided Tailscale setup**: status diagnostics, browser/QR login polling and
+  a non-persistent auth-key fallback.
 - [x] **Per-user data export and deletion** across devices, events, insights,
   conversations, memories, notifications, consents and commands.
 - [x] **Retention jobs** for events, sessions, jobs, commands and pairing codes;

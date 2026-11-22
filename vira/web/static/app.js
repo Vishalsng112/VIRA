@@ -34,7 +34,8 @@
   const state = {
     health: null, metrics: null, orchestration: null, security: null, approvals: null, generated: null, runs: null, modules: null,
     plugins: null, mcpServers: null, marketplace: null, mcpTools: null, usage: null,
-    devices: null, deviceInsight: null, access: null, ragDocs: null, workflows: null, orgs: null,
+    devices: null, deviceInsight: null, access: null, tailscale: null, tailscaleOpen: false,
+    ragDocs: null, workflows: null, orgs: null,
     objects: null, releases: null, selectedDevice: null,
     notifications: null, schedules: null, recipes: null, unread: 0,
     scheduleRuns: null, selectedSchedule: null, editingScheduleId: null,
@@ -44,6 +45,7 @@
   };
   let eventSource = null;
   let refreshTimer = null;
+  let tailscaleTimer = null;
 
   /* ---------- helpers ---------- */
   const esc = (v) => String(v ?? "")
@@ -1056,7 +1058,173 @@
       </div>
       <ul class="access-providers">${providers}</ul>
       ${warnings.length ? `<div class="access-warning">${warnings.map((warning) => `<p>${esc(warning)}</p>`).join("")}</div>` : ""}
-      ${(resolved.kind === "tailscale") ? '<p class="card-note">Private tailnet only. Nothing is published to the public internet.</p>' : ""}`;
+      ${(resolved.kind === "tailscale") ? '<p class="card-note">Private tailnet only. Nothing is published to the public internet.</p>' : ""}
+      <div class="row-actions" style="justify-content:flex-start;margin-top:.8rem">
+        <button class="btn btn-ghost" type="button" data-tailscale-open>${access.providers?.some((p) => p.kind === "tailscale" && p.available) ? "Manage Tailscale" : "Set up Tailscale"}</button>
+      </div>`;
+  }
+
+  function stopTailscalePoll() {
+    if (tailscaleTimer) clearInterval(tailscaleTimer);
+    tailscaleTimer = null;
+  }
+
+  function startTailscalePoll() {
+    stopTailscalePoll();
+    let attempts = 0;
+    tailscaleTimer = setInterval(async () => {
+      attempts += 1;
+      await loadTailscaleStatus(false);
+      const status = state.tailscale;
+      if (!status || status.state === "running" || status.state === "not_installed" || attempts >= 200) {
+        stopTailscalePoll();
+      }
+      if (status?.state === "running") await onTailscaleConnected();
+    }, 3000);
+  }
+
+  async function onTailscaleConnected() {
+    stopTailscalePoll();
+    await loadAccess();
+    renderAccess();
+    if ($("pairing-result") && !$("pairing-result").hidden) {
+      document.querySelector("[data-pair-device]")?.click();
+    }
+  }
+
+  function tailscaleStateLabel(status) {
+    return {
+      running: "Connected",
+      needs_login: "Sign-in required",
+      stopped: "Stopped",
+      starting: "Starting",
+      not_installed: "Not installed",
+      daemon_unavailable: "Service unavailable",
+      error: "Needs attention",
+    }[status.state] || titleCase(String(status.state || "unknown"));
+  }
+
+  function tailscaleAuthKeyForm() {
+    return `<details class="tailscale-advanced">
+      <summary>Use an auth key instead</summary>
+      <p class="card-note">For headless servers and Docker. Create a key in the Tailscale admin console. It is used once and never stored by VIRA.</p>
+      <div class="tailscale-key-row">
+        <input id="tailscale-auth-key" type="password" placeholder="tskey-auth-…" autocomplete="off" spellcheck="false">
+        <button class="btn btn-ghost" type="button" data-tailscale-authkey>Connect</button>
+      </div>
+    </details>`;
+  }
+
+  function renderTailscalePanel() {
+    const box = $("tailscale-panel");
+    if (!box) return;
+    if (!state.tailscaleOpen) { box.hidden = true; return; }
+    box.hidden = false;
+    const status = state.tailscale;
+    if (!status) {
+      box.innerHTML = '<p class="empty">Checking Tailscale…</p>';
+      return;
+    }
+    const label = tailscaleStateLabel(status);
+    const steps = (status.next_steps || []).map((step) => `<li>${esc(step)}</li>`).join("");
+    let body = "";
+    if (status.state === "running") {
+      body = `<p class="insight-copy">This server is connected to your private tailnet. Pairing uses the address below.</p>
+        <span class="kpi-label">Private address</span>
+        <strong class="access-url">${esc(status.address || "—")}</strong>
+        ${status.tailnet ? `<p class="pairing-meta">Tailnet · ${esc(status.tailnet)}</p>` : ""}
+        <div class="row-actions" style="justify-content:flex-start;margin-top:.7rem">
+          <button class="btn btn-ghost" type="button" data-tailscale-copy-address="${esc(status.address || "")}">Copy address</button>
+          <button class="btn btn-ghost" type="button" data-tailscale-close>Done</button>
+        </div>`;
+    } else if (status.state === "not_installed") {
+      body = `<p class="insight-copy">Install Tailscale on the machine that runs VIRA, then come back and refresh.</p>
+        <pre class="code">${esc(status.install_command || "Install Tailscale for your platform.")}</pre>
+        ${steps ? `<ul class="tailscale-steps">${steps}</ul>` : ""}
+        <div class="row-actions" style="justify-content:flex-start;margin-top:.7rem">
+          <button class="btn btn-ghost" type="button" data-tailscale-copy-install="${esc(status.install_command || "")}">Copy command</button>
+          <button class="btn btn-ghost" type="button" data-tailscale-refresh>Refresh</button>
+        </div>`;
+    } else if (status.state === "needs_login" && status.auth_url) {
+      body = `<p class="insight-copy">Sign in to Tailscale or create an account. VIRA detects the connection automatically.</p>
+        <div class="tailscale-login">
+          <img class="pairing-qr" src="${esc(status.auth_qr)}" alt="Tailscale login QR code" width="168" height="168">
+          <div>
+            <a class="btn" href="${esc(status.auth_url)}" target="_blank" rel="noopener noreferrer">Open Tailscale login</a>
+            <p class="pairing-meta">Scan the QR or open the link, then finish in the browser.</p>
+            <p class="card-note">${status.login_in_progress ? "Waiting for Tailscale…" : "Not connected yet."}</p>
+          </div>
+        </div>
+        ${tailscaleAuthKeyForm()}`;
+    } else if (status.state === "needs_login") {
+      body = `<p class="insight-copy">Waiting for Tailscale to provide a login URL. Keep this panel open.</p>
+        ${steps ? `<ul class="tailscale-steps">${steps}</ul>` : ""}
+        <div class="row-actions" style="justify-content:flex-start;margin-top:.7rem">
+          <button class="btn btn-ghost" type="button" data-tailscale-refresh>Refresh</button>
+        </div>
+        ${tailscaleAuthKeyForm()}`;
+    } else {
+      body = `<p class="insight-copy">${esc(status.reason || (status.state === "stopped" ? "Tailscale is installed but not connected." : "Tailscale needs attention."))}</p>
+        ${steps ? `<ul class="tailscale-steps">${steps}</ul>` : ""}
+        <div class="row-actions" style="justify-content:flex-start;margin-top:.7rem">
+          ${status.can_connect ? '<button class="btn" type="button" data-tailscale-connect>Connect Tailscale</button>' : ""}
+          <button class="btn btn-ghost" type="button" data-tailscale-refresh>Refresh</button>
+        </div>
+        ${tailscaleAuthKeyForm()}`;
+    }
+    box.innerHTML = `<div class="tailscale-panel-head">
+        <div>
+          <span class="kpi-label">Tailscale</span>
+          <strong>${esc(label)}</strong>
+        </div>
+        <span class="badge badge-${status.state === "running" ? "ok" : status.state === "not_installed" || status.state === "daemon_unavailable" ? "warn" : "info"}">${esc(label)}</span>
+      </div>${body}`;
+  }
+
+  async function loadTailscaleStatus(startPoll = false) {
+    const previous = state.tailscale ? JSON.stringify(state.tailscale) : null;
+    const r = await fetchJson("/api/v1/access/tailscale");
+    state.tailscale = r.ok ? r.data : {
+      state: "error",
+      installed: false,
+      reason: r.data?.detail || "Could not load Tailscale status.",
+      next_steps: [],
+      can_connect: false,
+    };
+    if (JSON.stringify(state.tailscale) !== previous) renderTailscalePanel();
+    if (startPoll && (state.tailscale.login_in_progress || state.tailscale.state === "needs_login" || state.tailscale.state === "starting")) {
+      startTailscalePoll();
+    }
+  }
+
+  async function startTailscaleConnection() {
+    const r = await fetchJson("/api/v1/access/tailscale/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    state.tailscale = r.ok ? r.data : {
+      state: "error",
+      installed: true,
+      reason: r.data?.detail || "Could not start Tailscale.",
+      next_steps: [],
+      can_connect: true,
+    };
+    renderTailscalePanel();
+    if (state.tailscale.state === "running") await onTailscaleConnected();
+    else if (state.tailscale.login_in_progress || state.tailscale.state === "needs_login") startTailscalePoll();
+  }
+
+  async function openTailscalePanel() {
+    state.tailscaleOpen = true;
+    await loadTailscaleStatus(false);
+    renderTailscalePanel();
+    if (state.tailscale?.installed && state.tailscale.can_connect && !state.tailscale.login_in_progress) {
+      await startTailscaleConnection();
+    } else if (state.tailscale?.state === "needs_login" || state.tailscale?.state === "starting") {
+      startTailscalePoll();
+    }
+    $("tailscale-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function renderPairingCode(data) {
@@ -1619,11 +1787,53 @@
 
 
   document.addEventListener("click", async (event) => {
-    const target = event.target.closest("[data-pair-device],[data-copy-pairing],[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id],[data-generated-id],[data-run-resume],[data-run-timeline],[data-notification-read],[data-schedule-run],[data-schedule-runs],[data-schedule-edit],[data-schedule-toggle],[data-schedule-delete],[data-recipe]");
+    const target = event.target.closest("[data-tailscale-open],[data-tailscale-connect],[data-tailscale-refresh],[data-tailscale-close],[data-tailscale-copy-install],[data-tailscale-copy-address],[data-tailscale-authkey],[data-pair-device],[data-copy-pairing],[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id],[data-generated-id],[data-run-resume],[data-run-timeline],[data-notification-read],[data-schedule-run],[data-schedule-runs],[data-schedule-edit],[data-schedule-toggle],[data-schedule-delete],[data-recipe]");
     if (!target) return;
 
     try {
-      if (target.dataset.pairDevice !== undefined) {
+      if (target.dataset.tailscaleOpen !== undefined) {
+        await openTailscalePanel();
+      } else if (target.dataset.tailscaleConnect !== undefined) {
+        target.disabled = true;
+        try {
+          await startTailscaleConnection();
+        } finally {
+          target.disabled = false;
+        }
+      } else if (target.dataset.tailscaleAuthkey !== undefined) {
+        const input = $("tailscale-auth-key");
+        const key = input?.value?.trim() || "";
+        if (!key) return;
+        target.disabled = true;
+        try {
+          const r = await fetchJson("/api/v1/access/tailscale/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ auth_key: key }),
+          });
+          if (input) input.value = "";
+          state.tailscale = r.ok ? r.data : { state: "error", reason: r.data?.detail || "Could not use the auth key." };
+          renderTailscalePanel();
+          if (state.tailscale.state === "running") await onTailscaleConnected();
+          else if (state.tailscale.login_in_progress || state.tailscale.state === "needs_login") startTailscalePoll();
+        } finally {
+          target.disabled = false;
+        }
+      } else if (target.dataset.tailscaleRefresh !== undefined) {
+        await loadTailscaleStatus(true);
+      } else if (target.dataset.tailscaleClose !== undefined) {
+        stopTailscalePoll();
+        state.tailscaleOpen = false;
+        renderTailscalePanel();
+      } else if (target.dataset.tailscaleCopyInstall !== undefined) {
+        await navigator.clipboard.writeText(target.dataset.tailscaleCopyInstall);
+        target.textContent = "Copied";
+        setTimeout(() => { target.textContent = "Copy command"; }, 1600);
+      } else if (target.dataset.tailscaleCopyAddress !== undefined) {
+        await navigator.clipboard.writeText(target.dataset.tailscaleCopyAddress);
+        target.textContent = "Copied";
+        setTimeout(() => { target.textContent = "Copy address"; }, 1600);
+      } else if (target.dataset.pairDevice !== undefined) {
         target.disabled = true;
         try {
           const r = await fetchJson("/api/v1/devices/pairing-code", {

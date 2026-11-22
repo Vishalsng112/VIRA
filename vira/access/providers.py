@@ -102,8 +102,11 @@ class TailscaleProvider:
         self._runner = runner or subprocess.run
         self._which = which or shutil.which
 
-    def _status_json(self, settings: Dict[str, Any]) -> Dict[str, Any]:
-        binary = str(settings.get("binary") or "tailscale")
+    def binary(self, settings: Dict[str, Any]) -> str:
+        return str(settings.get("binary") or "tailscale")
+
+    def status_json(self, settings: Dict[str, Any]) -> Dict[str, Any]:
+        binary = self.binary(settings)
         if not self._which(binary):
             raise RuntimeError(
                 "Tailscale CLI not found. Install Tailscale and run `tailscale up`."
@@ -127,28 +130,37 @@ class TailscaleProvider:
         except json.JSONDecodeError as exc:
             raise RuntimeError("Tailscale returned invalid status JSON.") from exc
 
-    def status(self, request: Request, settings: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            data = self._status_json(settings)
-        except RuntimeError as exc:
-            return {
-                "kind": self.kind,
-                "label": self.label,
-                "available": False,
-                "reason": str(exc),
-                "endpoint": None,
-            }
+    def _unavailable(
+        self,
+        reason: str,
+        *,
+        backend_state: str = "",
+        auth_url: str = "",
+    ) -> Dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "label": self.label,
+            "available": False,
+            "reason": reason,
+            "endpoint": None,
+            "backend_state": backend_state,
+            "auth_url": auth_url or None,
+        }
 
+    def parse_status(self, data: Dict[str, Any], settings: Dict[str, Any]) -> Dict[str, Any]:
         state = str(data.get("BackendState") or "").strip()
+        auth_url = str(data.get("AuthURL") or "").strip()
         if state != "Running":
-            shown = state.lower() or "not running"
-            return {
-                "kind": self.kind,
-                "label": self.label,
-                "available": False,
-                "reason": f"Tailscale is {shown}. Run `tailscale up`.",
-                "endpoint": None,
-            }
+            shown = {
+                "NeedsLogin": "logged out",
+                "NoState": "not running",
+                "Stopped": "stopped",
+            }.get(state, state.lower() or "not running")
+            return self._unavailable(
+                f"Tailscale is {shown}.",
+                backend_state=state,
+                auth_url=auth_url,
+            )
 
         self_info = data.get("Self") or {}
         dns_name = str(self_info.get("DNSName") or "").rstrip(".")
@@ -164,6 +176,8 @@ class TailscaleProvider:
                 "available": False,
                 "reason": "Tailscale is connected but has no tailnet address yet.",
                 "endpoint": None,
+                "backend_state": state,
+                "auth_url": auth_url or None,
             }
 
         scheme = str(settings.get("scheme") or "http").strip().lower()
@@ -198,4 +212,13 @@ class TailscaleProvider:
             ),
             "host": host,
             "tailnet": tailnet_name or None,
+            "backend_state": state,
+            "auth_url": auth_url or None,
         }
+
+    def status(self, request: Request, settings: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            data = self.status_json(settings)
+        except RuntimeError as exc:
+            return self._unavailable(str(exc))
+        return self.parse_status(data, settings)

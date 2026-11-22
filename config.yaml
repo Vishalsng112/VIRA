@@ -52,6 +52,8 @@ access:
   tailscale:
     enabled: true
     binary: tailscale
+    # Optional tailnet machine name. Defaults to this host's name.
+    hostname: null
     # http is encrypted by WireGuard on the tailnet. Use https + port 443
     # when VIRA is published with `tailscale serve`.
     scheme: http

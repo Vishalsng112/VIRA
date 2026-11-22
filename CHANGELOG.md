@@ -15,6 +15,9 @@ All notable changes to VIRA are documented here. The format follows
 - Pluggable remote-access providers, with automatic **Tailscale private**
   discovery. Pairing codes and QR links use the tailnet MagicDNS address when
   available, with an explicit fallback warning instead of a localhost QR.
+- Guided Tailscale setup in the dashboard: install/daemon diagnostics, browser
+  login URL with QR, automatic polling, and an auth-key fallback for headless
+  or Docker deployments.
 
 ### Fixed
 
