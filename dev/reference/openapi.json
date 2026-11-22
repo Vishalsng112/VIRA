@@ -3554,6 +3554,58 @@
         }
       }
     },
+    "/api/v1/access/tailscale": {
+      "get": {
+        "summary": "Get Tailscale",
+        "operationId": "get_tailscale_api_v1_access_tailscale_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/access/tailscale/connect": {
+      "post": {
+        "summary": "Connect Tailscale",
+        "operationId": "connect_tailscale_api_v1_access_tailscale_connect_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TailscaleConnectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/client-config": {
       "get": {
         "summary": "Client Config",
@@ -10675,6 +10727,36 @@
           "ops"
         ],
         "title": "SyncPush"
+      },
+      "TailscaleConnectRequest": {
+        "properties": {
+          "auth_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Key"
+          },
+          "hostname": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 63
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hostname"
+          }
+        },
+        "type": "object",
+        "title": "TailscaleConnectRequest"
       },
       "TaskProfileRequest": {
         "properties": {
