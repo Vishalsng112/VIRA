@@ -1,5 +1,7 @@
 """Short-lived pairing codes for enrolling a new device without a session."""
+import base64
 import hashlib
+import json
 import secrets as py_secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -20,11 +22,35 @@ def _hash(code: str) -> str:
     return hashlib.sha256(code.strip().upper().encode("utf-8")).hexdigest()
 
 
-def pairing_uri(server: str, code: str, provider: Optional[str] = None) -> str:
+def encode_endpoints(endpoints: Optional[list] = None) -> Optional[str]:
+    """Compact, URL-safe endpoint list for the pairing deep link."""
+    cleaned = []
+    for item in endpoints or []:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "").strip()
+        url = str(item.get("url") or "").strip()
+        if kind and url:
+            cleaned.append({"kind": kind, "url": url})
+    if len(cleaned) <= 1:
+        return None
+    raw = json.dumps(cleaned, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def pairing_uri(
+    server: str,
+    code: str,
+    provider: Optional[str] = None,
+    endpoints: Optional[list] = None,
+) -> str:
     """Return the deep-link payload a client scans or receives as a QR code."""
     params = {"server": server.rstrip("/"), "code": code.strip().upper()}
     if provider:
         params["provider"] = provider
+    encoded = encode_endpoints(endpoints)
+    if encoded:
+        params["endpoints"] = encoded
     return f"vira://pair?{urlencode(params)}"
 
 

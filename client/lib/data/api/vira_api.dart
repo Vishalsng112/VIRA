@@ -48,14 +48,41 @@ class ViraApi {
     String baseUrl, {
     http.Client? client,
     this.clientVersion = appVersion,
-  }) : baseUrl = normalizeBaseUrl(baseUrl),
-       _client = client ?? http.Client();
+    List<String>? endpoints,
+  }) : _client = client ?? http.Client(),
+       _endpoints = _normalizeEndpoints(baseUrl, endpoints) {
+    this.baseUrl = _endpoints.first;
+  }
 
   static const protocolVersion = 1;
 
-  final String baseUrl;
+  late String baseUrl;
   final String clientVersion;
   final http.Client _client;
+  final List<String> _endpoints;
+
+  List<String> get endpoints => List.unmodifiable(_endpoints);
+
+  static List<String> _normalizeEndpoints(String primary, List<String>? extra) {
+    final result = <String>[];
+    for (final value in [primary, ...?extra]) {
+      final normalized = normalizeBaseUrl(value);
+      if (normalized.isNotEmpty && !result.contains(normalized)) {
+        result.add(normalized);
+      }
+    }
+    if (result.isEmpty) result.add(normalizeBaseUrl(primary));
+    return result;
+  }
+
+  List<String> _attemptOrder() {
+    final result = <String>[];
+    if (baseUrl.isNotEmpty) result.add(baseUrl);
+    for (final endpoint in _endpoints) {
+      if (!result.contains(endpoint)) result.add(endpoint);
+    }
+    return result;
+  }
 
   String? sessionId;
   String? deviceId;
@@ -117,25 +144,45 @@ class ViraApi {
     bool device = false,
     Duration timeout = const Duration(seconds: 25),
   }) async {
-    final request = http.Request(method, _uri(path))
-      ..headers.addAll(_headers(user: user, device: device));
-    if (body != null) request.body = jsonEncode(body);
-    try {
-      final streamed = await _client.send(request).timeout(timeout);
-      return await http.Response.fromStream(streamed);
-    } on TimeoutException {
-      throw ViraApiException(
-        0,
-        'timeout',
-        'The VIRA server did not respond in time. Events stay queued.',
-      );
-    } on Object {
-      throw ViraApiException(
-        0,
-        'network_error',
-        'Cannot reach the VIRA server. Check the address and network.',
-      );
+    final candidates = _attemptOrder();
+    ViraApiException? lastError;
+    for (var index = 0; index < candidates.length; index++) {
+      final endpoint = candidates[index];
+      final isLast = index == candidates.length - 1;
+      final attemptTimeout = isLast || timeout <= const Duration(seconds: 8)
+          ? timeout
+          : const Duration(seconds: 8);
+      baseUrl = endpoint;
+      final request = http.Request(method, _uri(path))
+        ..headers.addAll(_headers(user: user, device: device));
+      if (body != null) request.body = jsonEncode(body);
+      try {
+        final streamed = await _client.send(request).timeout(attemptTimeout);
+        return await http.Response.fromStream(streamed);
+      } on TimeoutException {
+        lastError = ViraApiException(
+          0,
+          'timeout',
+          isLast
+              ? 'The VIRA server did not respond in time. Events stay queued.'
+              : 'A server address timed out; trying the next address.',
+        );
+      } on Object {
+        lastError = ViraApiException(
+          0,
+          'network_error',
+          isLast
+              ? 'Cannot reach the VIRA server. Tried ${candidates.join(", ")}.'
+              : 'A server address is unreachable; trying the next address.',
+        );
+      }
     }
+    throw lastError ??
+        ViraApiException(
+          0,
+          'network_error',
+          'Cannot reach the VIRA server. Check the address and network.',
+        );
   }
 
   Future<Map<String, dynamic>> login(String username, String password) async {

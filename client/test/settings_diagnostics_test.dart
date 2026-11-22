@@ -42,6 +42,21 @@ void main() {
     expect(store.breakRemindersEnabled, isFalse);
   });
 
+  test('server endpoints persist in order', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = await SettingsStore.open();
+    expect(store.serverEndpoints, isEmpty);
+    await store.setServerEndpoints([
+      'https://vira.example.com',
+      'http://192.168.1.4:8000',
+      'https://vira.example.com',
+    ]);
+    expect(store.serverEndpoints, [
+      'https://vira.example.com',
+      'http://192.168.1.4:8000',
+    ]);
+  });
+
   test('agent notifications default on and persist', () async {
     SharedPreferences.setMockInitialValues({});
     final store = await SettingsStore.open();

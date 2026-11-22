@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vira_link/core/models/pairing_code.dart';
 
@@ -24,6 +26,26 @@ void main() {
     final payload = PairingPayload.tryParse(' abcd 2345 ');
     expect(payload?.server, isEmpty);
     expect(payload?.code, 'ABCD2345');
+  });
+
+  test('parses the LAN and tunnel endpoint list', () {
+    final endpoints = base64Url
+        .encode(
+          utf8.encode(
+            jsonEncode([
+              {'kind': 'cloudflare', 'url': 'https://vira.example.com'},
+              {'kind': 'lan', 'url': 'http://192.168.1.4:8000'},
+            ]),
+          ),
+        )
+        .replaceAll('=', '');
+    final payload = PairingPayload.tryParse(
+      'vira://pair?server=https%3A%2F%2Fvira.example.com&code=ABCD2345&provider=cloudflare&endpoints=$endpoints',
+    );
+    expect(payload, isNotNull);
+    expect(payload!.endpoints.map((item) => item.kind), ['cloudflare', 'lan']);
+    expect(payload.endpoints.first.url, 'https://vira.example.com');
+    expect(payload.endpoints.last.url, 'http://192.168.1.4:8000');
   });
 
   test('rejects unrelated text and wrong-length codes', () {

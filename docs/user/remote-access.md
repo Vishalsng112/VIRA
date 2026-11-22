@@ -1,180 +1,245 @@
-# Remote access with Tailscale
+# Remote access
 
-VIRA is **private-first**. By default, the server only uses the address you
-opened the dashboard with. That works on a LAN but not from another network.
+VIRA supports three connection paths:
 
-[Tailscale](https://tailscale.com/) gives each of your devices a private
-WireGuard address in the same tailnet. VIRA uses that private address for
-pairing and clients. **No port forwarding and no public URL are involved.**
+| Path | Extra app on phone | Public | Best for |
+|---|---|---|---|
+| **Cloudflare named tunnel** | No | Yes, HTTPS | Default remote access |
+| **Local network** | No | No | Home Wi-Fi |
+| **Tailscale private** | Yes | No | Advanced/private-only setups |
 
-Tailscale Funnel is a different feature and is **not** enabled or required.
+Pairing links carry every available endpoint. VIRA Link tries the Cloudflare
+URL first when it is configured, and automatically falls back to the LAN or
+Tailscale address if the public URL cannot be reached.
 
-## 1. Install Tailscale on the server
+The default configuration is:
+
+```yaml
+access:
+  provider: cloudflare
+  cloudflare:
+    enabled: true
+    public_url: null
+  lan:
+    enabled: true
+```
+
+If Cloudflare is not configured yet, pairing falls back to the LAN address and
+shows a warning instead of generating an unreachable QR code.
+
+---
+
+## 1. Cloudflare named tunnel
+
+A named tunnel is **not** the temporary `trycloudflare.com` quick tunnel. The
+named tunnel keeps the same hostname across restarts.
+
+### Requirements
+
+- A domain added to Cloudflare (nameservers pointed at Cloudflare)
+- `cloudflared` on the VIRA server
+- The tunnel service running under systemd
+
+The Cloudflare tunnel service is free. The domain is the only cost.
+
+### Install and create the tunnel
 
 On Linux:
 
 ```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --hostname vira-server
-tailscale status
-tailscale ip -4
+curl -L --output cloudflared.deb \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb
+
+cloudflared tunnel login
+cloudflared tunnel create vira
+cloudflared tunnel route dns vira vira.example.com
 ```
 
-Sign in to the same tailnet on the devices that will use VIRA:
+`tunnel login` opens a browser window for your Cloudflare account. Copy the
+tunnel ID printed by `tunnel create`.
 
-- **Android:** install Tailscale from the Play Store, sign in, and leave the VPN
-  enabled.
-- **Linux:** install Tailscale and run `sudo tailscale up`.
+### Configure the tunnel
 
-Enable **MagicDNS** in the Tailscale admin console. It gives the server a stable
-name such as:
+Create `/etc/cloudflared/config.yml`:
 
-```text
-vira-server.tail1234.ts.net
+```yaml
+tunnel: <TUNNEL_ID>
+credentials-file: /root/.cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  - hostname: vira.example.com
+    service: http://127.0.0.1:8000
+  - service: http_status:404
 ```
 
-Check that another device on the tailnet can reach the server:
+Install and start the service:
 
 ```bash
-curl http://vira-server.tail1234.ts.net:8000/health
+sudo cloudflared service install
+sudo systemctl enable --now cloudflared
+sudo systemctl status cloudflared
 ```
 
-## 2. Guided setup in the dashboard
-
-You can let VIRA run the Tailscale login flow instead of using the CLI manually:
-
-1. Open **Devices → Remote access**.
-2. Click **Set up Tailscale**.
-3. If Tailscale is installed but logged out, VIRA shows a **Tailscale login URL
-   and QR code**. Open the link or scan the QR.
-4. Sign in to Tailscale or create an account. VIRA polls the local Tailscale
-   state and detects completion automatically.
-5. When connected, the panel shows the tailnet address and the pairing QR uses
-   it immediately.
-
-VIRA never creates the Tailscale account itself. The signup/login step happens
-in Tailscale's browser flow because it is third-party authentication.
-
-The service user that runs VIRA needs permission to manage Tailscale. On Linux:
+Test from outside your network:
 
 ```bash
-sudo tailscale set --operator=<vira-user>
+curl https://vira.example.com/health
 ```
 
-If VIRA runs in Docker, run Tailscale on the host or use a sidecar container;
-the container cannot authenticate the host's Tailscale node by itself.
-
-### Auth key alternative
-
-For headless hosts or Docker, expand **Use an auth key instead** in the panel.
-Create an auth key in the Tailscale admin console and paste it into VIRA. VIRA
-runs `tailscale up --auth-key=file:...` once using a temporary `0600` file, does
-not store the key, never returns it in an API response, and removes the file
-immediately. The key never appears in the process list.
-
-## 3. Manual discovery
-
-The default configuration also detects an existing Tailscale connection:
+### Tell VIRA about the tunnel
 
 ```yaml
 access:
-  provider: auto
-  tailscale:
+  provider: cloudflare
+  cloudflare:
     enabled: true
-    binary: tailscale
-    scheme: http
-    port: 8000
-    hostname: null          # defaults to the machine hostname
-    prefer_dns_name: true
-    timeout_seconds: 2
+    public_url: https://vira.example.com
+    tunnel_name: vira
+    binary: cloudflared
+
+auth:
+  https_only: true   # only when you do not use plain-HTTP LAN access
 ```
 
-How `auto` chooses an address:
+If you use the LAN fallback over plain HTTP, leave `https_only: false` and keep
+the LAN trusted. The Cloudflare tunnel itself is always HTTPS.
 
-1. `access.public_url` when set
-2. the private Tailscale address
-3. the address used to open the dashboard
+Reload VIRA or restart the server. The dashboard **Devices → Remote access**
+card should now show **Cloudflare named tunnel** as the pairing address.
 
-The pairing dialog in the dashboard shows the resolved address under
-**Devices → Remote access**. Generated pairing codes and QR links use that
-address. The client does not need a special Tailscale mode; it connects to the
-URL in the QR code.
+The phone needs only VIRA Link. No Cloudflare or VPN app is installed on the
+phone.
 
-On a working tailnet, the QR contains:
+### Security
+
+A public hostname is scanned continuously. Before enabling it:
+
+- set a strong administrator password
+- keep first-time setup (`/setup`) closed
+- keep login and pairing endpoints rate-limited
+- use HTTPS only
+- monitor failed logins
+- do not publish the server before the administrator account exists
+
+For stronger protection, put **Cloudflare Access** in front of the dashboard
+and API. VIRA authentication remains required inside the tunnel.
+
+---
+
+## 2. Local network access
+
+VIRA automatically detects a private IPv4 address:
 
 ```text
-http://vira-server.tail1234.ts.net:8000
+http://192.168.1.4:8000
 ```
 
-## 4. Verify in VIRA
+It ignores loopback, Docker, Tailscale and link-local interfaces. Pairing links
+include this address so a phone on the same Wi-Fi can connect even if the public
+tunnel is unavailable.
+
+Configuration:
+
+```yaml
+access:
+  lan:
+    enabled: true
+    scheme: http
+    address: null      # auto-detect the private LAN address
+    port: null         # defaults to the dashboard port
+    interface: null    # optional, e.g. enp6s0
+```
+
+### Docker
+
+Inside a Docker bridge network, the detected address is the container address,
+not the host LAN address. Set the host values explicitly:
+
+```yaml
+access:
+  lan:
+    address: 192.168.1.4
+    port: 8000
+```
+
+The port must be the published host port, not the container port.
+
+### Endpoint fallback
+
+A pairing link can contain:
+
+```text
+https://vira.example.com
+http://192.168.1.4:8000
+```
+
+VIRA Link stores both. If the public URL is unreachable, it retries the LAN
+address; if the LAN address is unreachable, it retries the public URL. This
+makes pairing at home fast while keeping remote access working.
+
+---
+
+## 3. Verify pairing
 
 1. Open **Devices** in the dashboard.
-2. Confirm **Remote access** shows **Tailscale private** and the expected URL.
+2. Confirm **Remote access** shows the Cloudflare URL.
 3. Generate a pairing code.
 4. Scan it with VIRA Link on Android, or paste the code/link on Linux.
 
-The client must have Tailscale connected. If Tailscale is not detected, VIRA
-falls back to the dashboard address and shows a warning instead of silently
-generating an unreachable QR code.
+The QR contains the public URL and the LAN fallback. No extra application is
+required on the phone.
 
-## Optional: HTTPS with `tailscale serve`
+---
 
-Plain HTTP over the tailnet is already encrypted by WireGuard. If you want a
-CA-valid HTTPS URL, publish only inside the tailnet:
+## 4. Optional: Tailscale private access
+
+Tailscale is kept as an advanced provider. It is **not** required for the
+default setup, and ordinary users should not need the Tailscale app.
+
+Use it only when you explicitly want a private tailnet and accept installing
+Tailscale on every client.
+
+Install and connect on the server:
 
 ```bash
-sudo tailscale serve --bg 8000
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --hostname vira-server
 ```
 
-Then configure VIRA to use the HTTPS address:
+The dashboard can run the login flow under **Devices → Remote access → Manage
+Tailscale**, including browser/QR login and an auth-key fallback.
+
+Then select it:
 
 ```yaml
 access:
-  tailscale:
-    scheme: https
-    port: 443
+  provider: tailscale
 ```
 
-This is still private. Do **not** use `tailscale funnel` unless you explicitly
-want to publish VIRA to the public internet.
+---
 
-## Restricting access
+## 5. Provider order
 
-Tailscale ACLs can limit which tailnet users or devices may reach the VIRA
-server port. VIRA authentication is still required after the network connection
-is allowed.
+`access.provider` controls the primary address:
 
-For a small personal setup, the usual policy is:
-
-- server and clients in the same tailnet
-- no shared nodes
-- no Funnel
-- VIRA remains on its normal port, usually `8000`
+| Value | Primary | Fallbacks included in the QR |
+|---|---|---|
+| `cloudflare` | Cloudflare named tunnel | LAN, Tailscale, dashboard |
+| `auto` | Cloudflare, then LAN, then Tailscale | All available |
+| `lan` | Local network | Cloudflare, Tailscale, dashboard |
+| `tailscale` | Tailscale private | LAN, Cloudflare, dashboard |
+| `request` | Dashboard address | Other available providers |
+| `custom` | `access.public_url` | Other available providers |
 
 ## Adding another provider
 
 Providers live in `vira/access/providers.py` and are registered by
-`vira/access/resolver.py`. A new provider only needs:
+`vira/access/resolver.py`. A provider needs:
 
 - a `kind` and `label`
-- a `status(request, settings)` method that returns an `AccessEndpoint` when
-  reachable
+- a `status(request, settings)` method returning an `AccessEndpoint`
 
-Then users select it with:
+Then users select it with `access.provider`.
 
-```yaml
-access:
-  provider: my-provider
-```
-
-For a manually managed public endpoint such as a Cloudflare named tunnel, use
-the built-in custom provider instead:
-
-```yaml
-access:
-  provider: custom
-  public_url: https://vira.example.com
-```
-
-Public exposure is an explicit choice, not the default. See the
-[security overview](security.md) before publishing the server.
+See the [security overview](security.md) before exposing any public endpoint.

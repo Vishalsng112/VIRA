@@ -292,7 +292,7 @@ device.battery.state             battery level, charging, temperature
 - [ ] Background execution and reliable scheduling (requires platform workers)
 - [ ] Battery-optimisation guidance per OEM
 - [ ] Encrypted local outbox/ledger (needs key migration)
-- [x] QR/one-tap device pairing (server-issued single-use code; Android QR scan, Linux paste; Tailscale-aware server address)
+- [x] QR/one-tap device pairing (server-issued single-use code; Android QR scan, Linux paste; Cloudflare/LAN endpoint list with automatic failover)
 - [ ] Multi-user account switching on one device (sign out/unlink exists)
 - [ ] Notification permission and quiet-hours support (in-app reminders and an honest permission state exist; OS scheduling is deferred)
 - [x] Admin control panel in VIRA Link: server health, agents, users, fleet, audit

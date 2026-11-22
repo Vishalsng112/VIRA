@@ -4,7 +4,13 @@ from typing import Any, Dict, Iterable, Optional
 from starlette.requests import Request
 
 from .base import AccessEndpoint, AccessProvider, AccessResolution
-from .providers import CustomProvider, RequestProvider, TailscaleProvider
+from .providers import (
+    CloudflareProvider,
+    CustomProvider,
+    LanProvider,
+    RequestProvider,
+    TailscaleProvider,
+)
 
 
 class AccessResolver:
@@ -12,7 +18,13 @@ class AccessResolver:
 
     def __init__(self, providers: Optional[Iterable[AccessProvider]] = None) -> None:
         self.providers: list[AccessProvider] = list(
-            providers or (RequestProvider(), CustomProvider(), TailscaleProvider())
+            providers or (
+                RequestProvider(),
+                LanProvider(),
+                CloudflareProvider(),
+                CustomProvider(),
+                TailscaleProvider(),
+            )
         )
 
     def register(self, provider: AccessProvider) -> "AccessResolver":
@@ -77,12 +89,24 @@ class AccessResolver:
         settings: Dict[str, Any],
     ) -> tuple[AccessEndpoint, list[AccessEndpoint], list[str]]:
         request = self._endpoint(entries, "request")
+        lan = self._endpoint(entries, "lan")
+        cloudflare = self._endpoint(entries, "cloudflare")
         custom = self._endpoint(entries, "custom")
         tailscale = self._endpoint(entries, "tailscale")
         warnings: list[str] = []
 
         if mode == "request":
             primary = request
+        elif mode == "lan":
+            primary = lan
+            if not primary:
+                reason = self._reason(entries, "lan") or "No LAN address is available."
+                warnings.append(f"{reason} Pairing uses the dashboard address.")
+        elif mode == "cloudflare":
+            primary = cloudflare or lan
+            if not cloudflare:
+                reason = self._reason(entries, "cloudflare") or "Cloudflare is not configured."
+                warnings.append(f"{reason} Pairing uses the local network address.")
         elif mode == "custom":
             primary = custom
             if not primary:
@@ -97,6 +121,10 @@ class AccessResolver:
         elif mode == "auto":
             if custom:
                 primary = custom
+            elif cloudflare:
+                primary = cloudflare
+            elif lan:
+                primary = lan
             elif tailscale:
                 primary = tailscale
             else:
@@ -120,7 +148,7 @@ class AccessResolver:
 
         ordered: list[AccessEndpoint] = []
         seen: set[str] = set()
-        for item in (primary, tailscale, custom, request):
+        for item in (primary, cloudflare, lan, tailscale, custom, request):
             if item is None or item.url in seen:
                 continue
             ordered.append(item)

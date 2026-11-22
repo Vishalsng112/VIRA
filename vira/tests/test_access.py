@@ -7,7 +7,9 @@ from starlette.requests import Request
 
 from vira.access import (
     AccessResolver,
+    CloudflareProvider,
     CustomProvider,
+    LanProvider,
     RequestProvider,
     TailscaleProvider,
 )
@@ -137,6 +139,59 @@ class AccessResolverTests(unittest.TestCase):
         resolution = resolver.resolve(_request(), config)
         self.assertEqual(resolution.endpoint.kind, "request")
         self.assertIn("disabled", resolution.warnings[0])
+
+    def test_lan_provider_ignores_container_and_tailscale_ips(self):
+        provider = LanProvider(addresses=lambda: [
+            ("docker0", "172.17.0.1"),
+            ("tailscale0", "100.77.49.126"),
+            ("enp6s0", "192.168.1.4"),
+        ])
+        entry = provider.status(_request(), {"enabled": True, "port": 8000})
+        self.assertTrue(entry["available"])
+        self.assertEqual(entry["endpoint"].url, "http://192.168.1.4:8000")
+
+    def test_cloudflare_provider_uses_https_public_url(self):
+        provider = CloudflareProvider(which=lambda binary: None)
+        entry = provider.status(_request(), {
+            "enabled": True,
+            "public_url": "vira.example.com",
+        })
+        self.assertTrue(entry["available"])
+        self.assertEqual(entry["endpoint"].url, "https://vira.example.com")
+
+    def test_cloudflare_mode_prefers_public_tunnel_and_keeps_lan_candidate(self):
+        resolver = AccessResolver([
+            RequestProvider(),
+            LanProvider(addresses=lambda: [("enp6s0", "192.168.1.4")]),
+            CloudflareProvider(which=lambda binary: None),
+            CustomProvider(),
+            TailscaleProvider(
+                runner=lambda *args, **kwargs: _completed(_tailscale_payload()),
+                which=lambda binary: "/usr/bin/tailscale",
+            ),
+        ])
+        config = _config(provider="cloudflare")
+        config["access"]["cloudflare"] = {"enabled": True, "public_url": "https://vira.example.com"}
+        config["access"]["lan"] = {"enabled": True, "port": 8000}
+        resolution = resolver.resolve(_request(), config)
+        self.assertEqual(resolution.endpoint.kind, "cloudflare")
+        self.assertEqual(
+            [item.kind for item in resolution.candidates],
+            ["cloudflare", "lan", "tailscale", "request"],
+        )
+
+    def test_cloudflare_mode_falls_back_to_lan_with_a_warning(self):
+        resolver = AccessResolver([
+            RequestProvider(),
+            LanProvider(addresses=lambda: [("enp6s0", "192.168.1.4")]),
+            CloudflareProvider(which=lambda binary: None),
+        ])
+        config = _config(provider="cloudflare")
+        config["access"]["cloudflare"] = {"enabled": True}
+        config["access"]["lan"] = {"enabled": True, "port": 8000}
+        resolution = resolver.resolve(_request(), config)
+        self.assertEqual(resolution.endpoint.kind, "lan")
+        self.assertIn("Cloudflare", resolution.warnings[0])
 
     def test_status_lists_every_provider(self):
         resolver = _resolver(lambda *args, **kwargs: _completed(_tailscale_payload()))

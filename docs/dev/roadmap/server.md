@@ -92,6 +92,8 @@ load test with concurrent device ingestion + chat + admin.
   MagicDNS discovery for pairing addresses, request and custom-URL fallbacks.
 - [x] **Guided Tailscale setup**: status diagnostics, browser/QR login polling and
   a non-persistent auth-key fallback.
+- [x] **Cloudflare named tunnel and LAN access providers**: LAN auto-discovery,
+  public tunnel URL, endpoint lists in pairing links and client-side failover.
 - [x] **Per-user data export and deletion** across devices, events, insights,
   conversations, memories, notifications, consents and commands.
 - [x] **Retention jobs** for events, sessions, jobs, commands and pairing codes;

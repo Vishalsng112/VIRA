@@ -120,6 +120,19 @@ class PairingTests(P1Base):
         self.assertIn("provider=tailscale", uri)
         self.assertIn("server=http%3A%2F%2Fvira-host.tail1234.ts.net%3A8000", uri)
 
+    def test_pairing_uri_carries_lan_and_tunnel_endpoints(self):
+        endpoints = [
+            {"kind": "cloudflare", "url": "https://vira.example.com", "label": "ignored"},
+            {"kind": "lan", "url": "http://192.168.1.4:8000"},
+        ]
+        encoded = pairing_store.encode_endpoints(endpoints)
+        self.assertIsNotNone(encoded)
+        uri = pairing_store.pairing_uri(
+            "https://vira.example.com", "abcd2345", "cloudflare",
+            endpoints=endpoints)
+        self.assertIn("endpoints=", uri)
+        self.assertNotIn("label", uri)
+
     def test_pairing_qr_is_an_inline_svg(self):
         payload = pairing_store.pairing_uri("http://vira.local:8000", "ABCD2345")
         data_uri = pairing_store.qr_svg_data_uri(payload)

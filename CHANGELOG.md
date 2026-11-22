@@ -18,6 +18,9 @@ All notable changes to VIRA are documented here. The format follows
 - Guided Tailscale setup in the dashboard: install/daemon diagnostics, browser
   login URL with QR, automatic polling, and an auth-key fallback for headless
   or Docker deployments.
+- **Cloudflare named tunnel is now the default remote-access provider**, requiring
+  no extra app on the phone. Pairing links include a detected LAN fallback, and
+  VIRA Link now fails over between endpoints automatically.
 
 ### Fixed
 

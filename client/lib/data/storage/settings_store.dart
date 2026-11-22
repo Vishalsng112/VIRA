@@ -10,6 +10,7 @@ class SettingsStore {
   SettingsStore._(this._prefs);
 
   static const _serverKey = 'settings.server_url';
+  static const _serverEndpointsKey = 'settings.server_endpoints';
   static const _deviceNameKey = 'settings.device_name';
   static const _autoSyncKey = 'settings.auto_sync';
   static const _captureKey = 'settings.capture_enabled';
@@ -38,6 +39,36 @@ class SettingsStore {
   String get serverUrl => _prefs.getString(_serverKey) ?? defaultServerUrl;
   Future<void> setServerUrl(String value) =>
       _prefs.setString(_serverKey, value.trim());
+
+  /// Every endpoint from the pairing link, in server preference order.
+  List<String> get serverEndpoints {
+    final raw = _prefs.getString(_serverEndpointsKey);
+    if (raw == null || raw.trim().isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded.map((value) => value.toString().trim()).where((value) {
+        return value.isNotEmpty;
+      }).toList();
+    } on FormatException {
+      return const [];
+    }
+  }
+
+  Future<void> setServerEndpoints(List<String> values) async {
+    final cleaned = <String>[];
+    for (final value in values) {
+      final normalized = value.trim();
+      if (normalized.isNotEmpty && !cleaned.contains(normalized)) {
+        cleaned.add(normalized);
+      }
+    }
+    if (cleaned.isEmpty) {
+      await _prefs.remove(_serverEndpointsKey);
+      return;
+    }
+    await _prefs.setString(_serverEndpointsKey, jsonEncode(cleaned));
+  }
 
   String? get deviceName => _prefs.getString(_deviceNameKey);
   Future<void> setDeviceName(String value) =>

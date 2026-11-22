@@ -56,7 +56,7 @@ nav:
           - One-command install: user/install/one-command.md
           - Docker and deployment: user/install/docker.md
       - VIRA Link client: user/client.md
-      - Remote access with Tailscale: user/remote-access.md
+      - Remote access: user/remote-access.md
       - Platform capability matrix: user/platforms.md
       - Showcase: user/showcase.md
       - Five-minute proof: user/demo.md

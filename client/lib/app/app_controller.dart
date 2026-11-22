@@ -174,11 +174,25 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  ViraApi _buildApi(StoredCredentials stored) =>
-      ViraApi(stored.serverUrl ?? settings.serverUrl, clientVersion: appVersion)
+  ViraApi _buildApi(StoredCredentials stored) {
+    final saved = settings.serverEndpoints;
+    final fallback = stored.serverUrl ?? settings.serverUrl;
+    if (saved.isEmpty) {
+      return ViraApi(fallback, clientVersion: appVersion)
         ..sessionId = stored.sessionId
         ..deviceId = stored.deviceId
         ..deviceToken = stored.deviceToken;
+    }
+    final endpoints = <String>[...saved, fallback];
+    return ViraApi(
+        endpoints.first,
+        clientVersion: appVersion,
+        endpoints: endpoints,
+      )
+      ..sessionId = stored.sessionId
+      ..deviceId = stored.deviceId
+      ..deviceToken = stored.deviceToken;
+  }
 
   Future<bool> _detectSideloaded() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return false;
@@ -318,10 +332,11 @@ class AppController extends ChangeNotifier {
         deviceToken: token,
         isAdmin: isAdmin,
       );
-      await settings.setServerUrl(normalized);
+      await settings.setServerUrl(api.baseUrl);
+      await settings.setServerEndpoints(api.endpoints);
       await settings.setDeviceName(name);
       _stored = StoredCredentials(
-        serverUrl: normalized,
+        serverUrl: api.baseUrl,
         username: username.trim(),
         sessionId: session,
         deviceId: device.deviceId,
@@ -356,6 +371,7 @@ class AppController extends ChangeNotifier {
     required String server,
     required String code,
     required String deviceName,
+    List<PairingEndpoint> endpoints = const [],
   }) async {
     if (_busy) return;
     _busy = true;
@@ -379,7 +395,11 @@ class AppController extends ChangeNotifier {
           'Enter the 8-character pairing code.',
         );
       }
-      final api = ViraApi(normalized, clientVersion: appVersion);
+      final api = ViraApi(
+        normalized,
+        clientVersion: appVersion,
+        endpoints: endpoints.map((endpoint) => endpoint.url).toList(),
+      );
       final profile = _profile ?? await probe.profile();
       _sideloaded = await _detectSideloaded();
       final name = deviceName.trim().isEmpty
@@ -405,17 +425,18 @@ class AppController extends ChangeNotifier {
       }
       final username = result.username ?? 'paired-device';
       await credentials.save(
-        serverUrl: normalized,
+        serverUrl: api.baseUrl,
         username: username,
         sessionId: session,
         deviceId: result.device.deviceId,
         deviceToken: result.token,
         isAdmin: result.isAdmin,
       );
-      await settings.setServerUrl(normalized);
+      await settings.setServerUrl(api.baseUrl);
+      await settings.setServerEndpoints(api.endpoints);
       await settings.setDeviceName(name);
       _stored = StoredCredentials(
-        serverUrl: normalized,
+        serverUrl: api.baseUrl,
         username: username,
         sessionId: session,
         deviceId: result.device.deviceId,

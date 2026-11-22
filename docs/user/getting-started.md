@@ -75,7 +75,7 @@ For GPU, native-Ollama and development variants, see
 The dashboard and chat work without VIRA Link.
 
 To reach the server from another network without exposing it to the public
-internet, see [Remote access with Tailscale](remote-access.md).
+internet, see [Remote access](remote-access.md).
 
 ## Next steps
 

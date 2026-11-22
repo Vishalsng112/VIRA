@@ -96,8 +96,10 @@ def build_device_router(kernel, deps: dict, stream_manager) -> APIRouter:
             resolve_access, request, kernel.config_manager.get_all()
         )
         server = resolution.endpoint.url
+        endpoints = [item.as_dict() for item in resolution.candidates]
         payload = pairing_store.pairing_uri(
-            server, created["code"], provider=resolution.endpoint.kind
+            server, created["code"], provider=resolution.endpoint.kind,
+            endpoints=endpoints,
         )
         created.update({
             "server": server,
@@ -107,7 +109,7 @@ def build_device_router(kernel, deps: dict, stream_manager) -> APIRouter:
             "access_label": resolution.endpoint.label,
             "access_detail": resolution.endpoint.detail,
             "access_warnings": resolution.warnings,
-            "endpoints": [item.as_dict() for item in resolution.candidates],
+            "endpoints": endpoints,
         })
         return created
 

@@ -5,8 +5,10 @@ The custom provider covers an intentionally configured URL (for example a
 Cloudflare named tunnel). The Tailscale provider discovers the private
 MagicDNS name or tailnet address and never publishes a Funnel route.
 """
+import ipaddress
 import json
 import shutil
+import socket
 import subprocess
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlparse
@@ -16,12 +18,12 @@ from starlette.requests import Request
 from .base import AccessEndpoint
 
 
-def normalize_url(value: Any) -> Optional[str]:
+def normalize_url(value: Any, default_scheme: str = "http") -> Optional[str]:
     raw = str(value or "").strip()
     if not raw:
         return None
     if "://" not in raw:
-        raw = f"http://{raw}"
+        raw = f"{default_scheme}://{raw}"
     parsed = urlparse(raw)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return None
@@ -85,6 +87,150 @@ class CustomProvider:
                 label=self.label,
                 detail="access.public_url",
             ),
+        }
+
+
+class LanProvider:
+    """Use the server's private LAN address when a dashboard request is local."""
+
+    kind = "lan"
+    label = "Local network"
+
+    _SKIP_PREFIXES = (
+        "lo", "docker", "br-", "veth", "virbr", "tailscale", "tun",
+        "tap", "wg", "zt", "podman", "cni", "flannel",
+    )
+
+    def __init__(self, addresses: Optional[Callable[[], list[tuple[str, str]]]] = None) -> None:
+        self._addresses = addresses or self._local_addresses
+
+    def _local_addresses(self) -> list[tuple[str, str]]:
+        try:
+            import psutil
+        except Exception:
+            return []
+        found: list[tuple[str, str]] = []
+        for name, addresses in psutil.net_if_addrs().items():
+            if name.lower().startswith(self._SKIP_PREFIXES):
+                continue
+            for address in addresses:
+                if address.family != socket.AF_INET:
+                    continue
+                found.append((name, address.address))
+        return found
+
+    def status(self, request: Request, settings: Dict[str, Any]) -> Dict[str, Any]:
+        if settings.get("enabled", True) is False:
+            return {
+                "kind": self.kind,
+                "label": self.label,
+                "available": False,
+                "reason": "Local-network access is disabled in access.lan.enabled.",
+                "endpoint": None,
+            }
+
+        configured = str(settings.get("address") or "").strip()
+        candidates: list[tuple[str, str]] = []
+        if configured:
+            candidates.append(("configured", configured))
+        else:
+            wanted = str(settings.get("interface") or "").strip()
+            for name, address in self._addresses():
+                if wanted and name != wanted:
+                    continue
+                if name.lower().startswith(self._SKIP_PREFIXES):
+                    continue
+                candidates.append((name, address))
+
+        chosen = None
+        for name, address in candidates:
+            try:
+                parsed = ipaddress.ip_address(address)
+            except ValueError:
+                continue
+            if parsed.is_loopback or parsed.is_link_local or not parsed.is_private:
+                continue
+            if isinstance(parsed, ipaddress.IPv4Address):
+                chosen = (name, address)
+                break
+
+        if not chosen:
+            return {
+                "kind": self.kind,
+                "label": self.label,
+                "available": False,
+                "reason": "No private IPv4 network address was found. Set access.lan.address if VIRA runs in Docker.",
+                "endpoint": None,
+            }
+
+        scheme = str(settings.get("scheme") or "http").strip().lower()
+        if scheme not in ("http", "https"):
+            scheme = "http"
+        try:
+            port = int(settings.get("port") or request.url.port or 8000)
+        except (TypeError, ValueError):
+            port = 8000
+        default_port = 443 if scheme == "https" else 80
+        netloc = chosen[1] if port == default_port else f"{chosen[1]}:{port}"
+        return {
+            "kind": self.kind,
+            "label": self.label,
+            "available": True,
+            "reason": None,
+            "endpoint": AccessEndpoint(
+                kind=self.kind,
+                url=f"{scheme}://{netloc}",
+                label=self.label,
+                detail=f"Same Wi-Fi or wired network · {chosen[0]}",
+            ),
+            "host": chosen[1],
+        }
+
+
+class CloudflareProvider:
+    """Use a manually managed Cloudflare named tunnel URL."""
+
+    kind = "cloudflare"
+    label = "Cloudflare named tunnel"
+
+    def __init__(self, which: Optional[Callable[[str], Optional[str]]] = None) -> None:
+        self._which = which or shutil.which
+
+    def status(self, request: Request, settings: Dict[str, Any]) -> Dict[str, Any]:
+        if settings.get("enabled", True) is False:
+            return {
+                "kind": self.kind,
+                "label": self.label,
+                "available": False,
+                "reason": "Cloudflare access is disabled in access.cloudflare.enabled.",
+                "endpoint": None,
+            }
+
+        raw = settings.get("public_url") or settings.get("hostname")
+        url = normalize_url(raw, default_scheme="https")
+        if not url:
+            return {
+                "kind": self.kind,
+                "label": self.label,
+                "available": False,
+                "reason": "Cloudflare named tunnel is not configured. Set access.cloudflare.public_url or hostname.",
+                "endpoint": None,
+            }
+
+        binary = str(settings.get("binary") or "cloudflared")
+        return {
+            "kind": self.kind,
+            "label": self.label,
+            "available": True,
+            "reason": None,
+            "endpoint": AccessEndpoint(
+                kind=self.kind,
+                url=url,
+                label=self.label,
+                detail="Public HTTPS · no client app required",
+            ),
+            "binary_installed": bool(self._which(binary)),
+            "tunnel_name": str(settings.get("tunnel_name") or "").strip() or None,
         }
 
 

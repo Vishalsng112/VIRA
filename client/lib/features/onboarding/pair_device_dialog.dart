@@ -39,6 +39,7 @@ class _PairDeviceDialogState extends State<_PairDeviceDialog> {
   late final TextEditingController _deviceName;
   String? _error;
   bool _busy = false;
+  List<PairingEndpoint> _endpoints = const [];
 
   bool get _canScan =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -72,16 +73,21 @@ class _PairDeviceDialogState extends State<_PairDeviceDialog> {
     }
     setState(() {
       _error = null;
+      _endpoints = payload.endpoints;
       if (payload.server.isNotEmpty) _server.text = payload.server;
       _code.text = payload.code;
     });
   }
 
   void _onCodeChanged(String value) {
-    if (!value.contains('://') && !value.contains('?')) return;
+    if (!value.contains('://') && !value.contains('?')) {
+      if (_endpoints.isNotEmpty) setState(() => _endpoints = const []);
+      return;
+    }
     final payload = PairingPayload.tryParse(value);
     if (payload == null || payload.server.isEmpty) return;
     setState(() {
+      _endpoints = payload.endpoints;
       _server.text = payload.server;
       _code.text = payload.code;
     });
@@ -103,6 +109,7 @@ class _PairDeviceDialogState extends State<_PairDeviceDialog> {
       server: server,
       code: payload.code,
       deviceName: _deviceName.text,
+      endpoints: payload.endpoints.isEmpty ? _endpoints : payload.endpoints,
     );
     if (!mounted) return;
     if (widget.controller.isConnected) {

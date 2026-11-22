@@ -30,8 +30,10 @@ The engineering threat model is in
 - The session cookie is signed with `auth.secret_key`. Set a random value before
   exposing the server.
 - `auth.https_only` must be enabled when the server is behind HTTPS/TLS.
-- Prefer private network access (Tailscale) over public exposure. See
-  [Remote access with Tailscale](remote-access.md).
+- Public exposure is an explicit choice. If you use a Cloudflare named tunnel,
+  set a strong admin password, keep rate limits enabled and consider Cloudflare
+  Access. For private-only access, use the LAN or Tailscale provider. See
+  [Remote access](remote-access.md).
 
 ## Authorization
 

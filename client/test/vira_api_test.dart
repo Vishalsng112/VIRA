@@ -559,6 +559,38 @@ void main() {
     await api.deleteAgentSchedule('s2');
   });
 
+  test(
+    'falls back to the next endpoint when the first is unreachable',
+    () async {
+      final attempted = <String>[];
+      final client = MockClient((request) async {
+        attempted.add(request.url.host);
+        if (request.url.host == '192.168.1.4') {
+          throw http.ClientException('unreachable');
+        }
+        return http.Response(
+          jsonEncode({
+            'user_id': 5,
+            'username': 'qatester',
+            'roles': ['admin'],
+            'session_id': 'session-1',
+          }),
+          200,
+        );
+      });
+      final api = ViraApi(
+        'http://192.168.1.4:8000',
+        client: client,
+        endpoints: const ['https://vira.example.com'],
+      )..sessionId = 'session-1';
+
+      final me = await api.me();
+      expect(me['username'], 'qatester');
+      expect(attempted, ['192.168.1.4', 'vira.example.com']);
+      expect(api.baseUrl, 'https://vira.example.com');
+    },
+  );
+
   test('pairing redeems a code and stores the returned session', () async {
     late Map<String, dynamic> sent;
     final client = MockClient((request) async {
