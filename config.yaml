@@ -55,8 +55,8 @@ access:
   # Set either public_url or hostname after creating the named tunnel.
   cloudflare:
     enabled: true
-    public_url: null                # e.g. https://vira.example.com
-    hostname: null                  # e.g. vira.example.com (implies https)
+    public_url: https://vira.santoshsinghinfra.com  # e.g. https://vira.example.com
+    hostname: vira.santoshsinghinfra.com            # e.g. vira.example.com (implies https)
     tunnel_name: vira
     tunnel_id: null                 # filled after guided creation
     service_url: http://127.0.0.1:8000

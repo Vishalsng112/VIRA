@@ -173,6 +173,55 @@ class CloudflareController:
         _, cert, _ = self._dirs()
         return cert.exists()
 
+    def _known_hostnames(self) -> list[str]:
+        """Hostnames already configured for this tunnel.
+
+        Remotely-managed tunnels keep their ingress in Cloudflare, not on disk.
+        The cloudflared journal reveals the pushed ingress config, and locally
+        managed tunnels may have a config file.
+        """
+        found: list[str] = []
+        _, _, config_path = self._dirs()
+        if config_path.exists():
+            try:
+                for line in config_path.read_text(encoding="utf-8").splitlines():
+                    match = re.match(r"\s*-?\s*hostname:\s*(\S+)", line)
+                    if match:
+                        found.append(match.group(1).strip())
+            except OSError:
+                pass
+        for command in (
+            ["journalctl", "-u", "cloudflared", "-n", "300", "--no-pager"],
+            ["journalctl", "-u", "cloudflared.service", "-n", "300", "--no-pager"],
+        ):
+            try:
+                result = self._runner(
+                    command, capture_output=True, text=True, timeout=5, check=False
+                )
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if result.returncode != 0:
+                continue
+            lines = [
+                line for line in (result.stdout or "").splitlines()
+                if "Updated to new configuration" in line
+            ]
+            if lines:
+                found.extend(
+                    re.findall(
+                        r'\\?"hostname\\?"\s*:\s*\\?"([^"\\]+)',
+                        lines[-1],
+                    )
+                )
+            if found:
+                break
+        cleaned: list[str] = []
+        for value in found:
+            hostname = value.strip().lower().removeprefix("https://").rstrip("/")
+            if _HOSTNAME.match(hostname) and hostname not in cleaned:
+                cleaned.append(hostname)
+        return cleaned
+
     def _service_active(self) -> bool:
         return self._systemctl("is-active")
 
@@ -236,6 +285,7 @@ class CloudflareController:
         logged_in: bool = False,
         login_in_progress: bool = False,
         tunnel_running: bool = False,
+        detected_hostnames: Optional[list[str]] = None,
     ) -> Dict[str, Any]:
         auth_url = self._auth_url
         qr = None
@@ -250,6 +300,7 @@ class CloudflareController:
             "connected": state == "running",
             "public_url": public_url,
             "hostname": hostname,
+            "detected_hostnames": detected_hostnames or [],
             "tunnel_name": tunnel_name,
             "tunnel_id": tunnel_id,
             "service_active": service_active,
@@ -274,7 +325,10 @@ class CloudflareController:
         service_active = self._service_active()
         logged_in = self._cert_exists()
         public_url = self._public_url(settings)
+        detected_hostnames = self._known_hostnames() if service_active else []
         hostname = str(settings.get("hostname") or "").strip() or None
+        if not hostname and detected_hostnames:
+            hostname = detected_hostnames[0]
         if public_url and not hostname:
             hostname = public_url.removeprefix("https://")
         tunnel_name = str(settings.get("tunnel_name") or "vira").strip()
@@ -300,7 +354,7 @@ class CloudflareController:
                     tunnel_running=False,
                 )
             healthy = self._health(public_url)
-            if healthy is False:
+            if healthy is False and hostname not in detected_hostnames:
                 return self._payload(
                     state="error",
                     installed=True,
@@ -313,6 +367,7 @@ class CloudflareController:
                     logged_in=logged_in,
                     login_in_progress=login_in_progress,
                     tunnel_running=tunnel_running,
+                    detected_hostnames=detected_hostnames,
                 )
             return self._payload(
                 state="running",
@@ -325,6 +380,7 @@ class CloudflareController:
                 logged_in=logged_in,
                 login_in_progress=login_in_progress,
                 tunnel_running=tunnel_running,
+                detected_hostnames=detected_hostnames,
             )
 
         if failure and not login_in_progress:
@@ -339,6 +395,7 @@ class CloudflareController:
                 logged_in=logged_in,
                 login_in_progress=login_in_progress,
                 tunnel_running=tunnel_running,
+                detected_hostnames=detected_hostnames,
             )
 
         if service_active or logged_in:
@@ -352,6 +409,7 @@ class CloudflareController:
                 logged_in=logged_in,
                 login_in_progress=login_in_progress,
                 tunnel_running=tunnel_running,
+                detected_hostnames=detected_hostnames,
             )
 
         return self._payload(
@@ -483,23 +541,25 @@ class CloudflareController:
             return current
 
         if current["service_active"]:
-            if not self._health(f"https://{hostname}"):
+            known = self._known_hostnames()
+            if not self._health(f"https://{hostname}") and hostname not in known:
                 return self._payload(
                     state="error",
                     installed=True,
                     reason=(
                         f"https://{hostname}/health is not reachable. "
-                        "Check the public hostname configured for the running cloudflared tunnel."
+                        "Cloudflare does not report this hostname for the running tunnel."
                     ),
                     hostname=hostname,
                     service_active=True,
                     logged_in=current["logged_in"],
+                    detected_hostnames=known,
                 )
             return self._payload(
                 state="running", installed=True,
                 public_url=f"https://{hostname}", hostname=hostname,
                 service_active=True, logged_in=current["logged_in"],
-                tunnel_running=True,
+                tunnel_running=True, detected_hostnames=known,
             )
 
         if not current["logged_in"]:

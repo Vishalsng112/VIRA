@@ -104,6 +104,22 @@ class CloudflareControllerTests(unittest.TestCase):
         self.assertEqual(status["state"], "error")
         self.assertIn("hostname", status["reason"].lower())
 
+    def test_configured_journal_hostname_survives_local_dns_failure(self):
+        def runner(args, **kwargs):
+            if args and args[0] == "journalctl":
+                return _completed(
+                    args, 0,
+                    'INF Updated to new configuration config="{\"ingress\":'
+                    '[{\"hostname\":\"vira.example.com\",\"service\":'
+                    '\"http://localhost:8000\"}]}"',
+                )
+            return _completed(args, 0, "", "")
+
+        controller = self._controller(service=True, health=False, runner=runner)
+        status = controller.status(_config({"public_url": "https://vira.example.com"}))
+        self.assertEqual(status["state"], "running")
+        self.assertIn("vira.example.com", status["detected_hostnames"])
+
     def test_logged_in_mode_creates_routes_and_starts_the_tunnel(self):
         (self.dir / "cert.pem").write_text("cert")
         tunnel_id = "12345678-1234-1234-1234-123456789abc"
