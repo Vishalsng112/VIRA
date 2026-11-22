@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 
 from vira import errors
+from vira.access import resolve_access
 from vira.auth import auth, database
 from vira.auth.principals import DevicePrincipal, UserPrincipal
 from vira.devices import commands as command_store
@@ -91,12 +92,22 @@ def build_device_router(kernel, deps: dict, stream_manager) -> APIRouter:
     async def pairing_code(body: PairingCodeRequest, request: Request,
                            user: UserPrincipal = Depends(user_dep)):
         created = pairing_store.create_code(user.user_id, body.ttl_minutes)
-        server = str(request.base_url).rstrip("/")
-        payload = pairing_store.pairing_uri(server, created["code"])
+        resolution = await asyncio.to_thread(
+            resolve_access, request, kernel.config_manager.get_all()
+        )
+        server = resolution.endpoint.url
+        payload = pairing_store.pairing_uri(
+            server, created["code"], provider=resolution.endpoint.kind
+        )
         created.update({
             "server": server,
             "pairing_uri": payload,
             "qr_svg": pairing_store.qr_svg_data_uri(payload),
+            "access_provider": resolution.endpoint.kind,
+            "access_label": resolution.endpoint.label,
+            "access_detail": resolution.endpoint.detail,
+            "access_warnings": resolution.warnings,
+            "endpoints": [item.as_dict() for item in resolution.candidates],
         })
         return created
 

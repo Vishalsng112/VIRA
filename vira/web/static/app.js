@@ -34,7 +34,7 @@
   const state = {
     health: null, metrics: null, orchestration: null, security: null, approvals: null, generated: null, runs: null, modules: null,
     plugins: null, mcpServers: null, marketplace: null, mcpTools: null, usage: null,
-    devices: null, deviceInsight: null, ragDocs: null, workflows: null, orgs: null,
+    devices: null, deviceInsight: null, access: null, ragDocs: null, workflows: null, orgs: null,
     objects: null, releases: null, selectedDevice: null,
     notifications: null, schedules: null, recipes: null, unread: 0,
     scheduleRuns: null, selectedSchedule: null, editingScheduleId: null,
@@ -349,6 +349,11 @@
     state.usage = usage.ok
       ? { ...usage.data, quotas: quotas.ok ? (quotas.data?.quotas || []) : [] }
       : null;
+  }
+
+  async function loadAccess() {
+    const r = await fetchJson("/api/v1/access");
+    state.access = r.ok ? r.data : null;
   }
 
   async function loadDevices() {
@@ -1020,6 +1025,40 @@
       ${apps ? `<dl class="kv">${apps}</dl>` : '<p class="empty">No app usage captured.</p>'}`);
   }
 
+  function renderAccess() {
+    const access = state.access;
+    const box = $("access-status");
+    if (!box) return;
+    if (!access) {
+      setText("access-mode", "Unavailable");
+      box.innerHTML = '<p class="empty">Could not load access provider status.</p>';
+      return;
+    }
+    const resolved = access.resolved || {};
+    const warnings = access.warnings || [];
+    const providers = (access.providers || []).map((provider) => {
+      const tone = provider.available ? "ok" : "warn";
+      const endpoint = provider.endpoint?.url || provider.reason || "Unavailable";
+      return `<li class="access-provider">
+        <span class="badge badge-${tone}">${esc(provider.label || provider.kind)}</span>
+        <span class="access-provider-detail">${esc(endpoint)}</span>
+      </li>`;
+    }).join("");
+    setText("access-mode", titleCase(String(access.mode || "auto")));
+    box.innerHTML = `
+      <div class="access-head">
+        <div>
+          <span class="kpi-label">Pairing address</span>
+          <strong class="access-url">${esc(resolved.url || "—")}</strong>
+          <p class="pairing-meta">${esc(resolved.label || "")}${resolved.detail ? ` · ${esc(resolved.detail)}` : ""}</p>
+        </div>
+        <span class="chip">${esc(resolved.kind || "unknown")}</span>
+      </div>
+      <ul class="access-providers">${providers}</ul>
+      ${warnings.length ? `<div class="access-warning">${warnings.map((warning) => `<p>${esc(warning)}</p>`).join("")}</div>` : ""}
+      ${(resolved.kind === "tailscale") ? '<p class="card-note">Private tailnet only. Nothing is published to the public internet.</p>' : ""}`;
+  }
+
   function renderPairingCode(data) {
     const box = $("pairing-result");
     if (!box) return;
@@ -1032,6 +1071,8 @@
           <span class="kpi-label">Pairing code</span>
           <strong class="pairing-code">${esc(data.code)}</strong>
           <p class="pairing-meta">Server ${esc(data.server)} · expires ${esc(expires)}</p>
+          <p class="pairing-meta">${esc(data.access_label || "Access")}${data.access_detail ? ` · ${esc(data.access_detail)}` : ""}</p>
+          ${(data.access_warnings || []).length ? `<p class="access-warning-inline">${esc(data.access_warnings[0])}</p>` : ""}
           <div class="row-actions" style="justify-content:flex-start;margin-top:.6rem">
             <button class="btn btn-ghost" type="button" data-copy-pairing="${esc(data.pairing_uri)}">Copy pairing link</button>
           </div>
@@ -1283,7 +1324,7 @@
   }
 
   function renderAll() {
-    renderOverview(); renderDevices(); renderAgents(); renderExtensions(); renderKnowledge();
+    renderOverview(); renderAccess(); renderDevices(); renderAgents(); renderExtensions(); renderKnowledge();
     renderWorkflows(); renderUsage(); renderOrganizations(); renderObjects(); renderUpdates();
     renderSecurity(); renderModules(); renderInbox();
   }
@@ -1296,7 +1337,7 @@
       load("user", loadUser), load("health", loadHealth), load("metrics", loadMetrics),
       load("context", loadContext), load("config", loadConfig), load("orchestration", loadOrchestration),
       load("security", loadSecurity), load("approvals", loadApprovals), load("generated", loadGenerated), load("runs", loadRuns), load("modules", loadModules), load("plugins", loadPlugins),
-      load("mcp", loadMcp), load("usage", loadUsage), load("devices", loadDevices),
+      load("mcp", loadMcp), load("usage", loadUsage), load("access", loadAccess), load("devices", loadDevices),
       load("knowledge", loadKnowledge), load("workflows", loadWorkflows),
       load("organizations", loadOrganizations), load("objects", loadObjects),
       load("releases", loadReleases), load("inbox", loadInbox),

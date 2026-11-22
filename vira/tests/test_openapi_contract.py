@@ -99,6 +99,7 @@ class OpenApiContractTests(unittest.TestCase):
             "/api/v1/admin/fleet/ops",
             "/api/v1/devices/{device_id}/consent",
             "/api/v1/devices/{device_id}/commands",
+            "/api/v1/access",
             "/api/v1/devices/pairing-code",
             "/api/v1/devices/pair",
             "/api/v1/account/export",

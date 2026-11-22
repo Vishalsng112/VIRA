@@ -114,6 +114,12 @@ class PairingTests(P1Base):
         self.assertEqual(
             uri, "vira://pair?server=http%3A%2F%2F192.168.1.20%3A8000&code=ABCD2345")
 
+    def test_pairing_uri_records_the_access_provider(self):
+        uri = pairing_store.pairing_uri(
+            "http://vira-host.tail1234.ts.net:8000", "abcd2345", "tailscale")
+        self.assertIn("provider=tailscale", uri)
+        self.assertIn("server=http%3A%2F%2Fvira-host.tail1234.ts.net%3A8000", uri)
+
     def test_pairing_qr_is_an_inline_svg(self):
         payload = pairing_store.pairing_uri("http://vira.local:8000", "ABCD2345")
         data_uri = pairing_store.qr_svg_data_uri(payload)

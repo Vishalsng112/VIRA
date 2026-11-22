@@ -88,6 +88,8 @@ load test with concurrent device ingestion + chat + admin.
 - [x] **Pairing backend**: short-lived single-use pairing codes, dashboard QR
   and deep-link issuance, redeem to create a device credential and user session,
   device rename/revoke/re-enrollment APIs.
+- [x] **Pluggable private access**: access-provider resolver, automatic Tailscale
+  MagicDNS discovery for pairing addresses, request and custom-URL fallbacks.
 - [x] **Per-user data export and deletion** across devices, events, insights,
   conversations, memories, notifications, consents and commands.
 - [x] **Retention jobs** for events, sessions, jobs, commands and pairing codes;

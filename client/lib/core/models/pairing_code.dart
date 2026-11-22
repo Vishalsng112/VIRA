@@ -2,10 +2,17 @@ import 'device_info.dart';
 
 /// A pairing link or code shown by the VIRA server dashboard.
 class PairingPayload {
-  const PairingPayload({required this.server, required this.code});
+  const PairingPayload({
+    required this.server,
+    required this.code,
+    this.provider,
+  });
 
   final String server;
   final String code;
+
+  /// The server-side access provider such as `tailscale` or `custom`.
+  final String? provider;
 
   static final _codePattern = RegExp(r'^[A-Z2-9]{8}$');
 
@@ -20,7 +27,11 @@ class PairingPayload {
       final server = uri.queryParameters['server']?.trim();
       final code = normalizeCode(uri.queryParameters['code'] ?? '');
       if (server != null && server.isNotEmpty && code != null) {
-        return PairingPayload(server: server, code: code);
+        return PairingPayload(
+          server: server,
+          code: code,
+          provider: uri.queryParameters['provider'],
+        );
       }
     }
 

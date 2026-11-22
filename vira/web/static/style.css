@@ -564,6 +564,14 @@ textarea { resize: vertical; min-height: 4rem; }
 .pairing-qr { width: 168px; height: 168px; border-radius: 0.75rem; background: #fff; padding: 0.5rem; }
 .pairing-code { display: block; font-family: var(--mono); font-size: 1.6rem; letter-spacing: 0.18em; margin: 0.25rem 0 0.35rem; }
 .pairing-meta { color: var(--muted); font-size: var(--text-xs); word-break: break-all; }
+.access-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.access-url { display: block; font-family: var(--mono); font-size: 1rem; margin: 0.25rem 0 0.35rem; word-break: break-all; }
+.access-providers { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+.access-provider { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.access-provider-detail { color: var(--muted); font-size: var(--text-xs); word-break: break-all; }
+.access-warning { margin-top: 0.9rem; padding: 0.7rem 0.8rem; border-radius: 0.6rem; background: var(--warn-soft, rgba(245, 158, 11, 0.12)); }
+.access-warning p { margin: 0; color: var(--muted); font-size: var(--text-sm); }
+.access-warning-inline { margin-top: 0.35rem; color: var(--muted); font-size: var(--text-xs); word-break: break-word; }
 .mono { font-family: var(--mono); font-size: 0.9em; }
 
 @media (max-width: 70rem) {

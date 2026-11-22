@@ -12,6 +12,9 @@ All notable changes to VIRA are documented here. The format follows
   dashboard issues a single-use code with an inline QR and copyable
   `vira://pair` link; Android scans it and Linux pastes it. Redeeming the code
   enrolls the device and issues the user session in one step.
+- Pluggable remote-access providers, with automatic **Tailscale private**
+  discovery. Pairing codes and QR links use the tailnet MagicDNS address when
+  available, with an explicit fallback warning instead of a localhost QR.
 
 ### Fixed
 

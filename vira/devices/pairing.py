@@ -21,10 +21,12 @@ def _hash(code: str) -> str:
     return hashlib.sha256(code.strip().upper().encode("utf-8")).hexdigest()
 
 
-def pairing_uri(server: str, code: str) -> str:
+def pairing_uri(server: str, code: str, provider: Optional[str] = None) -> str:
     """Return the deep-link payload a client scans or receives as a QR code."""
-    query = urlencode({"server": server.rstrip("/"), "code": code.strip().upper()})
-    return f"vira://pair?{query}"
+    params = {"server": server.rstrip("/"), "code": code.strip().upper()}
+    if provider:
+        params["provider"] = provider
+    return f"vira://pair?{urlencode(params)}"
 
 
 def qr_svg_data_uri(payload: str) -> str:

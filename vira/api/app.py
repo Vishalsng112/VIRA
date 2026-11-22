@@ -58,6 +58,7 @@ from vira.api.routes_updates import build_update_router
 from vira.api.routes_approvals import build_approval_router
 from vira.api.routes_generated import build_generated_router
 from vira.api.routes_devices import build_device_router
+from vira.api.routes_access import build_access_router
 from vira.api.routes_client import build_client_router
 from vira.family import store as family_store
 
@@ -1452,6 +1453,7 @@ def create_app(kernel: Kernel) -> FastAPI:
 
     # --- Device, admin and operations routers ---
     app.include_router(build_device_router(kernel, auth_deps, stream_manager))
+    app.include_router(build_access_router(kernel, auth_deps))
     app.include_router(build_client_router(get_current_user, kernel))
     app.include_router(build_admin_router(kernel, auth_deps, stream_manager))
     app.include_router(build_account_router(get_current_user))

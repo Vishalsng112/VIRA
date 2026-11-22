@@ -32,6 +32,34 @@ auth:
   database_url: sqlite:///data/vira.sqlite3
 
 # ---------------------------------------------------------------------------
+# Remote access
+#
+# The server never assumes that the address used to open the dashboard is
+# reachable from another device. Providers resolve the address used by pairing
+# QR codes and clients. Add new providers in vira/access/providers.py.
+#
+# provider:
+#   auto      -> access.public_url if set, then Tailscale, then the dashboard URL
+#   tailscale -> Tailscale only (falls back with a warning)
+#   request   -> the address used to open the dashboard
+#   custom    -> access.public_url
+# ---------------------------------------------------------------------------
+access:
+  provider: auto
+  # Used by provider: custom, or by auto before Tailscale.
+  # Example: http://vira-home.tail1234.ts.net:8000
+  public_url: null
+  tailscale:
+    enabled: true
+    binary: tailscale
+    # http is encrypted by WireGuard on the tailnet. Use https + port 443
+    # when VIRA is published with `tailscale serve`.
+    scheme: http
+    port: 8000
+    prefer_dns_name: true
+    timeout_seconds: 2
+
+# ---------------------------------------------------------------------------
 # Event bus, scheduler, metrics
 # ---------------------------------------------------------------------------
 event_bus:
