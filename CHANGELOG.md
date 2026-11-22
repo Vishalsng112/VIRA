@@ -10,6 +10,15 @@ All notable changes to VIRA are documented here. The format follows
 
 - No unreleased changes yet.
 
+## [0.6.1] - 2026-11-22
+
+### Fixed
+
+- The chat composer and send button now align with the message column when the
+  context rail is expanded, instead of centering across the rail.
+- Added symmetric scrollbar gutters so the message list and composer stay
+  aligned on wide screens.
+
 ## [0.6.0] - 2026-11-22
 
 ### Added

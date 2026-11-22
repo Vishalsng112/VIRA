@@ -231,7 +231,7 @@ button { cursor: pointer; }
 .connection-status { display: inline-flex; align-items: center; gap: 0.45rem; color: var(--muted); font-size: 0.72rem; }
 .connection-status i { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 16%, transparent); }
 
-.message-scroller { min-height: 0; overflow: auto; scroll-behavior: smooth; }
+.message-scroller { min-height: 0; overflow: auto; scroll-behavior: smooth; scrollbar-gutter: stable both-edges; }
 .welcome-state {
   display: grid; place-items: center; max-width: 52rem;
   margin: 0 auto; padding: clamp(3rem, 14vh, 9rem) 1.5rem 7rem; text-align: center;
@@ -289,11 +289,14 @@ button { cursor: pointer; }
 /* ---------- Composer ---------- */
 .composer {
   position: relative; flex: none;
-  padding: 0.7rem max(1.5rem, calc((100vw - 54rem) / 2)) max(1.25rem, env(safe-area-inset-bottom));
+  padding: 0.7rem 1.25rem max(1.25rem, env(safe-area-inset-bottom));
   background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 92%, transparent) 24%, var(--bg) 58%);
   pointer-events: none;
 }
-.composer-box { position: relative; pointer-events: none; }
+.composer-box {
+  position: relative; width: min(100%, 52rem); margin: 0 auto;
+  pointer-events: none;
+}
 .context-rail {
   display: flex; flex-direction: column; gap: 1.1rem;
   padding: 1.4rem 1.35rem 1.5rem;
@@ -337,7 +340,10 @@ button { cursor: pointer; }
 }
 .composer-actions { position: absolute; right: 0.7rem; bottom: 0.7rem; display: flex; align-items: center; gap: 0.4rem; pointer-events: none; }
 .composer-actions button { pointer-events: auto; }
-.composer-hint { margin: 0.45rem 0 0; padding-left: 1.1rem; color: var(--faint); font-size: 0.6875rem; pointer-events: none; }
+.composer-hint {
+  width: min(100%, 52rem); margin: 0.45rem auto 0; padding-left: 1.1rem;
+  color: var(--faint); font-size: 0.6875rem; pointer-events: none;
+}
 .send-button {
   pointer-events: auto; z-index: 1;
   display: grid; place-items: center;
@@ -448,6 +454,8 @@ button { cursor: pointer; }
 /* ---------- Responsive ---------- */
 @media (min-width: 80.01rem) {
   #context-toggle { display: none; }
+  /* Leave room for the context rail while keeping the footer background full width. */
+  .composer { padding-right: calc(19rem + 1.25rem); }
 }
 @media (max-width: 80rem) {
   .chat-body { grid-template-columns: minmax(0, 1fr); }
