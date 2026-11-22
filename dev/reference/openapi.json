@@ -3538,6 +3538,22 @@
         }
       }
     },
+    "/api/v1/access": {
+      "get": {
+        "summary": "Get Access",
+        "operationId": "get_access_api_v1_access_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/client-config": {
       "get": {
         "summary": "Client Config",
