@@ -94,6 +94,8 @@ load test with concurrent device ingestion + chat + admin.
   a non-persistent auth-key fallback.
 - [x] **Cloudflare named tunnel and LAN access providers**: LAN auto-discovery,
   public tunnel URL, endpoint lists in pairing links and client-side failover.
+- [x] **Guided Cloudflare setup**: existing-service hostname verification,
+  browser/QR login, tunnel/DNS creation and managed tunnel execution.
 - [x] **Per-user data export and deletion** across devices, events, insights,
   conversations, memories, notifications, consents and commands.
 - [x] **Retention jobs** for events, sessions, jobs, commands and pairing codes;

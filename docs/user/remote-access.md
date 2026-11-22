@@ -87,7 +87,33 @@ Test from outside your network:
 curl https://vira.example.com/health
 ```
 
-### Tell VIRA about the tunnel
+### Guided setup in the dashboard
+
+Open **Devices → Remote access → Set up Cloudflare**.
+
+If a `cloudflared` service is already running (for example the standard
+token-based service), VIRA asks for the public hostname configured for that
+tunnel, verifies `https://<hostname>/health`, and saves it automatically.
+
+If no service is running, the guided flow:
+
+1. starts `cloudflared tunnel login` and shows the browser URL plus a QR code;
+2. waits for the Cloudflare login to complete;
+3. creates or reuses the named tunnel;
+4. routes the hostname in Cloudflare DNS;
+5. writes a VIRA-managed cloudflared configuration;
+6. starts the tunnel and saves the public URL.
+
+Cloudflare account creation, zone ownership and hostname routing still happen in
+Cloudflare; VIRA never stores your Cloudflare password.
+
+A tunnel started by VIRA itself is a managed child process. If VIRA restarts,
+open the same panel and choose **Start tunnel** again. For a permanent system
+service, use the standard `cloudflared service install` setup described above.
+
+### Manual configuration
+
+You can also set the URL directly:
 
 ```yaml
 access:

@@ -58,6 +58,8 @@ access:
     public_url: null                # e.g. https://vira.example.com
     hostname: null                  # e.g. vira.example.com (implies https)
     tunnel_name: vira
+    tunnel_id: null                 # filled after guided creation
+    service_url: http://127.0.0.1:8000
     binary: cloudflared
 
   # Private same-network address, advertised as a fallback in the pairing QR.

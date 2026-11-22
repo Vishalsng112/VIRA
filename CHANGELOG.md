@@ -21,6 +21,9 @@ All notable changes to VIRA are documented here. The format follows
 - **Cloudflare named tunnel is now the default remote-access provider**, requiring
   no extra app on the phone. Pairing links include a detected LAN fallback, and
   VIRA Link now fails over between endpoints automatically.
+- Guided Cloudflare setup: existing-service hostname verification, browser/QR
+  login, tunnel creation, DNS routing, managed tunnel start and automatic config
+  save from the dashboard.
 
 ### Fixed
 

@@ -35,6 +35,7 @@
     health: null, metrics: null, orchestration: null, security: null, approvals: null, generated: null, runs: null, modules: null,
     plugins: null, mcpServers: null, marketplace: null, mcpTools: null, usage: null,
     devices: null, deviceInsight: null, access: null, tailscale: null, tailscaleOpen: false,
+    cloudflare: null, cloudflareOpen: false,
     ragDocs: null, workflows: null, orgs: null,
     objects: null, releases: null, selectedDevice: null,
     notifications: null, schedules: null, recipes: null, unread: 0,
@@ -46,6 +47,7 @@
   let eventSource = null;
   let refreshTimer = null;
   let tailscaleTimer = null;
+  let cloudflareTimer = null;
 
   /* ---------- helpers ---------- */
   const esc = (v) => String(v ?? "")
@@ -1060,6 +1062,7 @@
       ${warnings.length ? `<div class="access-warning">${warnings.map((warning) => `<p>${esc(warning)}</p>`).join("")}</div>` : ""}
       ${(resolved.kind === "tailscale") ? '<p class="card-note">Private tailnet only. Nothing is published to the public internet.</p>' : ""}
       <div class="row-actions" style="justify-content:flex-start;margin-top:.8rem">
+        <button class="btn" type="button" data-cloudflare-open>${access.providers?.some((p) => p.kind === "cloudflare" && p.available) ? "Manage Cloudflare" : "Set up Cloudflare"}</button>
         <button class="btn btn-ghost" type="button" data-tailscale-open>${access.providers?.some((p) => p.kind === "tailscale" && p.available) ? "Manage Tailscale" : "Set up Tailscale"}</button>
       </div>`;
   }
@@ -1217,6 +1220,9 @@
 
   async function openTailscalePanel() {
     state.tailscaleOpen = true;
+    state.cloudflareOpen = false;
+    stopCloudflarePoll();
+    renderCloudflarePanel();
     await loadTailscaleStatus(false);
     renderTailscalePanel();
     if (state.tailscale?.installed && state.tailscale.can_connect && !state.tailscale.login_in_progress) {
@@ -1225,6 +1231,186 @@
       startTailscalePoll();
     }
     $("tailscale-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function stopCloudflarePoll() {
+    if (cloudflareTimer) clearInterval(cloudflareTimer);
+    cloudflareTimer = null;
+  }
+
+  function startCloudflarePoll() {
+    stopCloudflarePoll();
+    let attempts = 0;
+    cloudflareTimer = setInterval(async () => {
+      attempts += 1;
+      await loadCloudflareStatus(false);
+      const status = state.cloudflare;
+      if (!status || ["running", "not_installed", "needs_hostname", "error"].includes(status.state) || attempts >= 200) {
+        stopCloudflarePoll();
+      }
+      if (status?.state === "running") await onCloudflareConnected();
+    }, 3000);
+  }
+
+  async function onCloudflareConnected() {
+    stopCloudflarePoll();
+    await loadAccess();
+    renderAccess();
+    if ($("pairing-result") && !$("pairing-result").hidden) {
+      document.querySelector("[data-pair-device]")?.click();
+    }
+  }
+
+  function cloudflareStateLabel(status) {
+    return {
+      running: "Connected",
+      needs_login: "Sign-in required",
+      needs_hostname: "Hostname required",
+      stopped: "Stopped",
+      not_installed: "Not installed",
+      error: "Needs attention",
+    }[status.state] || titleCase(String(status.state || "unknown"));
+  }
+
+  function cloudflareHostnameForm(status) {
+    const hostname = status.hostname || String(status.public_url || "").replace(/^https?:\/\//, "");
+    return `<div class="cloudflare-form">
+      <label class="kpi-label" for="cloudflare-hostname">Public hostname</label>
+      <div class="tailscale-key-row">
+        <input id="cloudflare-hostname" type="text" placeholder="vira.example.com" value="${esc(hostname)}" autocomplete="off" spellcheck="false">
+        <input id="cloudflare-tunnel-name" type="text" placeholder="vira" value="${esc(status.tunnel_name || "vira")}" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="row-actions" style="justify-content:flex-start;margin-top:.6rem">
+        <button class="btn" type="button" data-cloudflare-connect>${status.state === "stopped" ? "Start tunnel" : status.service_active ? "Use existing tunnel" : "Create tunnel"}</button>
+        <button class="btn btn-ghost" type="button" data-cloudflare-refresh>Refresh</button>
+      </div>
+      <p class="card-note">${status.service_active ? "A cloudflared service is already running. Enter the hostname configured for it in Cloudflare." : "VIRA will create the tunnel, route DNS and start cloudflared."}</p>
+    </div>`;
+  }
+
+  function renderCloudflarePanel() {
+    const box = $("cloudflare-panel");
+    if (!box) return;
+    if (!state.cloudflareOpen) { box.hidden = true; return; }
+    box.hidden = false;
+    const status = state.cloudflare;
+    if (!status) {
+      box.innerHTML = '<p class="empty">Checking Cloudflare…</p>';
+      return;
+    }
+    const label = cloudflareStateLabel(status);
+    const steps = (status.next_steps || []).map((step) => `<li>${esc(step)}</li>`).join("");
+    let body = "";
+    if (status.state === "not_installed") {
+      body = `<p class="insight-copy">Install cloudflared on the machine that runs VIRA, then refresh.</p>
+        <pre class="code">${esc(status.install_command || "")}</pre>
+        <div class="row-actions" style="justify-content:flex-start;margin-top:.7rem">
+          <button class="btn btn-ghost" type="button" data-cloudflare-copy-install="${esc(status.install_command || "")}">Copy command</button>
+          <button class="btn btn-ghost" type="button" data-cloudflare-refresh>Refresh</button>
+        </div>`;
+    } else if (status.state === "needs_login") {
+      if (status.auth_url) {
+        body = `<p class="insight-copy">Sign in to Cloudflare and choose the zone that owns your hostname. VIRA continues automatically.</p>
+          <div class="tailscale-login">
+            <img class="pairing-qr" src="${esc(status.auth_qr)}" alt="Cloudflare login QR code" width="168" height="168">
+            <div>
+              <a class="btn" href="${esc(status.auth_url)}" target="_blank" rel="noopener noreferrer">Open Cloudflare login</a>
+              <p class="pairing-meta">Scan the QR or open the link in this browser.</p>
+              <p class="card-note">${status.login_in_progress ? "Waiting for Cloudflare…" : "Login not finished yet."}</p>
+            </div>
+          </div>`;
+      } else {
+        body = `<p class="insight-copy">Cloudflare login is required before VIRA can create the named tunnel.</p>
+          <div class="row-actions" style="justify-content:flex-start;margin-top:.7rem">
+            <button class="btn" type="button" data-cloudflare-login>Connect Cloudflare</button>
+            <button class="btn btn-ghost" type="button" data-cloudflare-refresh>Refresh</button>
+          </div>
+          <p class="card-note">A browser login or QR scan opens; no Cloudflare password is stored by VIRA.</p>`;
+      }
+    } else if (status.state === "needs_hostname") {
+      body = `<p class="insight-copy">${status.service_active ? "The Cloudflare tunnel service is already running." : "Cloudflare login is complete."} Enter the public hostname for VIRA.</p>
+        ${cloudflareHostnameForm(status)}
+        ${steps ? `<ul class="tailscale-steps">${steps}</ul>` : ""}`;
+    } else if (status.state === "running") {
+      body = `<p class="insight-copy">Cloudflare is serving VIRA over HTTPS. No app is required on the phone.</p>
+        <span class="kpi-label">Public address</span>
+        <strong class="access-url">${esc(status.public_url || "—")}</strong>
+        ${status.service_active ? '<p class="card-note">Using the existing cloudflared service.</p>' : ""}
+        <div class="row-actions" style="justify-content:flex-start;margin-top:.7rem">
+          <button class="btn btn-ghost" type="button" data-cloudflare-copy-address="${esc(status.public_url || "")}">Copy address</button>
+          <button class="btn btn-ghost" type="button" data-cloudflare-close>Done</button>
+        </div>`;
+    } else {
+      body = `<p class="insight-copy">${esc(status.reason || "Cloudflare needs attention.")}</p>
+        ${steps ? `<ul class="tailscale-steps">${steps}</ul>` : ""}
+        ${status.service_active || status.logged_in ? cloudflareHostnameForm(status) : `<div class="row-actions" style="justify-content:flex-start;margin-top:.7rem"><button class="btn" type="button" data-cloudflare-login>Connect Cloudflare</button><button class="btn btn-ghost" type="button" data-cloudflare-refresh>Refresh</button></div>`}`;
+    }
+    box.innerHTML = `<div class="tailscale-panel-head">
+        <div><span class="kpi-label">Cloudflare</span><strong>${esc(label)}</strong></div>
+        <span class="badge badge-${status.state === "running" ? "ok" : status.state === "not_installed" ? "warn" : "info"}">${esc(label)}</span>
+      </div>${body}`;
+  }
+
+  async function loadCloudflareStatus(startPoll = false) {
+    const previous = state.cloudflare ? JSON.stringify(state.cloudflare) : null;
+    const r = await fetchJson("/api/v1/access/cloudflare");
+    state.cloudflare = r.ok ? r.data : {
+      state: "error",
+      installed: false,
+      reason: r.data?.detail || "Could not load Cloudflare status.",
+      next_steps: [],
+    };
+    if (JSON.stringify(state.cloudflare) !== previous) renderCloudflarePanel();
+    if (startPoll && (state.cloudflare.login_in_progress || state.cloudflare.state === "needs_login")) {
+      startCloudflarePoll();
+    }
+  }
+
+  async function startCloudflareLogin() {
+    const r = await fetchJson("/api/v1/access/cloudflare/login", { method: "POST" });
+    state.cloudflare = r.ok ? r.data : {
+      state: "error",
+      installed: true,
+      reason: r.data?.detail || "Could not start Cloudflare login.",
+      next_steps: [],
+    };
+    renderCloudflarePanel();
+    if (state.cloudflare.login_in_progress || state.cloudflare.state === "needs_login") {
+      startCloudflarePoll();
+    }
+  }
+
+  async function connectCloudflare() {
+    const hostname = ($("cloudflare-hostname")?.value || "").trim();
+    const tunnelName = ($("cloudflare-tunnel-name")?.value || "").trim();
+    if (!hostname) return;
+    const r = await fetchJson("/api/v1/access/cloudflare/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hostname, tunnel_name: tunnelName || undefined }),
+    });
+    state.cloudflare = r.ok ? r.data : {
+      state: "error",
+      installed: true,
+      reason: r.data?.detail || "Could not configure Cloudflare.",
+      next_steps: [],
+    };
+    renderCloudflarePanel();
+    if (state.cloudflare.state === "running") await onCloudflareConnected();
+    else if (state.cloudflare.login_in_progress || state.cloudflare.state === "needs_login") startCloudflarePoll();
+  }
+
+  async function openCloudflarePanel() {
+    state.cloudflareOpen = true;
+    state.tailscaleOpen = false;
+    stopTailscalePoll();
+    renderTailscalePanel();
+    await loadCloudflareStatus(false);
+    renderCloudflarePanel();
+    if (state.cloudflare?.state === "needs_login" && !state.cloudflare.login_in_progress) {
+      await startCloudflareLogin();
+    }
+    $("cloudflare-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
   function renderPairingCode(data) {
@@ -1787,11 +1973,41 @@
 
 
   document.addEventListener("click", async (event) => {
-    const target = event.target.closest("[data-tailscale-open],[data-tailscale-connect],[data-tailscale-refresh],[data-tailscale-close],[data-tailscale-copy-install],[data-tailscale-copy-address],[data-tailscale-authkey],[data-pair-device],[data-copy-pairing],[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id],[data-generated-id],[data-run-resume],[data-run-timeline],[data-notification-read],[data-schedule-run],[data-schedule-runs],[data-schedule-edit],[data-schedule-toggle],[data-schedule-delete],[data-recipe]");
+    const target = event.target.closest("[data-cloudflare-open],[data-cloudflare-login],[data-cloudflare-connect],[data-cloudflare-refresh],[data-cloudflare-close],[data-cloudflare-copy-install],[data-cloudflare-copy-address],[data-tailscale-open],[data-tailscale-connect],[data-tailscale-refresh],[data-tailscale-close],[data-tailscale-copy-install],[data-tailscale-copy-address],[data-tailscale-authkey],[data-pair-device],[data-copy-pairing],[data-device-select],[data-delete-doc],[data-resume-workflow],[data-cancel-workflow],[data-delete-object],[data-plugin-action],[data-mcp-action],[data-install-mcp],[data-approval-id],[data-generated-id],[data-run-resume],[data-run-timeline],[data-notification-read],[data-schedule-run],[data-schedule-runs],[data-schedule-edit],[data-schedule-toggle],[data-schedule-delete],[data-recipe]");
     if (!target) return;
 
     try {
-      if (target.dataset.tailscaleOpen !== undefined) {
+      if (target.dataset.cloudflareOpen !== undefined) {
+        await openCloudflarePanel();
+      } else if (target.dataset.cloudflareLogin !== undefined) {
+        target.disabled = true;
+        try {
+          await startCloudflareLogin();
+        } finally {
+          target.disabled = false;
+        }
+      } else if (target.dataset.cloudflareConnect !== undefined) {
+        target.disabled = true;
+        try {
+          await connectCloudflare();
+        } finally {
+          target.disabled = false;
+        }
+      } else if (target.dataset.cloudflareRefresh !== undefined) {
+        await loadCloudflareStatus(true);
+      } else if (target.dataset.cloudflareClose !== undefined) {
+        stopCloudflarePoll();
+        state.cloudflareOpen = false;
+        renderCloudflarePanel();
+      } else if (target.dataset.cloudflareCopyInstall !== undefined) {
+        await navigator.clipboard.writeText(target.dataset.cloudflareCopyInstall);
+        target.textContent = "Copied";
+        setTimeout(() => { target.textContent = "Copy command"; }, 1600);
+      } else if (target.dataset.cloudflareCopyAddress !== undefined) {
+        await navigator.clipboard.writeText(target.dataset.cloudflareCopyAddress);
+        target.textContent = "Copied";
+        setTimeout(() => { target.textContent = "Copy address"; }, 1600);
+      } else if (target.dataset.tailscaleOpen !== undefined) {
         await openTailscalePanel();
       } else if (target.dataset.tailscaleConnect !== undefined) {
         target.disabled = true;

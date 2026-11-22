@@ -582,6 +582,8 @@ textarea { resize: vertical; min-height: 4rem; }
 .tailscale-advanced summary { cursor: pointer; font-size: var(--text-sm); color: var(--muted); }
 .tailscale-key-row { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 0.6rem; }
 .tailscale-key-row input { flex: 1 1 16rem; min-width: 10rem; }
+.cloudflare-form { margin-top: 0.8rem; }
+.cloudflare-form .tailscale-key-row { margin-top: 0.35rem; }
 .mono { font-family: var(--mono); font-size: 0.9em; }
 
 @media (max-width: 70rem) {
